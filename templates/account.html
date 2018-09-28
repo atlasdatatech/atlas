@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.title}}</title>
+</head>
+<body>
+<h3>My Account</h3>
+<ul>
+    <li>UserName:{{.username}}</li>
+    <li>Email:{{.email}}</li>
+    <li>UID:{{.uid}}</li>
+    <li>IsActive:{{.active}}</li>
+    <li>JWT:{{.jwt}}</li>
+    <li>AID:{{.aid}}</li>
+	{{if eq .verified "no"}}
+    <li>IsVerified:<a href="/account/verification/">{{.verified}}</a></li>
+	{{else}}
+	<li>IsVerified:{{.verified}}</li>
+	{{end}}
+    <li>Phone:{{.phone}}</li>
+</ul>
+</body>
+</html>
+
+
