@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"log"
 
 	"github.com/spf13/viper"
 )
@@ -17,14 +19,14 @@ func InitConf(v *viper.Viper) {
 	//在测试环境下和配置比较少的情况下，可以直接使用这种方式来快速实现
 	var tomlConf = []byte(`
 	port="8080"
-	
+
 	[jwt]
 	realm="atlasmap"
 	key="salta-atad-6221"
 	timeOut="720h"
 	timeMax="2160h"
-	identityKey = "id"
-	lookup="header: Authorization, query: token, cookie: jwt"
+	identityKey="id"
+	lookup="header:Authorization, query:token, cookie:JWTToken"
 	headName="Bearer"
 
 	[password]
@@ -32,7 +34,7 @@ func InitConf(v *viper.Viper) {
 
 
 	[account]
-	verification = false
+	verification = true
 
 	[attempts]
 	ip = 50
@@ -64,8 +66,10 @@ func InitConf(v *viper.Viper) {
 	`)
 
 	//用来从上面的byte数组中读取配置内容
-	v.ReadConfig(bytes.NewBuffer(tomlConf))
-
+	err := v.ReadConfig(bytes.NewBuffer(tomlConf))
+	if err != nil {
+		log.Fatal("config file has error:" + err.Error())
+	}
 	//配置默认值，如果配置内容中没有指定，就使用以下值来作为配置值，给定默认值是一个让程序更健壮的办法
 	v.SetDefault("port", "8080")
 	v.SetDefault("jwt.realm", "atlasmap")
@@ -73,10 +77,10 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("jwt.timeOut", "720h")
 	v.SetDefault("jwt.timeMax", "2160h")
 	v.SetDefault("jwt.identityKey", "id")
-	v.SetDefault("jwt.lookup", "header: Authorization, query: token, cookie: jwt")
+	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:JWTToken")
 	v.SetDefault("jwt.headName", "Bearer")
 
-	v.SetDefault("account.verification", false)
+	v.SetDefault("account.verification", true)
 
 	v.SetDefault("attempts.ip", 99)
 	v.SetDefault("attempts.user", 9)
@@ -87,6 +91,7 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("db.user", "postgres")
 	v.SetDefault("db.password", "postgres")
 	v.SetDefault("db.name", "test")
+	fmt.Println(v.GetString("db.name"))
 
 	v.SetDefault("casbin.config", "./auth.conf")
 	v.SetDefault("casbin.policy", "./auth.csv")

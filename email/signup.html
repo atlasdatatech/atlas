@@ -1,6 +1,6 @@
-<h3>欢迎来到AtlasMap</h3>
-<p>感谢您的注册~</p>
-<p>您的账户已经创建完成，登陆信息如下:</p>
+<h3>感谢您加入AtlasMap~</h3>
+{{if eq .Verification "yes"}}
+<p>您的账户已经创建完成，注册信息如下：</p>
 <table border="1" cellpadding="5" cellspacing="0">
 	<tr>
 		<td>用户名:</td>
@@ -15,4 +15,8 @@
 		<td>{{.LoginURL}}</td>
 	</tr>
 </table>
+{{else}}
+<p>您的账户已经创建完成，只需确认您的电子邮件即可开始使用。</p>
+<a href="{{.VerifyURL}}">{{.VerifyURL}}</a>
+{{end}}
 <p>Thanks,<br/>AtlasMap</p>

@@ -7,7 +7,6 @@
 <h3>Verify</h3>
 <ul>
     {{if .hasSend}}
-    <li>已经发送过验证邮件. <a href="/account/verification/{{.token}}/">请点击验证（debug）</a></li>
     <li>
         <form id="form1" action="/account/verification/" method="post">
             <div>

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -85,17 +84,19 @@ func validatePassword(password *string, r *Response) {
 func (user *User) changePassword(r *Response) (err error) {
 
 	var body struct {
-		Confirm  string `json:"confirm"`
-		Password string `json:"newPassword"`
+		Confirm  string `form:"confirm" binding:"required"`
+		Password string `form:"password" binding:"required"`
 	}
-	err = json.NewDecoder(r.c.Request.Body).Decode(&body)
+
+	err = r.c.Bind(&body)
 	if err != nil {
+		r.ErrFor["binding"] = err.Error()
 		FATAL(err)
 	}
 
 	// validate
 	if len(body.Password) == 0 {
-		r.ErrFor["newPassword"] = "required"
+		r.ErrFor["password"] = "required"
 	}
 	if len(body.Confirm) == 0 {
 		r.ErrFor["confirm"] = "required"
@@ -112,38 +113,12 @@ func (user *User) changePassword(r *Response) (err error) {
 	if err != nil {
 		FATAL(err)
 	}
-	err = db.Where("id = ?", user.ID).Update("password", string(hashedPassword)).Error
+	err = db.Model(&User{}).Where("id = ?", user.ID).Update(User{Password: string(hashedPassword)}).Error
 	if err != nil {
 		r.Errors = append(r.Errors, err.Error())
 		err = Err
 		return
 	}
-
-	return
-}
-
-func (a *Account) changeData(r *Response) (err error) {
-
-	var body struct {
-		Company string `json:"company"`
-		Phone   string `json:"phone"`
-	}
-	err = json.NewDecoder(r.c.Request.Body).Decode(&body)
-
-	if r.HasErrors() {
-		err = Err
-		return
-	}
-
-	a.Company = body.Company
-	a.Phone = body.Phone
-	a.Search = a.Search[:0]
-	a.Search = append(a.Search,
-		body.Company,
-		body.Phone,
-	)
-
-	db.Save(&a)
 
 	return
 }

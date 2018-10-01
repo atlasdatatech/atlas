@@ -16,6 +16,8 @@ import (
 
 const VERSION = "1.0"
 
+var identityKey = "id"
+
 //定义一个内部全局的 db 指针用来进行认证，数据校验
 var db *gorm.DB
 
@@ -30,8 +32,9 @@ var authMiddleware *jwt.GinJWTMiddleware
 func main() {
 	cfgV = viper.New()
 	InitConf(cfgV)
-
+	identityKey = cfgV.GetString("jwt.identityKey")
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
+	fmt.Println(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
 		log.Fatal("gorm pg Error:" + err.Error())
@@ -100,16 +103,15 @@ func bindRoutes(r *gin.Engine) {
 	{
 		ac.GET("/", renderAccount)
 
-		ac.POST("/refresh/", authMiddleware.RefreshHandler)
 		//account > verification
 		ac.GET("/verification/", renderVerification)
 		ac.POST("/verification/", sendVerification)
-		ac.GET("/verification/:token/", verify)
-
+		ac.GET("/verification/:user/:token/", verify)
+		//account jwt
+		ac.GET("/jwt/refresh/", jwtRefresh)
 		//account > settings
-		// ac.GET("/settings/", renderAccountSettings)
-		// ac.PUT("/settings/", setSettings)
-		ac.PUT("/settings/password/", changePassword)
+		ac.GET("/settings/password/", renderChangePassword)
+		ac.POST("/settings/password/", changePassword)
 
 	}
 	//route not found

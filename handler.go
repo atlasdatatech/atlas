@@ -1,12 +1,11 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/teris-io/shortid"
@@ -89,26 +88,38 @@ func signup(c *gin.Context) {
 	user.Password = string(hashedPassword)
 
 	user.Email = strings.ToLower(body.Email)
-	user.Search = []string{body.UserName, body.Email}
 
+	//No verification required
 	user.JWT, user.JWTExpires, err = authMiddleware.TokenGenerator(&user)
 	if err != nil {
 		FATAL(err)
 	}
 
+	user.Search = []string{body.UserName, body.Email}
+
 	// createAccount
 	account := Account{}
 	account.ID, _ = shortid.Generate()
 
+	user.AccountID = account.ID
+	account.UserID = user.ID
+
+	account.Search = []string{body.UserName}
+	var verifyURL string
 	if cfgV.GetBool("account.verification") {
 		account.Verification = "no"
+		//Create a verification token
+		token := generateToken(21)
+		hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
+		if err != nil {
+			FATAL(err)
+		}
+		account.VerificationToken = string(hash)
+		verifyURL = "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
 	} else {
 		account.Verification = "yes"
 	}
 
-	account.UserID = user.ID
-	account.Search = []string{body.UserName}
-	user.AccountID = account.ID
 	// insertUser
 	err = db.Create(&user).Error
 	if err != nil {
@@ -124,32 +135,31 @@ func signup(c *gin.Context) {
 		return
 	}
 	// sendWelcomeEmail
+	log.Println("verifyURL: " + verifyURL)
 	go func() {
-		c.Set("UserName", body.UserName)
-		c.Set("Email", body.Email)
-		c.Set("LoginURL", "http://"+c.Request.Host+"/login/")
 
 		mailConf := MailConfig{}
-		mailConf.Data = c.Keys
+		mailConf.Data = gin.H{
+			"VerifyURL":    verifyURL,
+			"Verification": account.Verification,
+			"LoginURL":     "http://" + c.Request.Host + "/login/",
+			"Email":        body.Email,
+			"UserName":     body.UserName,
+		}
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasData Account"
 		mailConf.ReplyTo = body.Email
 		mailConf.HtmlPath = "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
-			fmt.Println("Error Sending Welcome Email: " + err.Error())
+			log.Println("Error Sending Welcome Email: " + err.Error())
+			log.Println("verifyURL: " + verifyURL)
 		} else {
-			fmt.Println("Successful Sent Welcome Email.")
+			log.Println("Successful Sent Welcome Email.")
 		}
 	}()
 
-	c.HTML(http.StatusOK, "logined.html", gin.H{
-		"code":   http.StatusOK,
-		"id":     user.ID,
-		"token":  user.JWT,
-		"expire": user.JWTExpires.Format(time.RFC3339),
-	})
-
+	c.Redirect(http.StatusFound, "/")
 	response.Finish()
 }
 
@@ -232,6 +242,7 @@ func login(c *gin.Context) {
 		return
 	}
 
+	//Cookie
 	if authMiddleware.SendCookie {
 		maxage := int(user.JWTExpires.Unix() - time.Now().Unix())
 		c.SetCookie(
@@ -244,28 +255,30 @@ func login(c *gin.Context) {
 			authMiddleware.CookieHTTPOnly,
 		)
 	}
-
 	c.HTML(http.StatusOK, "logined.html", gin.H{
-		"code":   http.StatusOK,
-		"id":     user.ID,
-		"token":  user.JWT,
-		"expire": user.JWTExpires.Format(time.RFC3339),
+		"code": http.StatusOK,
+		"name": user.Name,
 	})
+	//response
+	cookie, err := c.Cookie("JWTToken")
+	if err != nil {
+		log.Println(err)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":   http.StatusOK,
-		"id":     user.ID,
-		"token":  user.JWT,
-		"expire": user.JWTExpires.Format(time.RFC3339),
+		"code":    http.StatusOK,
+		"id":      user.ID,
+		"name":    user.Name,
+		"token":   user.JWT,
+		"expire":  user.JWTExpires.Format(time.RFC3339),
+		"message": "login successfully",
+		"cookie":  cookie,
 	})
 
 	response.Finish()
 }
 
 func logout(c *gin.Context) {
-	session := sessions.Default(c)
-	session.Delete("public")
-	session.Save()
 	c.Redirect(http.StatusFound, "/")
 }
 
@@ -319,21 +332,26 @@ func sendReset(c *gin.Context) {
 		return
 	}
 
+	resetURL := "http" + "://" + c.Request.Host + "/login/reset/" + body.Email + "/" + string(token) + "/"
+	log.Println("resetURL: " + resetURL)
 	go func() {
-		resetURL := "http" + "://" + c.Request.Host + "/login/reset/" + body.Email + "/" + string(token) + "/"
-		println("resetURL: " + resetURL)
-		c.Set("ResetURL", resetURL)
-		c.Set("UserName", user.Name)
 		mailConf := MailConfig{}
-		mailConf.Data = c.Keys
+		mailConf.Data = gin.H{
+			"ResetURL": resetURL,
+			"UserName": user.Name,
+		}
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = body.Email
 		mailConf.HtmlPath = "email/reset.html"
 
 		if err := mailConf.SendMail(); err != nil {
-			println("Error Sending Rest Password Email: " + err.Error())
+			log.Println("Error Sending Rest Password Email: " + err.Error())
+			log.Println("resetURL: " + resetURL)
+		} else {
+			log.Println("Successful Sent Rest Password Email.")
 		}
+
 	}()
 
 	//for test
@@ -406,13 +424,11 @@ func resetPassword(c *gin.Context) {
 }
 
 func renderAccount(c *gin.Context) {
-
-	// id := identity(c)
+	uid := c.GetString(identityKey)
 	user := &User{}
-	if err := db.Where("id = ?", user.ID).First(&user).Error; err != nil {
+	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
 		FATAL(err)
 	}
-
 	account := &Account{}
 	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
 		FATAL(err)
@@ -424,6 +440,7 @@ func renderAccount(c *gin.Context) {
 		"userid":    user.ID,
 		"active":    user.Activation,
 		"jwt":       user.JWT,
+		"jwtexpire": user.JWTExpires.Format("2006-01-02 03:04:05 PM"),
 		"accountid": account.ID,
 		"verified":  account.Verification,
 		"phone":     account.Phone,
@@ -431,8 +448,16 @@ func renderAccount(c *gin.Context) {
 }
 
 func renderVerification(c *gin.Context) {
-	account := getAccount(c)
-	// user := getUser(c)
+	uid := c.GetString(identityKey)
+	user := &User{}
+	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+		FATAL(err)
+	}
+	account := &Account{}
+	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
+		FATAL(err)
+	}
+
 	if account.Verification == "yes" {
 		c.Redirect(http.StatusFound, "/account/")
 		return
@@ -440,54 +465,138 @@ func renderVerification(c *gin.Context) {
 
 	if len(account.VerificationToken) > 0 {
 		c.HTML(http.StatusOK, "verify.html", gin.H{
-			"tile":    "Atlas Map",
-			"hasSend": true,
-			"token":   account.VerificationToken,
+			"tile":     "Atlas Map",
+			"hasSend":  true,
+			"username": user.Name,
 		})
-
 	}
-
 }
 
 func sendVerification(c *gin.Context) {
-	account := getAccount(c)
+	response := newResponse(c)
 
-	user := getUser(c)
-	VerifyURL := generateToken(21)
-	hash, err := bcrypt.GenerateFromPassword(VerifyURL, bcrypt.DefaultCost)
+	uid := c.GetString(identityKey)
+	token := generateToken(21)
+	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	if err != nil {
-		FATAL(err)
+		response.ErrFor["VerificationToken"] = err.Error()
+		response.Fail()
+		return
 	}
-	if err := db.Model(&Account{}).Where("aid = ?", account.ID).Update("verificationToken", string(hash)).Error; err != nil {
-		FATAL(err)
+	user := &User{}
+	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+		response.ErrFor["gorm"] = err.Error()
+		response.Fail()
+		return
 	}
 
-	verifyURL := "http" + "://" + c.Request.Host + "/account/verification/" + string(VerifyURL) + "/"
-	c.Set("VerifyURL", verifyURL)
-
-	mailConf := MailConfig{}
-	mailConf.Data = c.Keys
-	mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
-	mailConf.Subject = "Your AtlasMap Account"
-	mailConf.ReplyTo = user.Email
-	mailConf.HtmlPath = "email/verification.html"
-
-	if err := mailConf.SendMail(); err != nil {
-		FATAL(err)
+	if err := db.Model(&Account{}).Where("id = ?", user.AccountID).Update(Account{VerificationToken: string(hash)}).Error; err != nil {
+		response.ErrFor["gorm"] = err.Error()
+		response.Fail()
+		return
 	}
+
+	verifyURL := "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
+	log.Println("verifyURL: " + verifyURL)
+	go func() {
+
+		mailConf := MailConfig{}
+		mailConf.Data = gin.H{
+			"VerifyURL": verifyURL,
+		}
+		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
+		mailConf.Subject = "Your AtlasMap Account"
+		mailConf.ReplyTo = user.Email
+		mailConf.HtmlPath = "email/verification.html"
+
+		if err := mailConf.SendMail(); err != nil {
+			log.Println("Error Sending verification Email: " + err.Error())
+			log.Println("verifyURL: " + verifyURL)
+		} else {
+			log.Println("Successful Sent verification Email.")
+		}
+	}()
+	response.Data["mgs"] = "A verification email has been sent."
+	response.Finish()
 }
 
 func verify(c *gin.Context) {
-	account := getAccount(c)
-	err := bcrypt.CompareHashAndPassword([]byte(account.VerificationToken), []byte(c.Param("token")))
-	if err == nil {
-		db.Model(&Account{}).Where("id = ?", account.ID).Updates(Account{VerificationToken: "", Verification: "yes"})
+	response := newResponse(c)
+	log.Println("user:" + c.Param("user"))
+	log.Println("token:" + c.Param("token"))
+	user := &User{}
+	if err := db.Where("name = ?", c.Param("user")).First(&user).Error; err != nil {
+		response.ErrFor["gorm"] = err.Error()
+		response.Fail()
+		return
+	}
+	account := &Account{}
+	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
+		response.ErrFor["gorm"] = err.Error()
+		response.Fail()
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(account.VerificationToken), []byte(c.Param("token"))); err != nil {
+		log.Println("verfiyToken:" + account.VerificationToken)
+		response.ErrFor["VerificationToken"] = err.Error()
+		response.Fail()
+		return
+	}
+
+	if err := db.Model(&Account{}).Where("id = ?", account.ID).Updates(Account{VerificationToken: "null", Verification: "yes"}); err != nil {
+		response.Finish()
 	}
 	c.Redirect(http.StatusFound, "/account/")
 }
 
+func jwtRefresh(c *gin.Context) {
+
+	response := newResponse(c)
+
+	tokenString, expire, err := authMiddleware.RefreshToken(c)
+	if err != nil {
+		log.Println("http.StatusUnauthorized")
+		response.Errors = append(response.Errors, err.Error())
+		return
+	}
+
+	uid := c.GetString(identityKey)
+	if err := db.Model(&User{}).Where("id = ?", uid).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
+		log.Println("gorm update jwt error, user id=" + uid)
+		response.ErrFor["gorm"] = err.Error()
+		return
+	}
+
+	response.Finish()
+
+	cookie, err := c.Cookie("JWTToken")
+	if err != nil {
+		log.Println(err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":    http.StatusOK,
+		"token":   tokenString,
+		"expire":  expire.Format(time.RFC3339),
+		"message": "refresh successfully",
+		"cookie":  cookie,
+	})
+
+}
+
+func renderChangePassword(c *gin.Context) {
+	c.HTML(http.StatusOK, "change.html", gin.H{
+		"title": "AtlasMap",
+	}) // can't handle /login/reset/:email:token
+}
+
 func changePassword(c *gin.Context) {
-	user := getUser(c)
+	uid := c.GetString(identityKey)
+	user := &User{}
+	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+		FATAL(err)
+	}
 	response := newResponse(c)
 	err := user.changePassword(response)
 	if err != nil {
