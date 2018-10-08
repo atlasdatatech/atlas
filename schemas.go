@@ -13,7 +13,7 @@ type User struct {
 	ID        string `json:"id" gorm:"primary_key"`
 	Name      string `json:"name" gorm:"unique;not null;unique_index"`
 	Password  string `json:"-"`
-	Email     string `json:"email"`
+	Email     string `json:"email" gorm:"unique;not null;unique_index"`
 	AccountID string `json:"account" gorm:"index"`
 
 	JWT        string    `json:"-" gorm:"column:jwt"`
@@ -30,7 +30,7 @@ type User struct {
 // Account 账户信息表
 type Account struct {
 	ID                string         `json:"id" gorm:"primary_key"`
-	UserID            string         `json:user gorm:"index"`
+	UserID            string         `json:"user" gorm:"index"`
 	Verification      string         `json:"verification"`
 	VerificationToken string         `json:"-"`
 	Company           string         `json:"company"`

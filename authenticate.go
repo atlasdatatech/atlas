@@ -1,19 +1,19 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"net/http"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	jwt "github.com/appleboy/gin-jwt"
 	"github.com/gin-gonic/gin"
 )
 
 func payload(data interface{}) jwt.MapClaims {
-	if v, ok := data.(*User); ok {
+	if user, ok := data.(*User); ok {
 		return jwt.MapClaims{
-			identityKey: v.ID,
+			identityKey: user.ID,
 		}
 	}
 	return jwt.MapClaims{}
@@ -21,7 +21,7 @@ func payload(data interface{}) jwt.MapClaims {
 
 //定义一个回调函数，用来决断用户id和密码是否有效.暂时弃用
 func authenticator(c *gin.Context) (interface{}, error) {
-	user := &User{ID: "nDz-Yf0iR"}
+	user := &User{ID: "atlas"}
 	return user, nil
 }
 
@@ -29,7 +29,7 @@ func authenticator(c *gin.Context) (interface{}, error) {
 func authorizator(user interface{}, c *gin.Context) bool {
 	if id, ok := user.(string); ok {
 		//如果可以正常取出 user 的值，就使用 casbin 来验证一下是否具备资源的访问权限
-		fmt.Println(id)
+		log.Debug(id)
 		return true
 		// return casbinEnforcer.Enforce(v, c.Request.URL.String(), c.Request.Method)
 	}
@@ -64,7 +64,7 @@ func loginResponse(c *gin.Context, code int, token string, t time.Time) {
 func refreshResponse(c *gin.Context, code int, token string, t time.Time) {
 	cookie, err := c.Cookie("JWTToken")
 	if err != nil {
-		log.Println(err)
+		log.Warn(err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

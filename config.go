@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"fmt"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/viper"
 )
@@ -21,48 +21,64 @@ func InitConf(v *viper.Viper) {
 	port="8080"
 
 	[jwt]
-	realm="atlasmap"
-	key="salta-atad-6221"
-	timeOut="720h"
-	timeMax="2160h"
-	identityKey="id"
-	lookup="header:Authorization, query:token, cookie:JWTToken"
-	headName="Bearer"
+		realm="atlasmap"
+		key="salta-atad-6221"
+		timeOut="720h"
+		timeMax="2160h"
+		identityKey="id"
+		lookup="header:Authorization, query:token, cookie:JWTToken"
+		headName="Bearer"
 
 	[password]
-	restExpiration = "24h"
-
+		restExpiration = "24h"
 
 	[account]
-	verification = true
+		verification = true
 
 	[attempts]
-	ip = 50
-	user = 7
-	expiration = "-5m"
+		ip = 50
+		user = 7
+		expiration = "-5m"
 
 	[db]
-	host     = "127.0.0.1"
-	port     = "5432"
-	user     = "postgres"
-	password = "postgres"
-	name   = "atlas"
+		host     = "127.0.0.1"
+		port     = "5432"
+		user     = "postgres"
+		password = "postgres"
+		name   = "atlas"
 
 	[casbin]
-	config = "./auth.conf"
-	policy = "./auth.csv"
+		config = "./auth.conf"
+		policy = "./auth.csv"
 
 	[smtp]
-
 		[smtp.from]
-		name = "atlasmap"
-		address = "atlasdatatech@gmail.com"
+			name = "atlasmap"
+			address = "atlasdatatech@gmail.com"
 
 		[smtp.credentials]
-		user = "atlasdatatech@gmail.com"
-		password = "Atlas1226"
-		host = "smtp.gmail.com"
-		ssl = true
+			user = "atlasdatatech@gmail.com"
+			password = "Atlas1226"
+			host = "smtp.gmail.com"
+			ssl = true
+
+	[statics]
+		home = "assets/statics/"
+		templates = "assets/statics/templates/*"
+
+	[fonts]
+		home = "assets/fonts/"
+
+	[styles]
+		home = "assets/styles/"
+
+	[tilesets]
+		home="assets/tilesets/"
+		path = "E:/data/tilesets/server/"
+
+	[datasets]
+		home = "assets/datasets/"
+
 	`)
 
 	//用来从上面的byte数组中读取配置内容
@@ -76,7 +92,7 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("jwt.key", "salta-atad-6221")
 	v.SetDefault("jwt.timeOut", "720h")
 	v.SetDefault("jwt.timeMax", "2160h")
-	v.SetDefault("jwt.identityKey", "id")
+	v.SetDefault("jwt.identityKey", "name")
 	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:JWTToken")
 	v.SetDefault("jwt.headName", "Bearer")
 
@@ -91,7 +107,6 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("db.user", "postgres")
 	v.SetDefault("db.password", "postgres")
 	v.SetDefault("db.name", "test")
-	fmt.Println(v.GetString("db.name"))
 
 	v.SetDefault("casbin.config", "./auth.conf")
 	v.SetDefault("casbin.policy", "./auth.csv")
@@ -103,5 +118,8 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("smtp.credentials.password", "Atlas1226")
 	v.SetDefault("smtp.credentials.host", "smtp.gmail.com")
 	v.SetDefault("smtp.credentials.ssl", true)
+
+	v.SetDefault("statics.home", "assets/statics/")
+	v.SetDefault("statics.templates", "assets/statics/templates/*")
 
 }

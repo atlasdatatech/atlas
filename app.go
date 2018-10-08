@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 
 	jwt "github.com/appleboy/gin-jwt"
 	"github.com/casbin/gorm-adapter"
@@ -29,17 +30,32 @@ var casbinEnforcer *casbin.Enforcer
 
 var authMiddleware *jwt.GinJWTMiddleware
 
+var tss *ServiceSet
+
 func main() {
+
+	log.SetLevel(log.DebugLevel)
+
 	cfgV = viper.New()
 	InitConf(cfgV)
+
 	identityKey = cfgV.GetString("jwt.identityKey")
+
+	pubdir := cfgV.GetString("tilesets.path")
+	if ts, err := NewFromBaseDir(pubdir); err != nil {
+		log.Error("public tilesets NewFromBaseDir Error:" + err.Error())
+	} else {
+		tss = ts
+		log.Info("public tilesets NewFromBaseDir successed!")
+	}
+
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
-	fmt.Println(pgConnInfo)
+	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
-		fmt.Println("Successfully connected!")
+		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Account{}, &Attempt{})
 		db = pg
 	}
@@ -55,7 +71,12 @@ func main() {
 
 	r := gin.Default()
 
-	r.LoadHTMLGlob("templates/*")
+	staticsHome := cfgV.GetString("statics.home")
+	log.Debug(staticsHome)
+	r.Static("/statics", staticsHome)
+	templatesPath := cfgV.GetString("statics.templates")
+	log.Debug(templatesPath)
+	r.LoadHTMLGlob(templatesPath)
 
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
 
@@ -98,22 +119,79 @@ func bindRoutes(r *gin.Engine) {
 	r.GET("/logout/", logout)
 
 	//account
-	ac := r.Group("/account")
-	ac.Use(authMiddleware.MiddlewareFunc())
+	account := r.Group("/account")
+	account.Use(authMiddleware.MiddlewareFunc())
 	{
-		ac.GET("/", renderAccount)
+		account.GET("/", renderAccount)
 
 		//account > verification
-		ac.GET("/verification/", renderVerification)
-		ac.POST("/verification/", sendVerification)
-		ac.GET("/verification/:user/:token/", verify)
+		account.GET("/verification/", renderVerification)
+		account.POST("/verification/", sendVerification)
+		account.GET("/verification/:user/:token/", verify)
 		//account jwt
-		ac.GET("/jwt/refresh/", jwtRefresh)
+		account.GET("/jwt/refresh/", jwtRefresh)
 		//account > settings
-		ac.GET("/settings/password/", renderChangePassword)
-		ac.POST("/settings/password/", changePassword)
+		account.GET("/settings/password/", renderChangePassword)
+		account.POST("/settings/password/", changePassword)
 
 	}
+	//studio
+	studio := r.Group("/studio")
+	studio.Use(authMiddleware.MiddlewareFunc())
+	{
+		// > styles
+		studio.GET("/", studioIndex)
+		// studio.GET("/styles/", listStyles)
+		// studio.GET("/tilesets/", listTilesets)
+		// studio.GET("/datasets/", listDatasets)
+	}
+
+	autoUser := func(c *gin.Context) {
+		claims := jwt.ExtractClaims(c)
+		user, ok := claims[identityKey]
+		log.Debug(c.Request.URL.Path)
+		if !ok {
+			log.Errorf("can't find %s", user)
+			c.Redirect(http.StatusFound, "/login/")
+			log.Debug(c.Request.URL.Path)
+		} else {
+			c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
+			log.Debug(c.Request.URL.Path)
+			r.HandleContext(c)
+		}
+	}
+
+	styles := r.Group("/styles")
+	styles.Use(authMiddleware.MiddlewareFunc())
+	{
+		// > styles
+		styles.GET("/", autoUser)
+		styles.GET("/:user/", listStyles)
+		// styles.GET("/:user/:sid/", defaultMap) //view map style
+		// styles.GET("/:user/:sid/style.json", getStyle)        //style.json
+	}
+	tilesets := r.Group("/tilesets")
+	tilesets.Use(authMiddleware.MiddlewareFunc())
+	{
+		// > tilesets
+		tilesets.GET("/", autoUser)
+		tilesets.GET("/:user/", listTilesets)
+		tilesets.GET("/:user/:tid", getTilejson) //tilejson
+		tilesets.GET("/:user/:tid/", viewTile)   //view
+		tilesets.GET("/:user/:tid/:z/:x/:y", getTile)
+	}
+	datasets := r.Group("/datasets")
+	datasets.Use(authMiddleware.MiddlewareFunc())
+	{
+		// > datasets
+		datasets.GET("/", autoUser)
+		// datasets.GET("/:user/", listDatasets)
+		// datasets.GET("/:user/:did/", getDataset)
+		// datasets.GET("/:user/:did/view/", defaultDraw)
+		// datasets.GET("/:user/:did/edit/", defaultDraw)
+
+	}
+
 	//route not found
 	// router.NoRoute(renderStatus404)
 }

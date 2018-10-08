@@ -1,12 +1,16 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/atlasdatatech/atlasmap/mbtiles"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/render"
 	"github.com/jinzhu/gorm"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
@@ -149,7 +153,7 @@ func signup(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasData Account"
 		mailConf.ReplyTo = body.Email
-		mailConf.HtmlPath = "email/signup.html"
+		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Println("Error Sending Welcome Email: " + err.Error())
@@ -255,27 +259,9 @@ func login(c *gin.Context) {
 			authMiddleware.CookieHTTPOnly,
 		)
 	}
-	c.HTML(http.StatusOK, "logined.html", gin.H{
-		"code": http.StatusOK,
-		"name": user.Name,
-	})
-	//response
-	cookie, err := c.Cookie("JWTToken")
-	if err != nil {
-		log.Println(err)
-	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    http.StatusOK,
-		"id":      user.ID,
-		"name":    user.Name,
-		"token":   user.JWT,
-		"expire":  user.JWTExpires.Format(time.RFC3339),
-		"message": "login successfully",
-		"cookie":  cookie,
-	})
-
-	response.Finish()
+	c.Redirect(http.StatusFound, "/account/")
+	// response.Finish()
 }
 
 func logout(c *gin.Context) {
@@ -343,7 +329,7 @@ func sendReset(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = body.Email
-		mailConf.HtmlPath = "email/reset.html"
+		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/reset.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Println("Error Sending Rest Password Email: " + err.Error())
@@ -424,9 +410,8 @@ func resetPassword(c *gin.Context) {
 }
 
 func renderAccount(c *gin.Context) {
-	uid := c.GetString(identityKey)
 	user := &User{}
-	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
 		FATAL(err)
 	}
 	account := &Account{}
@@ -448,9 +433,8 @@ func renderAccount(c *gin.Context) {
 }
 
 func renderVerification(c *gin.Context) {
-	uid := c.GetString(identityKey)
 	user := &User{}
-	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
 		FATAL(err)
 	}
 	account := &Account{}
@@ -475,7 +459,6 @@ func renderVerification(c *gin.Context) {
 func sendVerification(c *gin.Context) {
 	response := newResponse(c)
 
-	uid := c.GetString(identityKey)
 	token := generateToken(21)
 	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	if err != nil {
@@ -484,7 +467,7 @@ func sendVerification(c *gin.Context) {
 		return
 	}
 	user := &User{}
-	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
 		response.ErrFor["gorm"] = err.Error()
 		response.Fail()
 		return
@@ -507,7 +490,7 @@ func sendVerification(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = user.Email
-		mailConf.HtmlPath = "email/verification.html"
+		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/verification.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Println("Error Sending verification Email: " + err.Error())
@@ -522,8 +505,8 @@ func sendVerification(c *gin.Context) {
 
 func verify(c *gin.Context) {
 	response := newResponse(c)
-	log.Println("user:" + c.Param("user"))
-	log.Println("token:" + c.Param("token"))
+	log.Debug("user:" + c.Param("user"))
+	log.Debug("token:" + c.Param("token"))
 	user := &User{}
 	if err := db.Where("name = ?", c.Param("user")).First(&user).Error; err != nil {
 		response.ErrFor["gorm"] = err.Error()
@@ -592,9 +575,8 @@ func renderChangePassword(c *gin.Context) {
 }
 
 func changePassword(c *gin.Context) {
-	uid := c.GetString(identityKey)
 	user := &User{}
-	if err := db.Where("id = ?", uid).First(&user).Error; err != nil {
+	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
 		FATAL(err)
 	}
 	response := newResponse(c)
@@ -604,4 +586,241 @@ func changePassword(c *gin.Context) {
 		return
 	}
 	response.Finish()
+}
+
+func studioIndex(c *gin.Context) {
+	//public
+	uid := c.GetString(identityKey) //for user privite tiles
+	log.Infof("user:%s", uid)
+
+	type tileset struct {
+		ID        string
+		Type      string
+		Name      string
+		Hash      string
+		Thumbnail bool
+	}
+
+	tilesets := []tileset{}
+	for id, ts := range tss.tilesets {
+		tilesets = append(tilesets, tileset{
+			ID:   id,
+			Type: ts.TileFormatString(),
+			Name: id,
+		})
+	}
+
+	c.HTML(http.StatusOK, "index.html", gin.H{
+		"Title":    "maps",
+		"User":     uid,
+		"Tilesets": tilesets,
+	})
+
+	// c.JSON(http.StatusOK, services)
+	//user privite
+}
+
+func listStyles(c *gin.Context) {
+	//public
+	rootURL := fmt.Sprintf("%s%s", tss.rootURL(c.Request), c.Request.URL)
+	services := []ServiceInfo{}
+	for id, tileset := range tss.tilesets {
+		services = append(services, ServiceInfo{
+			ImageType: tileset.TileFormatString(),
+			URL:       fmt.Sprintf("%s%s", rootURL, id),
+		})
+	}
+	c.JSON(http.StatusOK, services)
+	//user privite
+}
+
+func listTilesets(c *gin.Context) {
+	//public
+	rootURL := fmt.Sprintf("%s%s", tss.rootURL(c.Request), c.Request.URL)
+	services := []ServiceInfo{}
+	for id, tileset := range tss.tilesets {
+		services = append(services, ServiceInfo{
+			ImageType: tileset.TileFormatString(),
+			URL:       fmt.Sprintf("%s%s", rootURL, id),
+		})
+	}
+	c.JSON(http.StatusOK, services)
+	//user privite
+}
+
+func getTilejson(c *gin.Context) {
+	//public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+
+	id := c.Param("tid")
+	if strings.HasSuffix(strings.ToLower(id), ".json") {
+		id = strings.Split(id, ".")[0]
+	}
+	db, ok := tss.tilesets[id]
+	if !ok {
+		log.Warnf("The tileset id(%s) not exist in the service", id)
+		c.JSON(http.StatusOK, gin.H{
+			"id":    id,
+			"error": "Can't find tileset.",
+		})
+		return
+	}
+
+	url := strings.Split(c.Request.URL.Path, ".")[0]
+	url = fmt.Sprintf("%s%s", tss.rootURL(c.Request), url)
+
+	imgFormat := db.TileFormatString()
+	out := map[string]interface{}{
+		"tilejson": "2.1.0",
+		"id":       id,
+		"scheme":   "xyz",
+		"format":   imgFormat,
+		"tiles":    []string{fmt.Sprintf("%s/{z}/{x}/{y}.%s", url, imgFormat)},
+		"map":      url + "/",
+	}
+	metadata, err := db.GetInfo()
+	if err != nil {
+		log.WithError(err).Infof("Get metadata failed : %s", err.Error())
+	}
+	for k, v := range metadata {
+		switch k {
+		// strip out values above
+		case "tilejson", "id", "scheme", "format", "tiles", "map":
+			continue
+
+		// strip out values that are not supported or are overridden below
+		case "grids", "interactivity", "modTime":
+			continue
+
+		// strip out values that come from TileMill but aren't useful here
+		case "metatile", "scale", "autoscale", "_updated", "Layer", "Stylesheet":
+			continue
+
+		default:
+			out[k] = v
+		}
+	}
+
+	if db.HasUTFGrid() {
+		out["grids"] = []string{fmt.Sprintf("%s/{z}/{x}/{y}.json", url)}
+	}
+
+	c.JSON(http.StatusOK, out)
+	//user privite
+}
+
+func viewTile(c *gin.Context) {
+	id := c.Param("tid")
+	db, ok := tss.tilesets[id]
+	if !ok {
+		log.Warnf("The tileset id(%s) not exist in the service", id)
+		c.JSON(http.StatusOK, gin.H{
+			"id":    id,
+			"error": "Can't find tileset.",
+		})
+		return
+	}
+
+	tilejsonURL := strings.TrimSuffix(c.Request.URL.Path, "/")
+	tilejsonURL = tilejsonURL + ".json"
+
+	c.HTML(http.StatusOK, "data.html", gin.H{
+		"id":  id,
+		"url": tilejsonURL,
+		"fmt": db.TileFormatString(),
+	})
+
+}
+
+func getTile(c *gin.Context) {
+	//public
+	response := newResponse(c)
+	// split path components to extract tile coordinates x, y and z
+	pcs := strings.Split(c.Request.URL.Path[1:], "/")
+	log.Debug(pcs)
+	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
+	size := len(pcs)
+	if size < 6 || pcs[5] == "" {
+		response.ErrFor["StatusBadRequest"] = "requested path is too short"
+		response.Fail()
+		return
+	}
+	user := pcs[1]
+	log.Debug(user)
+	id := pcs[2]
+	db, ok := tss.tilesets[id]
+	if !ok {
+		log.Errorf("The tileset id(%s) not exist in the service", id)
+		response.ErrFor["ErrID"] = "Can't find tileset"
+		response.Fail()
+		return
+	}
+
+	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
+	tc, ext, err := tileCoordFromString(z, x, y)
+	if err != nil {
+		response.ErrFor["StatusBadRequest"] = err.Error()
+		response.Fail()
+		return
+	}
+	var data []byte
+	// flip y to match the spec
+	tc.y = (1 << uint64(tc.z)) - 1 - tc.y
+	isGrid := ext == ".json"
+	switch {
+	case !isGrid:
+		err = db.GetTile(tc.z, tc.x, tc.y, &data)
+	case isGrid && db.HasUTFGrid():
+		err = db.GetGrid(tc.z, tc.x, tc.y, &data)
+	default:
+		err = fmt.Errorf("no grid supplied by tile database")
+	}
+	if err != nil {
+		// augment error info
+		t := "tile"
+		if isGrid {
+			t = "grid"
+		}
+		err = fmt.Errorf("cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
+		log.WithError(err)
+		response.ErrFor["FetchFailed"] = err.Error()
+		response.Fail()
+		return
+	}
+	if data == nil || len(data) <= 1 {
+		switch db.TileFormat() {
+		case mbtiles.PNG, mbtiles.JPG, mbtiles.WEBP:
+			// Return blank PNG for all image types
+			c.Render(
+				http.StatusOK, render.Data{
+					ContentType: "image/png",
+					Data:        BlankPNG(),
+				})
+		case mbtiles.PBF:
+			// Return 204
+			c.Writer.WriteHeader(http.StatusNoContent)
+		default:
+			c.Writer.Header().Set("Content-Type", "application/json")
+			c.Writer.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(c.Writer, `{"message": "Tile does not exist"}`)
+		}
+	}
+
+	if isGrid {
+		c.Writer.Header().Set("Content-Type", "application/json")
+		if db.UTFGridCompression() == mbtiles.ZLIB {
+			c.Writer.Header().Set("Content-Encoding", "deflate")
+		} else {
+			c.Writer.Header().Set("Content-Encoding", "gzip")
+		}
+	} else {
+		c.Writer.Header().Set("Content-Type", db.ContentType())
+		if db.TileFormat() == mbtiles.PBF {
+			c.Writer.Header().Set("Content-Encoding", "gzip")
+		}
+	}
+	_, err = c.Writer.Write(data)
+	c.JSON(http.StatusOK, err)
+	//user privite
 }
