@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -594,25 +596,24 @@ func studioIndex(c *gin.Context) {
 	log.Infof("user:%s", uid)
 
 	type tileset struct {
-		ID        string
-		Type      string
-		Name      string
-		Hash      string
-		Thumbnail bool
+		User string
+		ID   string
+		Type string
+		Hash string
 	}
 
 	tilesets := []tileset{}
-	for id, ts := range tss.tilesets {
+	for id, ts := range ss.Tilesets {
 		tilesets = append(tilesets, tileset{
+			User: "public",
 			ID:   id,
 			Type: ts.TileFormatString(),
-			Name: id,
 		})
 	}
 
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "maps",
-		"User":     uid,
+		"Styles":   ss.Styles,
 		"Tilesets": tilesets,
 	})
 
@@ -622,9 +623,9 @@ func studioIndex(c *gin.Context) {
 
 func listStyles(c *gin.Context) {
 	//public
-	rootURL := fmt.Sprintf("%s%s", tss.rootURL(c.Request), c.Request.URL)
+	rootURL := fmt.Sprintf("%s%s", ss.rootURL(c.Request), c.Request.URL)
 	services := []ServiceInfo{}
-	for id, tileset := range tss.tilesets {
+	for id, tileset := range ss.Tilesets {
 		services = append(services, ServiceInfo{
 			ImageType: tileset.TileFormatString(),
 			URL:       fmt.Sprintf("%s%s", rootURL, id),
@@ -634,11 +635,122 @@ func listStyles(c *gin.Context) {
 	//user privite
 }
 
+func getStyle(c *gin.Context) {
+	//public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+
+	id := c.Param("sid")
+	if strings.HasSuffix(strings.ToLower(id), ".json") {
+		id = strings.Split(id, ".")[0]
+	}
+	style, ok := ss.Styles[id]
+	if !ok {
+		log.Warnf("The style id(%s) not exist in the service", id)
+		c.JSON(http.StatusOK, gin.H{
+			"id":    id,
+			"error": "Can't find style.",
+		})
+		return
+	}
+
+	var out map[string]interface{}
+	json.Unmarshal([]byte(style.Style), &out)
+
+	fixURL := func(url string, c *gin.Context) string {
+		if "" == url || !strings.HasPrefix(url, "local://") {
+			return url
+		}
+		// protoScheme := "http"
+		// if 2 == c.Request.ProtoMajor {
+		// 	protoScheme = "https"
+		// }
+		protoScheme := scheme(c.Request)
+		return strings.Replace(url, "local://", protoScheme+"://"+c.Request.Host+"/", -1)
+	}
+
+	for k, v := range out {
+		switch v.(type) {
+		case string:
+			//style->sprite
+			if "sprite" == k && v != nil {
+				path := v.(string)
+				out["sprite"] = fixURL(path, c)
+			}
+			//style->glyphs
+			if "glyphs" == k && v != nil {
+				path := v.(string)
+				out["glyphs"] = fixURL(path, c)
+			}
+		case map[string]interface{}:
+			if "sources" == k {
+				//style->sources
+				sources := v.(map[string]interface{})
+				for _, u := range sources {
+					source := u.(map[string]interface{})
+					if url := source["url"]; url != nil {
+						fmt.Println()
+						source["url"] = fixURL(url.(string), c)
+					}
+				}
+			}
+		default:
+		}
+	}
+
+	c.JSON(http.StatusOK, &out)
+	//user privite
+}
+
+func getSprite(c *gin.Context) {
+	//public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+	id := c.Param("sid")
+	log.Infof("sid:%s", id)
+	str := c.Param("sprite")
+	stylesPath := cfgV.GetString("styles.path")
+	if strings.HasSuffix(strings.ToLower(str), ".json") {
+		c.Writer.Header().Set("Content-Type", "application/json")
+	}
+	if strings.HasSuffix(strings.ToLower(str), ".png") {
+		c.Writer.Header().Set("Content-Type", "image/png")
+	}
+	spriteFile := stylesPath + id + "/" + str
+	file, err := ioutil.ReadFile(spriteFile)
+	_, err = c.Writer.Write(file)
+	c.JSON(http.StatusOK, err)
+}
+
+func viewStyle(c *gin.Context) {
+	id := c.Param("sid")
+	style, ok := ss.Styles[id]
+	if !ok {
+		log.Warnf("The style id(%s) not exist in the service", id)
+		c.JSON(http.StatusOK, gin.H{
+			"id":    id,
+			"error": "Can't find style.",
+		})
+		return
+	}
+	fmt.Println(style)
+
+	stylejsonURL := strings.TrimSuffix(c.Request.URL.Path, "/")
+	// tilejsonURL = tilejsonURL + ".json"
+
+	c.HTML(http.StatusOK, "viewer.html", gin.H{
+		"Title": id,
+		"ID":    id,
+		"URL":   stylejsonURL,
+	})
+
+}
+
 func listTilesets(c *gin.Context) {
 	//public
-	rootURL := fmt.Sprintf("%s%s", tss.rootURL(c.Request), c.Request.URL)
+	rootURL := fmt.Sprintf("%s%s", ss.rootURL(c.Request), c.Request.URL)
 	services := []ServiceInfo{}
-	for id, tileset := range tss.tilesets {
+	for id, tileset := range ss.Tilesets {
 		services = append(services, ServiceInfo{
 			ImageType: tileset.TileFormatString(),
 			URL:       fmt.Sprintf("%s%s", rootURL, id),
@@ -657,7 +769,7 @@ func getTilejson(c *gin.Context) {
 	if strings.HasSuffix(strings.ToLower(id), ".json") {
 		id = strings.Split(id, ".")[0]
 	}
-	db, ok := tss.tilesets[id]
+	db, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
 		c.JSON(http.StatusOK, gin.H{
@@ -668,7 +780,7 @@ func getTilejson(c *gin.Context) {
 	}
 
 	url := strings.Split(c.Request.URL.Path, ".")[0]
-	url = fmt.Sprintf("%s%s", tss.rootURL(c.Request), url)
+	url = fmt.Sprintf("%s%s", ss.rootURL(c.Request), url)
 
 	imgFormat := db.TileFormatString()
 	out := map[string]interface{}{
@@ -712,7 +824,7 @@ func getTilejson(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	id := c.Param("tid")
-	db, ok := tss.tilesets[id]
+	db, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
 		c.JSON(http.StatusOK, gin.H{
@@ -723,12 +835,13 @@ func viewTile(c *gin.Context) {
 	}
 
 	tilejsonURL := strings.TrimSuffix(c.Request.URL.Path, "/")
-	tilejsonURL = tilejsonURL + ".json"
+	// tilejsonURL = tilejsonURL + ".json"
 
 	c.HTML(http.StatusOK, "data.html", gin.H{
-		"id":  id,
-		"url": tilejsonURL,
-		"fmt": db.TileFormatString(),
+		"Title": id,
+		"ID":    id,
+		"URL":   tilejsonURL,
+		"fmt":   db.TileFormatString(),
 	})
 
 }
@@ -749,7 +862,7 @@ func getTile(c *gin.Context) {
 	user := pcs[1]
 	log.Debug(user)
 	id := pcs[2]
-	db, ok := tss.tilesets[id]
+	db, ok := ss.Tilesets[id]
 	if !ok {
 		log.Errorf("The tileset id(%s) not exist in the service", id)
 		response.ErrFor["ErrID"] = "Can't find tileset"

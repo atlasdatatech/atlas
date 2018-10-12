@@ -21,21 +21,17 @@
         <div class="box">
             {{range .Styles}}
             <div class="item">
-                {{if .Thumbnail}}
-                <img src="/styles/{{$.User}}/{{.ID}}/thumbnail" alt="{{.Name}} preview" />
-                {{else}}
-                <img src="/statics/images/placeholder.png" alt="{{.Name}} preview" />
-                {{end}}
+                <img src="/statics/images/placeholder.png" alt="{{.ID}} preview" />
                 <div class="details">
-                    <h3>{{.Name}}</h3>
+                    <h3>{{.ID}}</h3>
                     <p class="identifier">id: {{.ID}}</p>
                     <p class="services">
                         services:
-                        <a href="/styles/{{$.User}}/{{.ID}}.json">Style</a>
+                        <a href="/styles/{{.User}}/{{.ID}}">Style</a>
                     </p>
                 </div>
                 <div class="viewers">
-                    <a class="btn" href="/styles/{{$.User}}/{{.ID}}/{{.Hash}}">Viewer</a>
+                    <a class="btn" href="/styles/{{.User}}/{{.ID}}/{{.Hash}}">Viewer</a>
                 </div>
             </div>
             {{end}}
@@ -46,21 +42,17 @@
         <div class="box">
             {{range .Tilesets}}
             <div class="item">
-                {{if .Thumbnail}}
-                <img src="/data/{{$.User}}/{{.ID}}/thumbnail" alt="{{.Name}} preview" />
-                {{else}}
-                <img src="/statics/images/placeholder.png" alt="{{.Name}} preview" />
-                {{end}}
+                <img src="/statics/images/placeholder.png" alt="{{.ID}} preview" />
                 <div class="details">
-                    <h3>{{.Name}}</h3>
+                    <h3>{{.ID}}</h3>
                     <p class="identifier">id: {{.ID}} | type:
                         {{if eq .Type "pbf"}}vector{{else}}raster{{end}} data</p>
                     <p class="services">
-                        services: <a href="/tilesets/{{$.User}}/{{.ID}}.json">TileJSON</a>
+                        services: <a href="/tilesets/{{.User}}/{{.ID}}">TileJSON</a>
                     </p>
                 </div>
                 <div class="viewers">
-                    <a class="btn" href="/tilesets/{{$.User}}/{{.ID}}/{{.Hash}}">Inspect</a>
+                    <a class="btn" href="/tilesets/{{.User}}/{{.ID}}/{{.Hash}}">Inspect</a>
                 </div>
             </div>
             {{end}}

@@ -71,6 +71,7 @@ func InitConf(v *viper.Viper) {
 
 	[styles]
 		home = "assets/styles/"
+		path = "assets/styles/"
 
 	[tilesets]
 		home="assets/tilesets/"

@@ -30,7 +30,7 @@ var casbinEnforcer *casbin.Enforcer
 
 var authMiddleware *jwt.GinJWTMiddleware
 
-var tss *ServiceSet
+var ss *ServiceSet
 
 func main() {
 
@@ -41,12 +41,11 @@ func main() {
 
 	identityKey = cfgV.GetString("jwt.identityKey")
 
-	pubdir := cfgV.GetString("tilesets.path")
-	if ts, err := NewFromBaseDir(pubdir); err != nil {
-		log.Error("public tilesets NewFromBaseDir Error:" + err.Error())
+	if ts, err := LoadServiceSet(); err != nil {
+		log.Error("Load ServiceSet Error:" + err.Error())
 	} else {
-		tss = ts
-		log.Info("public tilesets NewFromBaseDir successed!")
+		ss = ts
+		log.Info("Load ServiceSet successed!")
 	}
 
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
@@ -167,8 +166,9 @@ func bindRoutes(r *gin.Engine) {
 		// > styles
 		styles.GET("/", autoUser)
 		styles.GET("/:user/", listStyles)
-		// styles.GET("/:user/:sid/", defaultMap) //view map style
-		// styles.GET("/:user/:sid/style.json", getStyle)        //style.json
+		styles.GET("/:user/:sid", getStyle)          ////style.json
+		styles.GET("/:user/:sid/", viewStyle)        //view map style
+		styles.GET("/:user/:sid/:sprite", getSprite) ////style.json
 	}
 	tilesets := r.Group("/tilesets")
 	tilesets.Use(authMiddleware.MiddlewareFunc())

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.name}} - AtlasMap</title>
+    <title>{{.Title}} - AtlasMap</title>
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl.css"/>
     <script src="/statics/mapbox-gl.js"></script>
     <link rel="stylesheet" type="text/css" href="/statics/mapbox.css"/>
@@ -24,7 +24,7 @@
     </style>
 </head>
 <body>
-<h1 style="display:none;">{{.name}}</h1>
+<h1 style="display:none;">{{.ID}}</h1>
 <div id='map'></div>
 <script>
     var q = (location.search || '').substr(1).split('&');
@@ -36,14 +36,14 @@
         mapboxgl.setRTLTextPlugin('/statics/mapbox-gl-rtl-text.js');
         var map = new mapboxgl.Map({
             container: 'map',
-            style: '/styles/{{.user}}/{{.id}}.json',
+            style: '{{.URL}}',
             hash: true,
             attributionControl: false,
             localIdeographFontFamily: "'Noto Sans', 'Noto Sans CJK SC', sans-serif"
         });
         map.addControl(new mapboxgl.NavigationControl());
     } else {
-        var map = L.mapbox.map('map', '/styles/{{.user}}/{{.id}}.json', {zoomControl: false});
+        var map = L.mapbox.map('map', '{{.URL}}', {zoomControl: false});
         new L.Control.Zoom({position: 'topright'}).addTo(map);
         setTimeout(function () {
             new L.Hash(map);

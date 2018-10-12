@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.id}} - AtlasData</title>
+    <title>{{.Title}} - AtlasData</title>
     {{if eq .fmt "pbf"}}
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl.css"/>
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl-inspect.css"/>
@@ -70,7 +70,7 @@
 </head>
 <body>
 {{if eq .fmt "pbf"}}
-<h1>{{.id}}</h1>
+<h1>{{.ID}}</h1>
 <div id="map"></div>
 <div id="layerList"></div>
 <pre id="propertyList"></pre>
@@ -84,7 +84,7 @@
             sources: {
                 'vector_layer_': {
                     type: 'vector',
-                    url: '{{.url}}'
+                    url: '{{.URL}}'
                 }
             },
             layers: []
@@ -112,10 +112,10 @@
     });
 </script>
 {{else}}
-<h1 style="display:none;">{{.id}}</h1>
+<h1 style="display:none;">{{.ID}}</h1>
 <div id='map'></div>
 <script>
-    var map = L.mapbox.map('map', '{{.url}}', {zoomControl: false});
+    var map = L.mapbox.map('map', '{{.URL}}', {zoomControl: false});
     map.eachLayer(function (layer) {
         // do not add scale prefix even if retina display is detected
         layer.scalePrefix = '.';
