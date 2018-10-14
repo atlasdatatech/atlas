@@ -5,15 +5,39 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-
-	"github.com/atlasdatatech/atlasmap/mbtiles"
 )
+
+// ServiceSet is the base type for the HTTP handlers which combines multiple
+// mbtiles.DB tilesets.
+type ServiceSet struct {
+	Styles   map[string]*StyleService
+	Fonts    map[string]*FontService
+	Tilesets map[string]*MBTilesService
+	Domain   string
+	Path     string
+}
+
+// LoadServiceSet interprets filename as mbtiles file which is opened and which will be
+func LoadServiceSet() (*ServiceSet, error) {
+	s := &ServiceSet{
+		Styles:   make(map[string]*StyleService),
+		Fonts:    make(map[string]*FontService),
+		Tilesets: make(map[string]*MBTilesService),
+	}
+
+	tilesetsPath := cfgV.GetString("tilesets.path")
+	stylesPath := cfgV.GetString("styles.path")
+	fontsPath := cfgV.GetString("fonts.path")
+	s.ServeMBTiles(tilesetsPath)
+	s.ServeStyles(stylesPath)
+	s.ServeFonts(fontsPath)
+	log.Infof("Load ServiceSet all successful")
+	return s, nil
+}
 
 // scheme returns the underlying URL scheme of the original request.
 func scheme(r *http.Request) string {
@@ -33,139 +57,6 @@ func scheme(r *http.Request) string {
 		return scheme
 	}
 	return "http"
-}
-
-// ServiceInfo consists of two strings that contain the image type and a URL.
-type ServiceInfo struct {
-	ImageType string `json:"imageType"`
-	URL       string `json:"url"`
-}
-
-// ServiceSet is the base type for the HTTP handlers which combines multiple
-// mbtiles.DB tilesets.
-type ServiceSet struct {
-	Styles   map[string]*StyleService
-	Tilesets map[string]*mbtiles.DB
-	Domain   string
-	Path     string
-}
-
-// New returns a new ServiceSet. Use AddDBOnPath to add a mbtiles file.
-func New() *ServiceSet {
-	s := &ServiceSet{
-		Styles:   make(map[string]*StyleService),
-		Tilesets: make(map[string]*mbtiles.DB),
-	}
-	return s
-}
-
-// AddDBOnPath interprets filename as mbtiles file which is opened and which will be
-// served under "/services/<urlPath>" by Handler(). The parameter urlPath may not be
-// nil, otherwise an error is returned. In case the DB cannot be opened the returned
-// error is non-nil.
-func (s *ServiceSet) AddDBOnPath(filename string, urlPath string) error {
-	var err error
-	if urlPath == "" {
-		return fmt.Errorf("path parameter may not be empty")
-	}
-	ts, err := mbtiles.NewDB(filename)
-	if err != nil {
-		return fmt.Errorf("could not open mbtiles file %q: %v", filename, err)
-	}
-	s.Tilesets[urlPath] = ts
-	return nil
-}
-
-// LoadServiceSet interprets filename as mbtiles file which is opened and which will be
-func LoadServiceSet() (*ServiceSet, error) {
-	s := &ServiceSet{
-		Styles:   make(map[string]*StyleService),
-		Tilesets: make(map[string]*mbtiles.DB),
-	}
-
-	tilesetsPath := cfgV.GetString("tilesets.path")
-	stylesPath := cfgV.GetString("styles.path")
-	s.ServeMBTiles(tilesetsPath)
-	s.ServeStyles(stylesPath)
-	log.Infof("Load ServiceSet all successful")
-	return s, nil
-}
-
-// ServeMBTiles returns a ServiceSet that combines all .mbtiles files under
-// the directory at baseDir. The DBs will all be served under their relative paths
-// to baseDir.
-func (s *ServiceSet) ServeMBTiles(baseDir string) (err error) {
-	var filenames []string
-	err = filepath.Walk(baseDir, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if ext := filepath.Ext(p); ext == ".mbtiles" {
-			filenames = append(filenames, p)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("unable to scan tilesets: %v", err)
-	}
-
-	for _, filename := range filenames {
-		subpath, err := filepath.Rel(baseDir, filename)
-		if err != nil {
-			return fmt.Errorf("unable to extract URL path for %q: %v", filename, err)
-		}
-		e := filepath.Ext(filename)
-		p := filepath.ToSlash(subpath)
-		id := strings.ToLower(p[:len(p)-len(e)])
-		err = s.AddDBOnPath(filename, id)
-		if err != nil {
-			return err
-		}
-	}
-	log.Infof("New from %s successful, tol %d", baseDir, len(filenames))
-	return nil
-}
-
-// NewFromBaseDir returns a ServiceSet that combines all .mbtiles files under
-// the directory at baseDir. The DBs will all be served under their relative paths
-// to baseDir.
-func NewFromBaseDir(baseDir string) (*ServiceSet, error) {
-	var filenames []string
-	err := filepath.Walk(baseDir, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if ext := filepath.Ext(p); ext == ".mbtiles" {
-			filenames = append(filenames, p)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to scan tilesets: %v", err)
-	}
-
-	s := New()
-
-	for _, filename := range filenames {
-		subpath, err := filepath.Rel(baseDir, filename)
-		if err != nil {
-			return nil, fmt.Errorf("unable to extract URL path for %q: %v", filename, err)
-		}
-		e := filepath.Ext(filename)
-		p := filepath.ToSlash(subpath)
-		id := strings.ToLower(p[:len(p)-len(e)])
-		err = s.AddDBOnPath(filename, id)
-		if err != nil {
-			return nil, err
-		}
-	}
-	log.Infof("New from %s successful, tol %d", baseDir, len(filenames))
-	return s, nil
-}
-
-// Size returns the number of tilesets in this ServiceSet
-func (s *ServiceSet) Size() int {
-	return len(s.Tilesets)
 }
 
 // rootURL returns the root URL of the service. If s.Domain is non-empty, it

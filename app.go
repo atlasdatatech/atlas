@@ -170,6 +170,14 @@ func bindRoutes(r *gin.Engine) {
 		styles.GET("/:user/:sid/", viewStyle)        //view map style
 		styles.GET("/:user/:sid/:sprite", getSprite) ////style.json
 	}
+	fonts := r.Group("/fonts")
+	fonts.Use(authMiddleware.MiddlewareFunc())
+	{
+		// > fonts
+		fonts.GET("/:user", getFonts)                       ////get font
+		fonts.GET("/:user/:fontstack/:rangepbf", getGlyphs) ////get glyph pbfs
+	}
+
 	tilesets := r.Group("/tilesets")
 	tilesets.Use(authMiddleware.MiddlewareFunc())
 	{

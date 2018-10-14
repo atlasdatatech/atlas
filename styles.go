@@ -15,9 +15,10 @@ import (
 type StyleService struct {
 	User  string
 	ID    string
-	Style string
 	URL   string
 	Hash  string
+	State bool
+	Style *string
 }
 
 // CreateStyleService creates a new StyleService instance.
@@ -113,10 +114,10 @@ func CreateStyleService(filename string) (*StyleService, error) {
 	log.Debug(spritePath)
 
 	f, err := json.Marshal(style)
-	fmt.Println(string(f))
+	styleJSON := string(f)
 
 	out := &StyleService{
-		Style: string(f),
+		Style: &styleJSON,
 		User:  "public",
 		ID:    id,
 		URL:   "/styles/public/" + id, //should not add / at the end
@@ -188,53 +189,4 @@ func (s *ServiceSet) ServeStyles(baseDir string) (err error) {
 	}
 	log.Infof("New from %s successful, tol %d", baseDir, len(filenames))
 	return nil
-}
-
-func reportMbtiles(mbtile string, fromData bool) string {
-	var dataItemID string
-	str := `{"puhui": {"mbtiles": "puhui.mbtiles"}, "china": {"mbtiles": "china.mbtiles"}}`
-	var datas map[string]interface{}
-	json.Unmarshal([]byte(str), &datas)
-	for k, v := range datas {
-		if fromData {
-			if k == mbtile {
-				dataItemID = k
-			}
-		} else {
-			vv := v.(map[string]interface{})
-			if vv["mbtiles"] == mbtile {
-				dataItemID = k
-			}
-		}
-	}
-
-	if dataItemID != "" { // mbtiles exist in the data config
-		return dataItemID
-	} else if fromData {
-		log.Errorf(`ERROR: data "%s" not found!`, mbtile)
-		return ""
-	} else { //generate data config ?
-		// var id = mbtile.substr(0, mbtiles.lastIndexOf('.')) || mbtile
-		// while (data[id]) id += '_';
-		// data[id] = {
-		//   'mbtiles': mbtiles
-		// };
-		// return id;
-		return ""
-	}
-}
-
-func reportFont(font string) {
-	str := `{"fonts": ["Open Sans Regular","Arial Unicode MS Regular"]}`
-	var fonts map[string]interface{}
-	json.Unmarshal([]byte(str), &fonts)
-	for v := range fonts {
-		log.Debug("test range map sigin value:", v)
-	}
-
-	for _, v := range fonts {
-		if v == font {
-			log.Debug("set font ", font, " ture")
-		}
-	}
 }

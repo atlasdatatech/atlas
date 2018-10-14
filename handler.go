@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/atlasdatatech/atlasmap/mbtiles"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -595,44 +596,34 @@ func studioIndex(c *gin.Context) {
 	uid := c.GetString(identityKey) //for user privite tiles
 	log.Infof("user:%s", uid)
 
-	type tileset struct {
-		User string
-		ID   string
-		Type string
-		Hash string
-	}
-
-	tilesets := []tileset{}
-	for id, ts := range ss.Tilesets {
-		tilesets = append(tilesets, tileset{
-			User: "public",
-			ID:   id,
-			Type: ts.TileFormatString(),
-		})
-	}
-
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "maps",
 		"Styles":   ss.Styles,
-		"Tilesets": tilesets,
+		"Tilesets": ss.Tilesets,
 	})
 
 	// c.JSON(http.StatusOK, services)
-	//user privite
 }
 
 func listStyles(c *gin.Context) {
-	//public
-	rootURL := fmt.Sprintf("%s%s", ss.rootURL(c.Request), c.Request.URL)
-	services := []ServiceInfo{}
-	for id, tileset := range ss.Tilesets {
-		services = append(services, ServiceInfo{
-			ImageType: tileset.TileFormatString(),
-			URL:       fmt.Sprintf("%s%s", rootURL, id),
-		})
+	//user && public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+
+	var userStyles map[string]*StyleService
+
+	for k, s := range ss.Styles {
+		if user == s.User || "public" == s.User {
+			out := &StyleService{
+				User: s.User,
+				ID:   s.ID,
+				URL:  s.URL,
+			}
+			userStyles[k] = out
+		}
 	}
-	c.JSON(http.StatusOK, services)
-	//user privite
+
+	c.JSON(http.StatusOK, userStyles)
 }
 
 func getStyle(c *gin.Context) {
@@ -655,7 +646,7 @@ func getStyle(c *gin.Context) {
 	}
 
 	var out map[string]interface{}
-	json.Unmarshal([]byte(style.Style), &out)
+	json.Unmarshal([]byte(*style.Style), &out)
 
 	fixURL := func(url string, c *gin.Context) string {
 		if "" == url || !strings.HasPrefix(url, "local://") {
@@ -708,17 +699,24 @@ func getSprite(c *gin.Context) {
 	log.Infof("user:%s", user)
 	id := c.Param("sid")
 	log.Infof("sid:%s", id)
-	str := c.Param("sprite")
+	sprite := c.Param("sprite")
+	spritePat := `^sprite(@[23]x)?.(?:json|png)$`
+	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
+		c.JSON(http.StatusOK, "sprite pattern error")
+		return
+	}
 	stylesPath := cfgV.GetString("styles.path")
-	if strings.HasSuffix(strings.ToLower(str), ".json") {
+	if strings.HasSuffix(strings.ToLower(sprite), ".json") {
 		c.Writer.Header().Set("Content-Type", "application/json")
 	}
-	if strings.HasSuffix(strings.ToLower(str), ".png") {
+	if strings.HasSuffix(strings.ToLower(sprite), ".png") {
 		c.Writer.Header().Set("Content-Type", "image/png")
 	}
-	spriteFile := stylesPath + id + "/" + str
+	spriteFile := stylesPath + id + "/" + sprite
 	file, err := ioutil.ReadFile(spriteFile)
-	_, err = c.Writer.Write(file)
+	if err != nil {
+		_, err = c.Writer.Write(file)
+	}
 	c.JSON(http.StatusOK, err)
 }
 
@@ -747,17 +745,25 @@ func viewStyle(c *gin.Context) {
 }
 
 func listTilesets(c *gin.Context) {
-	//public
-	rootURL := fmt.Sprintf("%s%s", ss.rootURL(c.Request), c.Request.URL)
-	services := []ServiceInfo{}
-	for id, tileset := range ss.Tilesets {
-		services = append(services, ServiceInfo{
-			ImageType: tileset.TileFormatString(),
-			URL:       fmt.Sprintf("%s%s", rootURL, id),
-		})
-	}
-	c.JSON(http.StatusOK, services)
-	//user privite
+	//user && public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+
+	var userTilesets map[string]*MBTilesService
+
+	// for k, t := range ss.Tilesets {
+	// 	if user == ts.User || "public" == t.User {
+	// 		out := &StyleService{
+	// 			User: t.User,
+	// 			ID:   t.ID,
+	// 			URL:  t.URL,
+	// 		}
+	// 		userTilesets[k] = out
+	// 	}
+	// }
+
+	c.JSON(http.StatusOK, userTilesets)
+
 }
 
 func getTilejson(c *gin.Context) {
@@ -769,7 +775,7 @@ func getTilejson(c *gin.Context) {
 	if strings.HasSuffix(strings.ToLower(id), ".json") {
 		id = strings.Split(id, ".")[0]
 	}
-	db, ok := ss.Tilesets[id]
+	tileServie, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
 		c.JSON(http.StatusOK, gin.H{
@@ -781,8 +787,8 @@ func getTilejson(c *gin.Context) {
 
 	url := strings.Split(c.Request.URL.Path, ".")[0]
 	url = fmt.Sprintf("%s%s", ss.rootURL(c.Request), url)
-
-	imgFormat := db.TileFormatString()
+	tileset := tileServie.Mbtiles
+	imgFormat := tileset.TileFormatString()
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       id,
@@ -791,7 +797,7 @@ func getTilejson(c *gin.Context) {
 		"tiles":    []string{fmt.Sprintf("%s/{z}/{x}/{y}.%s", url, imgFormat)},
 		"map":      url + "/",
 	}
-	metadata, err := db.GetInfo()
+	metadata, err := tileset.GetInfo()
 	if err != nil {
 		log.WithError(err).Infof("Get metadata failed : %s", err.Error())
 	}
@@ -814,7 +820,7 @@ func getTilejson(c *gin.Context) {
 		}
 	}
 
-	if db.HasUTFGrid() {
+	if tileset.HasUTFGrid() {
 		out["grids"] = []string{fmt.Sprintf("%s/{z}/{x}/{y}.json", url)}
 	}
 
@@ -824,7 +830,7 @@ func getTilejson(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	id := c.Param("tid")
-	db, ok := ss.Tilesets[id]
+	tileService, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
 		c.JSON(http.StatusOK, gin.H{
@@ -841,7 +847,7 @@ func viewTile(c *gin.Context) {
 		"Title": id,
 		"ID":    id,
 		"URL":   tilejsonURL,
-		"fmt":   db.TileFormatString(),
+		"fmt":   tileService.Mbtiles.TileFormatString(),
 	})
 
 }
@@ -862,13 +868,15 @@ func getTile(c *gin.Context) {
 	user := pcs[1]
 	log.Debug(user)
 	id := pcs[2]
-	db, ok := ss.Tilesets[id]
+	tileService, ok := ss.Tilesets[id]
 	if !ok {
 		log.Errorf("The tileset id(%s) not exist in the service", id)
 		response.ErrFor["ErrID"] = "Can't find tileset"
 		response.Fail()
 		return
 	}
+
+	tileset := tileService.Mbtiles
 
 	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
 	tc, ext, err := tileCoordFromString(z, x, y)
@@ -883,9 +891,9 @@ func getTile(c *gin.Context) {
 	isGrid := ext == ".json"
 	switch {
 	case !isGrid:
-		err = db.GetTile(tc.z, tc.x, tc.y, &data)
-	case isGrid && db.HasUTFGrid():
-		err = db.GetGrid(tc.z, tc.x, tc.y, &data)
+		err = tileset.GetTile(tc.z, tc.x, tc.y, &data)
+	case isGrid && tileset.HasUTFGrid():
+		err = tileset.GetGrid(tc.z, tc.x, tc.y, &data)
 	default:
 		err = fmt.Errorf("no grid supplied by tile database")
 	}
@@ -902,15 +910,15 @@ func getTile(c *gin.Context) {
 		return
 	}
 	if data == nil || len(data) <= 1 {
-		switch db.TileFormat() {
-		case mbtiles.PNG, mbtiles.JPG, mbtiles.WEBP:
+		switch tileset.TileFormat() {
+		case PNG, JPG, WEBP:
 			// Return blank PNG for all image types
 			c.Render(
 				http.StatusOK, render.Data{
 					ContentType: "image/png",
 					Data:        BlankPNG(),
 				})
-		case mbtiles.PBF:
+		case PBF:
 			// Return 204
 			c.Writer.WriteHeader(http.StatusNoContent)
 		default:
@@ -922,18 +930,61 @@ func getTile(c *gin.Context) {
 
 	if isGrid {
 		c.Writer.Header().Set("Content-Type", "application/json")
-		if db.UTFGridCompression() == mbtiles.ZLIB {
+		if tileset.UTFGridCompression() == ZLIB {
 			c.Writer.Header().Set("Content-Encoding", "deflate")
 		} else {
 			c.Writer.Header().Set("Content-Encoding", "gzip")
 		}
 	} else {
-		c.Writer.Header().Set("Content-Type", db.ContentType())
-		if db.TileFormat() == mbtiles.PBF {
+		c.Writer.Header().Set("Content-Type", tileset.ContentType())
+		if tileset.TileFormat() == PBF {
 			c.Writer.Header().Set("Content-Encoding", "gzip")
 		}
 	}
 	_, err = c.Writer.Write(data)
 	c.JSON(http.StatusOK, err)
 	//user privite
+}
+
+func getGlyphs(c *gin.Context) {
+	//public
+	user := c.Param("user") //for user privite tiles
+	log.Infof("user:%s", user)
+	fonts := c.Param("fontstack")
+	log.Infof("fontstack:%s", fonts)
+	u, err := url.Parse(fonts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(u.Path)
+	fonts = u.String()
+	fmt.Println(fonts)
+
+	rgPBF := c.Param("rangepbf")
+	rgPBF = strings.ToLower(rgPBF)
+	rgPBFPat := `^[\\d]+-[\\d]+.pbf$`
+	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
+		c.JSON(http.StatusOK, "glyph range pattern error")
+		return
+	}
+	fontsPath := cfgV.GetString("fonts.path")
+
+	//should init first
+	lastModified := time.Now().UTC().Format("2006-01-02 03:04:05 PM")
+	callbacks := make([]string, 0, len(ss.Fonts))
+	for k := range ss.Fonts {
+		callbacks = append(callbacks, k)
+	}
+
+	pbfFile := getFontsPbf(fontsPath, fonts, rgPBF, callbacks)
+	c.Writer.Header().Set("Content-Type", "application/x-protobuf")
+	c.Writer.Header().Set("Last-Modified", lastModified)
+
+	c.Writer.Write(pbfFile)
+	c.JSON(http.StatusOK, gin.H{})
+}
+
+func getFonts(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "application/json")
+	c.JSON(http.StatusOK, ss.Fonts)
 }

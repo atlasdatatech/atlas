@@ -68,6 +68,7 @@ func InitConf(v *viper.Viper) {
 
 	[fonts]
 		home = "assets/fonts/"
+		path = "assets/fonts/"
 
 	[styles]
 		home = "assets/styles/"
