@@ -83,10 +83,6 @@ func reportFont(font string) {
 	str := `{"fonts": ["Open Sans Regular","Arial Unicode MS Regular"]}`
 	var fonts map[string]interface{}
 	json.Unmarshal([]byte(str), &fonts)
-	for v := range fonts {
-		log.Debug("test range map sigin value:", v)
-	}
-
 	for _, v := range fonts {
 		if v == font {
 			log.Debug("set font ", font, " ture")

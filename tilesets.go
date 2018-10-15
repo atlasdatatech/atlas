@@ -175,7 +175,11 @@ func (s *ServiceSet) ServeMBTiles(baseDir string) (err error) {
 
 func reportMbtiles(mbtile string, fromData bool) string {
 	var dataItemID string
-	str := `{"puhui": {"mbtiles": "puhui.mbtiles"}, "china": {"mbtiles": "china.mbtiles"}}`
+	str := `{
+		"puhui": {"mbtiles": "puhui.mbtiles"},
+		"china": {"mbtiles": "china.mbtiles"},
+		"images": {"mbtiles": "images.mbtiles"}
+	}`
 	var datas map[string]interface{}
 	json.Unmarshal([]byte(str), &datas)
 	for k, v := range datas {

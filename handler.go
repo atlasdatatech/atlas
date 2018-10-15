@@ -589,16 +589,11 @@ func getStyle(c *gin.Context) {
 
 	var out map[string]interface{}
 	json.Unmarshal([]byte(*style.Style), &out)
-
-	fixURL := func(url string, c *gin.Context) string {
+	protoScheme := scheme(c.Request)
+	fixURL := func(url string) string {
 		if "" == url || !strings.HasPrefix(url, "local://") {
 			return url
 		}
-		// protoScheme := "http"
-		// if 2 == c.Request.ProtoMajor {
-		// 	protoScheme = "https"
-		// }
-		protoScheme := scheme(c.Request)
 		return strings.Replace(url, "local://", protoScheme+"://"+c.Request.Host+"/", -1)
 	}
 
@@ -608,12 +603,12 @@ func getStyle(c *gin.Context) {
 			//style->sprite
 			if "sprite" == k && v != nil {
 				path := v.(string)
-				out["sprite"] = fixURL(path, c)
+				out["sprite"] = fixURL(path)
 			}
 			//style->glyphs
 			if "glyphs" == k && v != nil {
 				path := v.(string)
-				out["glyphs"] = fixURL(path, c)
+				out["glyphs"] = fixURL(path)
 			}
 		case map[string]interface{}:
 			if "sources" == k {
@@ -622,8 +617,7 @@ func getStyle(c *gin.Context) {
 				for _, u := range sources {
 					source := u.(map[string]interface{})
 					if url := source["url"]; url != nil {
-						fmt.Println()
-						source["url"] = fixURL(url.(string), c)
+						source["url"] = fixURL(url.(string))
 					}
 				}
 			}
