@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"html/template"
 	"io"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -13,6 +14,110 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
+var codes = map[int]string{
+	100: "Continue",
+	101: "Switching Protocols",
+	102: "Processing",
+	200: "OK",
+	201: "Created",
+	202: "Accepted",
+	203: "Non-Authoritative Information",
+	204: "No Content",
+	205: "Reset Content",
+	206: "Partial Content",
+	207: "Multi-Status",
+	300: "Multiple Choices",
+	301: "Moved Permanently",
+	302: "Moved Temporarily",
+	303: "See Other",
+	304: "Not Modified",
+	305: "Use Proxy",
+	307: "Temporary Redirect",
+	400: "Bad Request",
+	401: "Unauthorized",
+	402: "Payment Required",
+	403: "Forbidden",
+	404: "Not Found",
+	405: "Method Not Allowed",
+	406: "Not Acceptable",
+	407: "Proxy Authentication Required",
+	408: "Request Time-out",
+	409: "Conflict",
+	410: "Gone",
+	411: "Length Required",
+	412: "Precondition Failed",
+	413: "Request Entity Too Large",
+	414: "Request-URI Too Large",
+	415: "Unsupported Media Type",
+	416: "Requested Range Not Satisfiable",
+	417: "Expectation Failed",
+	418: "I'm a teapot",
+	422: "Unprocessable Entity",
+	423: "Locked",
+	424: "Failed Dependency",
+	425: "Unordered Collection",
+	426: "Upgrade Required",
+	428: "Precondition Required",
+	429: "Too Many Requests",
+	431: "Request Header Fields Too Large",
+	451: "Unavailable For Legal Reasons",
+	500: "Internal Server Error",
+	501: "Not Implemented",
+	502: "Bad Gateway",
+	503: "Service Unavailable",
+	504: "Gateway Time-out",
+	505: "HTTP Version Not Supported",
+	506: "Variant Also Negotiates",
+	507: "Insufficient Storage",
+	509: "Bandwidth Limit Exceeded",
+	510: "Not Extended",
+	511: "Network Authentication Required",
+}
+
+//Res response schema
+type Res struct {
+	Code    int    `json:"code"`
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+//NewRes Create Res
+func NewRes() *Res {
+	return &Res{
+		Code:  http.StatusOK,
+		Error: codes[http.StatusOK],
+	}
+}
+
+//Fail failed error
+func (res *Res) Fail(c *gin.Context, err error) {
+	res.Code = http.StatusOK
+	res.Error = err.Error()
+	c.JSON(http.StatusOK, res)
+}
+
+//FailStr failed string
+func (res *Res) FailStr(c *gin.Context, err string) {
+	res.Code = http.StatusOK
+	res.Error = err
+	c.JSON(http.StatusOK, res)
+}
+
+//Done done
+func (res *Res) Done(c *gin.Context, msg string) {
+	res.Code = http.StatusOK
+	res.Error = codes[http.StatusOK]
+	res.Message = msg
+}
+
+//Reset reset to init
+func (res *Res) Reset() {
+	res.Code = http.StatusOK
+	res.Error = codes[http.StatusOK]
+	res.Message = ""
+}
+
+//MailConfig email config and data
 type MailConfig struct {
 	From     string
 	ReplyTo  string
@@ -22,6 +127,7 @@ type MailConfig struct {
 	Data     interface{}
 }
 
+//SendMail send email
 func (conf *MailConfig) SendMail() (err error) {
 	m := gomail.NewMessage()
 
@@ -67,6 +173,7 @@ func slugifyName(str string) string {
 	return rSlugify2.ReplaceAllString(str, " ")
 }
 
+//XHR xmlhttprequest
 func XHR(c *gin.Context) bool {
 	return strings.ToLower(c.Request.Header.Get("X-Requested-With")) == "xmlhttprequest"
 }

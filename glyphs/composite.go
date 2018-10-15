@@ -15,13 +15,11 @@ import (
 //to determine glyph priority.
 //@param buffers An array of SDF PBFs.
 func Combine(buffers [][]byte, fontstack []string) ([]byte, error) {
-
-	// coverage := make(map[uint32]bool)
-	var coverage map[uint32]bool
-	var result Glyphs
+	coverage := make(map[uint32]bool)
+	result := &Glyphs{}
 	for i, buf := range buffers {
-		pbf := Glyphs{}
-		err := proto.Unmarshal(buf, &pbf)
+		pbf := &Glyphs{}
+		err := proto.Unmarshal(buf, pbf)
 		if err != nil {
 			log.Fatal("unmarshaling error: ", err)
 		}
@@ -40,7 +38,7 @@ func Combine(buffers [][]byte, fontstack []string) ([]byte, error) {
 						coverage[gly.GetId()] = true
 					}
 				}
-				result.Stacks[0].Name = proto.String(*result.Stacks[0].Name + "," + *stack.Name)
+				result.Stacks[0].Name = proto.String(result.Stacks[0].GetName() + "," + stack.GetName())
 			}
 		}
 
@@ -55,5 +53,5 @@ func Combine(buffers [][]byte, fontstack []string) ([]byte, error) {
 		return glys[i].GetId() < glys[j].GetId()
 	})
 
-	return proto.Marshal(&result)
+	return proto.Marshal(result)
 }

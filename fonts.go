@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/atlasdatatech/atlasmap/glyphs"
-
 	log "github.com/sirupsen/logrus"
 )
 
@@ -95,16 +94,15 @@ func reportFont(font string) {
 	}
 }
 
-func getFontsPbf(fontPath string, fontstack string, fontrange string, fallbacks []string) []byte {
-
+func getFontsPBF(fontPath string, fontstack string, fontrange string, fallbacks []string) []byte {
 	fonts := strings.Split(fontstack, ",")
-	log.Debug(fonts)
 	contents := make([][]byte, len(fonts))
-
 	var wg sync.WaitGroup
-
+	//need define func, can't use sugar ":="
 	var getFontPBF func(index int, font string, fallbacks []string)
 	getFontPBF = func(index int, font string, fallbacks []string) {
+		//fallbacks unchanging
+		defer wg.Done()
 		var fbs []string
 		if cap(fallbacks) > 0 {
 			for _, v := range fallbacks {
@@ -115,10 +113,10 @@ func getFontsPbf(fontPath string, fontstack string, fontrange string, fallbacks 
 				}
 			}
 		}
-		pbfFile := fontPath + font + fontrange + ".pbf"
+		pbfFile := filepath.Join(fontPath, font, fontrange)
 		content, err := ioutil.ReadFile(pbfFile)
 		if err != nil {
-			log.Error("Font not found:" + pbfFile)
+			log.Error(err)
 			if len(fbs) > 0 {
 				sl := strings.Split(font, " ")
 				fontStyle := sl[len(sl)-1]
@@ -138,17 +136,14 @@ func getFontsPbf(fontPath string, fontstack string, fontrange string, fallbacks 
 					fbName = fbs[0]
 				}
 
-				log.Error("ERROR: Trying to use", fbName, "as a fallback")
+				log.Warnf(`trying to use '%s' as a fallback ^`, fbName)
 				//delete the fbName font in next attempt
+				wg.Add(1)
 				getFontPBF(index, fbName, fbs)
-				//all fallbacks failed buf nil
-				contents[index] = nil
 			}
-			log.Error("Font load error: " + pbfFile)
 		} else {
 			contents[index] = content
 		}
-		wg.Done()
 	}
 
 	for i, font := range fonts {
@@ -158,6 +153,7 @@ func getFontsPbf(fontPath string, fontstack string, fontrange string, fallbacks 
 
 	wg.Wait()
 
+	//if  getFontPBF can't get content,the buffer array is nil, remove the nils
 	var buffers [][]byte
 	for i, buf := range contents {
 		if nil == buf {
@@ -168,6 +164,12 @@ func getFontsPbf(fontPath string, fontstack string, fontrange string, fallbacks 
 	}
 	if len(buffers) != len(fonts) {
 		log.Error("len(buffers) != len(fonts)")
+	}
+	if 0 == len(buffers) {
+		return nil
+	}
+	if 1 == len(buffers) {
+		return buffers[0]
 	}
 	pbf, err := glyphs.Combine(buffers, fonts)
 	if err != nil {

@@ -1,11 +1,11 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/lib/pq"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // User 用户表
@@ -49,76 +49,29 @@ type Attempt struct {
 	DeletedAt *time.Time `sql:"index"`
 }
 
-func validateUsername(username *string, r *Response) {
-	*username = strings.ToLower(*username)
-	if len(*username) == 0 {
-		r.ErrFor["username"] = "required"
-	} else {
-		if ok := rUsername.MatchString(*username); !ok {
-			r.ErrFor["username"] = `only use letters, numbers, \'-\', \'_\'`
-		}
+func validate(username string, email string, password string) (bool, error) {
+	username = strings.ToLower(username)
+	if len(username) == 0 {
+		return false, errors.New("username: required")
 	}
-}
-
-func validateEmail(email *string, r *Response) {
-	*email = strings.ToLower(*email)
-	if len(*email) == 0 {
-		r.ErrFor["email"] = "required"
-	} else {
-		if ok := rEmail.MatchString(*email); !ok {
-			r.ErrFor["email"] = `invalid email format`
-		}
-	}
-}
-
-func validatePassword(password *string, r *Response) {
-	if len(*password) == 0 {
-		r.ErrFor["password"] = "required"
-	} else {
-		if len(*password) < 4 {
-			r.ErrFor["password"] = `too weak password, at least 4 necessary`
-		}
-	}
-}
-
-func (user *User) changePassword(r *Response) (err error) {
-
-	var body struct {
-		Confirm  string `form:"confirm" binding:"required"`
-		Password string `form:"password" binding:"required"`
+	if ok := rUsername.MatchString(username); !ok {
+		return false, errors.New(`username: only use letters, numbers, \'-\', \'_\'`)
 	}
 
-	err = r.c.Bind(&body)
-	if err != nil {
-		r.ErrFor["binding"] = err.Error()
-		FATAL(err)
+	email = strings.ToLower(email)
+	if len(email) == 0 {
+		return false, errors.New("email: required")
+	}
+	if ok := rEmail.MatchString(email); !ok {
+		return false, errors.New(`email: invalid email format`)
 	}
 
-	// validate
-	if len(body.Password) == 0 {
-		r.ErrFor["password"] = "required"
+	if len(password) == 0 {
+		return false, errors.New("password: required")
 	}
-	if len(body.Confirm) == 0 {
-		r.ErrFor["confirm"] = "required"
-	} else if body.Password != body.Confirm {
-		r.Errors = append(r.Errors, "Passwords do not match.")
+	if len(password) < 4 {
+		return false, errors.New(`password: too weak password, at least 4 necessary`)
 	}
 
-	if r.HasErrors() {
-		err = Err
-		return
-	}
-	// user.setPassword(body.Password)
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	if err != nil {
-		FATAL(err)
-	}
-	err = db.Model(&User{}).Where("id = ?", user.ID).Update(User{Password: string(hashedPassword)}).Error
-	if err != nil {
-		r.Errors = append(r.Errors, err.Error())
-		err = Err
-		return
-	}
-
-	return
+	return true, nil
 }

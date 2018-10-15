@@ -174,8 +174,8 @@ func bindRoutes(r *gin.Engine) {
 	fonts.Use(authMiddleware.MiddlewareFunc())
 	{
 		// > fonts
-		fonts.GET("/:user", getFonts)                       ////get font
-		fonts.GET("/:user/:fontstack/:rangepbf", getGlyphs) ////get glyph pbfs
+		// fonts.GET("/:user", getFonts)                       //get font
+		fonts.GET("/:fontstack/:rangepbf", getGlyphs) //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")

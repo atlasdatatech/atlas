@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -19,11 +19,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type responseAccount struct {
-	Response
-	Account
-}
-
 func index(c *gin.Context) {
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"title": "AtlasMap",
@@ -35,7 +30,8 @@ func renderSignup(c *gin.Context) {
 }
 
 func signup(c *gin.Context) {
-	response := newResponse(c)
+
+	res := NewRes()
 
 	var body struct {
 		UserName string `form:"username" binding:"required"`
@@ -46,16 +42,13 @@ func signup(c *gin.Context) {
 	// err := json.NewDecoder(c.Request.Body).Decode(&body)
 	err := c.Bind(&body)
 	if err != nil {
-		response.ErrFor["binding"] = err.Error()
+		res.Fail(c, err)
+		return
 	}
 
 	// validate
-	validateUsername(&body.UserName, response)
-	validateEmail(&body.Email, response)
-	validatePassword(&body.Password, response)
-
-	if response.HasErrors() {
-		response.Fail()
+	if ok, err := validate(body.UserName, body.Email, body.Password); !ok {
+		res.Fail(c, err)
 		return
 	}
 
@@ -63,43 +56,30 @@ func signup(c *gin.Context) {
 	if err := db.Where("name = ?", body.UserName).Or("email = ?", body.Email).First(&user).Error; err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 		} else {
-			response.ErrFor["signup"] = "username/email valadition error."
-			response.Fail()
+			res.FailStr(c, "signup: database error")
 			return
 		}
 	}
-	// duplicateUsernameCheck
-	// duplicateEmailCheck
+	// duplicate UsernameCheck EmailCheck
 	if len(user.Name) != 0 {
-		if user.Name == body.UserName {
-			response.ErrFor["username"] = "username already taken."
-		}
-		if user.Email == body.Email {
-			response.ErrFor["email"] = "email already registered."
+		if user.Name == body.UserName || user.Email == body.Email {
+			res.FailStr(c, "signup: username or email already taken")
+			return
 		}
 	}
-	if response.HasErrors() {
-		response.Fail()
-		return
-	}
-
 	// createUser
 	user.ID, _ = shortid.Generate()
 	user.Activation = "yes"
 	user.Name = body.UserName
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	if err != nil {
-		FATAL(err)
-	}
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-
 	user.Email = strings.ToLower(body.Email)
 
 	//No verification required
 	user.JWT, user.JWTExpires, err = authMiddleware.TokenGenerator(&user)
 	if err != nil {
-		FATAL(err)
+		res.FailStr(c, "token: generate token error")
+		return
 	}
 
 	user.Search = []string{body.UserName, body.Email}
@@ -117,10 +97,7 @@ func signup(c *gin.Context) {
 		account.Verification = "no"
 		//Create a verification token
 		token := generateToken(21)
-		hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-		if err != nil {
-			FATAL(err)
-		}
+		hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 		account.VerificationToken = string(hash)
 		verifyURL = "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
 	} else {
@@ -130,21 +107,18 @@ func signup(c *gin.Context) {
 	// insertUser
 	err = db.Create(&user).Error
 	if err != nil {
-		response.Errors = append(response.Errors, err.Error())
-		response.Fail()
+		res.FailStr(c, "CreateUser: database create error")
 		return
 	}
 	// insertAccount
 	err = db.Create(&account).Error
 	if err != nil {
-		response.Errors = append(response.Errors, err.Error())
-		response.Fail()
+		res.FailStr(c, "CreateAccount: database create error")
 		return
 	}
 	// sendWelcomeEmail
-	log.Println("verifyURL: " + verifyURL)
+	log.Debug("Loging verify url for debug: " + verifyURL)
 	go func() {
-
 		mailConf := MailConfig{}
 		mailConf.Data = gin.H{
 			"VerifyURL":    verifyURL,
@@ -154,20 +128,18 @@ func signup(c *gin.Context) {
 			"UserName":     body.UserName,
 		}
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
-		mailConf.Subject = "Your AtlasData Account"
+		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = body.Email
 		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
-			log.Println("Error Sending Welcome Email: " + err.Error())
-			log.Println("verifyURL: " + verifyURL)
+			log.Error("sending verify email: " + err.Error())
 		} else {
-			log.Println("Successful Sent Welcome Email.")
+			log.Info("successful sent verify email for ", user.Name)
 		}
 	}()
 
 	c.Redirect(http.StatusFound, "/")
-	response.Finish()
 }
 
 func renderLogin(c *gin.Context) {
@@ -175,35 +147,24 @@ func renderLogin(c *gin.Context) {
 }
 
 func login(c *gin.Context) {
-
-	response := newResponse(c)
-
+	res := NewRes()
 	var body struct {
 		UserName string `form:"username" binding:"required"`
 		Password string `form:"password" binding:"required"`
 	}
-
 	err := c.Bind(&body)
 	if err != nil {
-		response.Errors = append(response.Errors, err.Error())
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 
 	// validate
-	if len(body.UserName) == 0 {
-		response.ErrFor["username"] = "required"
-	}
-	if len(body.Password) == 0 {
-		response.ErrFor["password"] = "required"
-	}
-	if response.HasErrors() {
-		response.Fail()
+	if len(body.UserName) == 0 || len(body.Password) == 0 {
+		res.FailStr(c, "username or passwor required")
 		return
 	}
 
 	body.UserName = strings.ToLower(body.UserName)
-
 	// abuseFilter
 	IPCountChan := make(chan int)
 	IPUserCountChan := make(chan int)
@@ -226,16 +187,14 @@ func login(c *gin.Context) {
 	IPCount := <-IPCountChan
 	IPUserCount := <-IPUserCountChan
 	if IPCount > cfgV.GetInt("attempts.ip") || IPUserCount > cfgV.GetInt("attempts.user") {
-		response.Errors = append(response.Errors, "You've reached the maximum number of login attempts. Please try again later.")
-		response.Fail()
+		res.FailStr(c, "you've reached the maximum number of login attempts. please try again later")
 		return
 	}
 
 	// attemptLogin
 	user := User{}
 	if db.Where("name = ?", body.UserName).Or("email = ?", body.UserName).First(&user).RecordNotFound() {
-		response.Errors = append(response.Errors, "check username or email")
-		response.Fail()
+		res.FailStr(c, "check username or email")
 		return
 	}
 
@@ -244,8 +203,7 @@ func login(c *gin.Context) {
 	if err != nil {
 		attempt := Attempt{IP: clientIP, Name: body.UserName}
 		db.Create(&attempt)
-		response.Errors = append(response.Errors, "check password")
-		response.Fail()
+		res.Fail(c, errors.New("check password"))
 		return
 	}
 
@@ -264,7 +222,6 @@ func login(c *gin.Context) {
 	}
 
 	c.Redirect(http.StatusFound, "/account/")
-	// response.Finish()
 }
 
 func logout(c *gin.Context) {
@@ -276,39 +233,26 @@ func renderForgot(c *gin.Context) {
 }
 
 func sendReset(c *gin.Context) {
-	response := Response{}
-	response.Init(c)
-
+	res := NewRes()
 	var body struct {
 		UserName string `form:"username"`
 		Email    string `form:"email" binding:"required"`
 		Password string `form:"password"`
 	}
-
 	err := c.Bind(&body)
 	if err != nil {
-		FATAL(err)
-	}
-
-	validateEmail(&body.Email, &response)
-	if response.HasErrors() {
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
-
-	token := generateToken(21)
-	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	if err != nil {
-		FATAL(err)
+	if ok := rEmail.MatchString(body.Email); !ok {
+		res.FailStr(c, `email: invalid email`)
+		return
 	}
-
+	token := generateToken(21)
+	hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	user := User{}
 	if db.Where("email = ?", body.Email).First(&user).RecordNotFound() {
-		response.ErrFor["email"] = "email doesn't exist."
-	}
-
-	if response.HasErrors() {
-		response.Fail()
+		res.FailStr(c, `email: email doesn't exist`)
 		return
 	}
 
@@ -316,13 +260,12 @@ func sendReset(c *gin.Context) {
 	user.ResetPasswordExpires = time.Now().Add(cfgV.GetDuration("password.restExpiration"))
 
 	if err := db.Save(&user).Error; err != nil {
-		response.ErrFor["gormerr"] = err.Error()
-		response.Fail()
+		res.FailStr(c, `update: database save resetpassword token error`)
 		return
 	}
 
 	resetURL := "http" + "://" + c.Request.Host + "/login/reset/" + body.Email + "/" + string(token) + "/"
-	log.Println("resetURL: " + resetURL)
+	log.Debug("loging reset url for debug: " + resetURL)
 	go func() {
 		mailConf := MailConfig{}
 		mailConf.Data = gin.H{
@@ -335,20 +278,14 @@ func sendReset(c *gin.Context) {
 		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/reset.html"
 
 		if err := mailConf.SendMail(); err != nil {
-			log.Println("Error Sending Rest Password Email: " + err.Error())
-			log.Println("resetURL: " + resetURL)
+			log.Errorf("sending rest password email for %s,Error: %s ^^", user.Name, err.Error())
 		} else {
-			log.Println("Successful Sent Rest Password Email.")
+			log.Info("successful sent rest password email for", user.Name)
 		}
 
 	}()
 
-	//for test
-	response.ErrFor["UserName"] = user.Name
-	response.ErrFor["email"] = body.Email
-	response.ErrFor["token"] = string(token)
-
-	response.Finish()
+	res.Done(c, string(token))
 }
 
 func renderReset(c *gin.Context) {
@@ -360,66 +297,66 @@ func renderReset(c *gin.Context) {
 }
 
 func resetPassword(c *gin.Context) {
-	response := Response{}
-	response.Errors = []string{}
-	response.ErrFor = make(map[string]string)
-	response.Init(c)
-
+	res := NewRes()
 	var body struct {
 		Confirm  string `form:"confirm" binding:"required"`
 		Password string `form:"password" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		response.ErrFor["binding"] = err.Error()
+		res.Fail(c, err)
+		return
 	}
 
-	password := strings.ToLower(body.Password)
-	if len(password) == 0 {
-		response.ErrFor["password"] = "required"
+	if len(body.Password) == 0 || len(body.Confirm) == 0 {
+		res.FailStr(c, "password and confirm required")
+		return
 	}
-	confirm := strings.ToLower(body.Confirm)
-	if len(confirm) == 0 {
-		response.ErrFor["confirm"] = "required"
-	}
-	if confirm != password {
-		response.Errors = append(response.Errors, "Passwords do not match.")
-	}
-	if response.HasErrors() {
-		response.Fail()
+	if body.Password != body.Confirm {
+		res.FailStr(c, "passwords do not match")
 		return
 	}
 
 	user := User{}
 	err = db.Where("email = ? AND reset_password_expires > ?", c.Param("email"), time.Now()).First(&user).Error
 	if err != nil {
-		response.Errors = append(response.Errors, err.Error())
-		response.Fail()
+		res.Error = "reset password token expired"
+		c.JSON(http.StatusOK, res)
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.ResetPasswordToken), []byte(c.Param("token")))
-
-	if err == nil {
-		hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		user.Password = string(hashedPassword)
-		user.ResetPasswordExpires = time.Now() // after reset set token expi
-		db.Save(&user)
-		response.Finish()
-	} else {
-		response.Errors = append(response.Errors, err.Error())
-		response.Fail()
+	if err != nil {
+		res.Error = "reset password token error"
+		c.JSON(http.StatusOK, res)
+		return
 	}
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	user.Password = string(hashedPassword)
+	user.ResetPasswordExpires = time.Now() // after reset set token expi
+
+	if err := db.Save(&user).Error; err != nil {
+		res.Error = "update user password error: " + err.Error()
+		c.JSON(http.StatusOK, res)
+		return
+	}
+	res.Reset()
+	res.Message = "reset password successful"
+	c.JSON(http.StatusOK, res)
+	return
 }
 
 func renderAccount(c *gin.Context) {
+	res := NewRes()
 	user := &User{}
 	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
-		FATAL(err)
+		res.Fail(c, err)
+		return
 	}
 	account := &Account{}
 	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		FATAL(err)
+		res.Fail(c, err)
+		return
 	}
 
 	c.HTML(http.StatusOK, "account.html", gin.H{
@@ -436,13 +373,16 @@ func renderAccount(c *gin.Context) {
 }
 
 func renderVerification(c *gin.Context) {
+	res := NewRes()
 	user := &User{}
 	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
-		FATAL(err)
+		res.Fail(c, err)
+		return
 	}
 	account := &Account{}
 	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		FATAL(err)
+		res.Fail(c, err)
+		return
 	}
 
 	if account.Verification == "yes" {
@@ -460,30 +400,22 @@ func renderVerification(c *gin.Context) {
 }
 
 func sendVerification(c *gin.Context) {
-	response := newResponse(c)
-
+	res := NewRes()
 	token := generateToken(21)
-	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	if err != nil {
-		response.ErrFor["VerificationToken"] = err.Error()
-		response.Fail()
-		return
-	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	user := &User{}
 	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
-		response.ErrFor["gorm"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 
 	if err := db.Model(&Account{}).Where("id = ?", user.AccountID).Update(Account{VerificationToken: string(hash)}).Error; err != nil {
-		response.ErrFor["gorm"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 
 	verifyURL := "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
-	log.Println("verifyURL: " + verifyURL)
+	log.Println("loging verify url for debug: " + verifyURL)
 	go func() {
 
 		mailConf := MailConfig{}
@@ -497,68 +429,62 @@ func sendVerification(c *gin.Context) {
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Println("Error Sending verification Email: " + err.Error())
-			log.Println("verifyURL: " + verifyURL)
 		} else {
 			log.Println("Successful Sent verification Email.")
 		}
 	}()
-	response.Data["mgs"] = "A verification email has been sent."
-	response.Finish()
+
+	res.Done(c, "A verification email has been sent")
 }
 
 func verify(c *gin.Context) {
-	response := newResponse(c)
+	res := NewRes()
 	log.Debug("user:" + c.Param("user"))
 	log.Debug("token:" + c.Param("token"))
 	user := &User{}
 	if err := db.Where("name = ?", c.Param("user")).First(&user).Error; err != nil {
-		response.ErrFor["gorm"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 	account := &Account{}
 	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		response.ErrFor["gorm"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(account.VerificationToken), []byte(c.Param("token"))); err != nil {
-		log.Println("verfiyToken:" + account.VerificationToken)
-		response.ErrFor["VerificationToken"] = err.Error()
-		response.Fail()
+		log.Errorf("account verfiy for user %s failed, token: %s ^^", user.Name, account.VerificationToken)
+		res.Fail(c, err)
 		return
 	}
 
-	if err := db.Model(&Account{}).Where("id = ?", account.ID).Updates(Account{VerificationToken: "null", Verification: "yes"}); err != nil {
-		response.Finish()
+	if err := db.Model(&Account{}).Where("id = ?", account.ID).Updates(Account{VerificationToken: "null", Verification: "yes"}).Error; err != nil {
+		res.Fail(c, err)
+		return
 	}
 	c.Redirect(http.StatusFound, "/account/")
 }
 
 func jwtRefresh(c *gin.Context) {
-
-	response := newResponse(c)
-
+	res := NewRes()
 	tokenString, expire, err := authMiddleware.RefreshToken(c)
 	if err != nil {
-		log.Println("http.StatusUnauthorized")
-		response.Errors = append(response.Errors, err.Error())
+		log.Warn("http.StatusUnauthorized")
+		res.Fail(c, err)
 		return
 	}
 
 	uid := c.GetString(identityKey)
 	if err := db.Model(&User{}).Where("id = ?", uid).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
-		log.Println("gorm update jwt error, user id=" + uid)
-		response.ErrFor["gorm"] = err.Error()
+		log.Error("database update jwt error, user id=" + uid)
+		res.Fail(c, err)
 		return
 	}
 
-	response.Finish()
-
 	cookie, err := c.Cookie("JWTToken")
 	if err != nil {
-		log.Println(err)
+		res.Fail(c, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -578,17 +504,35 @@ func renderChangePassword(c *gin.Context) {
 }
 
 func changePassword(c *gin.Context) {
-	user := &User{}
-	if err := db.Where(identityKey+" = ?", c.GetString(identityKey)).First(&user).Error; err != nil {
-		FATAL(err)
+	res := NewRes()
+	userID := c.GetString(identityKey)
+	var body struct {
+		Confirm  string `form:"confirm" binding:"required"`
+		Password string `form:"password" binding:"required"`
 	}
-	response := newResponse(c)
-	err := user.changePassword(response)
+	err := c.Bind(&body)
 	if err != nil {
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
-	response.Finish()
+
+	// validate
+	if len(body.Password) == 0 || len(body.Confirm) == 0 {
+		res.FailStr(c, `password and confirm required and can't empty`)
+		return
+	}
+	if body.Password != body.Confirm {
+		res.FailStr(c, `passwords do not match`)
+		return
+	}
+	// user.setPassword(body.Password)
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	err = db.Model(&User{}).Where("id = ?", userID).Update(User{Password: string(hashedPassword)}).Error
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	res.Done(c, "change pass world success")
 }
 
 func studioIndex(c *gin.Context) {
@@ -628,6 +572,7 @@ func listStyles(c *gin.Context) {
 
 func getStyle(c *gin.Context) {
 	//public
+	res := NewRes()
 	user := c.Param("user") //for user privite tiles
 	log.Infof("user:%s", user)
 
@@ -638,10 +583,7 @@ func getStyle(c *gin.Context) {
 	style, ok := ss.Styles[id]
 	if !ok {
 		log.Warnf("The style id(%s) not exist in the service", id)
-		c.JSON(http.StatusOK, gin.H{
-			"id":    id,
-			"error": "Can't find style.",
-		})
+		res.FailStr(c, fmt.Sprintf("The style id(%s) not exist in the service", id))
 		return
 	}
 
@@ -694,15 +636,16 @@ func getStyle(c *gin.Context) {
 }
 
 func getSprite(c *gin.Context) {
-	//public
+	res := NewRes()
 	user := c.Param("user") //for user privite tiles
 	log.Infof("user:%s", user)
 	id := c.Param("sid")
 	log.Infof("sid:%s", id)
 	sprite := c.Param("sprite")
-	spritePat := `^sprite(@[23]x)?.(?:json|png)$`
-	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
-		c.JSON(http.StatusOK, "sprite pattern error")
+	spritePat := `^sprite(@[2]x)?.(?:json|png)$`
+	if ok, err := regexp.MatchString(spritePat, sprite); !ok {
+		log.Errorf(`get sprite MatchString return: false, MatchString error: %v, sprite param: %s ^^`, err, sprite)
+		res.FailStr(c, fmt.Sprintf(`get sprite MatchString return: false, MatchString error: %v, sprite param: %s ^^`, err, sprite))
 		return
 	}
 	stylesPath := cfgV.GetString("styles.path")
@@ -715,9 +658,10 @@ func getSprite(c *gin.Context) {
 	spriteFile := stylesPath + id + "/" + sprite
 	file, err := ioutil.ReadFile(spriteFile)
 	if err != nil {
-		_, err = c.Writer.Write(file)
+		res.Fail(c, err)
+		return
 	}
-	c.JSON(http.StatusOK, err)
+	c.Writer.Write(file)
 }
 
 func viewStyle(c *gin.Context) {
@@ -768,6 +712,7 @@ func listTilesets(c *gin.Context) {
 
 func getTilejson(c *gin.Context) {
 	//public
+	res := NewRes()
 	user := c.Param("user") //for user privite tiles
 	log.Infof("user:%s", user)
 
@@ -778,10 +723,7 @@ func getTilejson(c *gin.Context) {
 	tileServie, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
-		c.JSON(http.StatusOK, gin.H{
-			"id":    id,
-			"error": "Can't find tileset.",
-		})
+		res.FailStr(c, fmt.Sprintf("The tileset id(%s) not exist in the service", id))
 		return
 	}
 
@@ -800,6 +742,8 @@ func getTilejson(c *gin.Context) {
 	metadata, err := tileset.GetInfo()
 	if err != nil {
 		log.WithError(err).Infof("Get metadata failed : %s", err.Error())
+		res.FailStr(c, fmt.Sprintf("Get metadata failed : %s", err.Error()))
+		return
 	}
 	for k, v := range metadata {
 		switch k {
@@ -829,14 +773,12 @@ func getTilejson(c *gin.Context) {
 }
 
 func viewTile(c *gin.Context) {
+	res := NewRes()
 	id := c.Param("tid")
 	tileService, ok := ss.Tilesets[id]
 	if !ok {
 		log.Warnf("The tileset id(%s) not exist in the service", id)
-		c.JSON(http.StatusOK, gin.H{
-			"id":    id,
-			"error": "Can't find tileset.",
-		})
+		res.FailStr(c, fmt.Sprintf("The tileset id(%s) not exist in the service", id))
 		return
 	}
 
@@ -853,16 +795,14 @@ func viewTile(c *gin.Context) {
 }
 
 func getTile(c *gin.Context) {
-	//public
-	response := newResponse(c)
+	res := NewRes()
 	// split path components to extract tile coordinates x, y and z
 	pcs := strings.Split(c.Request.URL.Path[1:], "/")
 	log.Debug(pcs)
 	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
 	size := len(pcs)
 	if size < 6 || pcs[5] == "" {
-		response.ErrFor["StatusBadRequest"] = "requested path is too short"
-		response.Fail()
+		res.FailStr(c, fmt.Sprintf("get tile requested path is too short, urlpath: %s", c.Request.URL.Path))
 		return
 	}
 	user := pcs[1]
@@ -871,8 +811,7 @@ func getTile(c *gin.Context) {
 	tileService, ok := ss.Tilesets[id]
 	if !ok {
 		log.Errorf("The tileset id(%s) not exist in the service", id)
-		response.ErrFor["ErrID"] = "Can't find tileset"
-		response.Fail()
+		res.FailStr(c, fmt.Sprintf("The tileset id(%s) not exist in the service", id))
 		return
 	}
 
@@ -881,8 +820,7 @@ func getTile(c *gin.Context) {
 	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
 	tc, ext, err := tileCoordFromString(z, x, y)
 	if err != nil {
-		response.ErrFor["StatusBadRequest"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 	var data []byte
@@ -905,8 +843,7 @@ func getTile(c *gin.Context) {
 		}
 		err = fmt.Errorf("cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
 		log.WithError(err)
-		response.ErrFor["FetchFailed"] = err.Error()
-		response.Fail()
+		res.Fail(c, err)
 		return
 	}
 	if data == nil || len(data) <= 1 {
@@ -941,47 +878,36 @@ func getTile(c *gin.Context) {
 			c.Writer.Header().Set("Content-Encoding", "gzip")
 		}
 	}
-	_, err = c.Writer.Write(data)
-	c.JSON(http.StatusOK, err)
-	//user privite
+	c.Writer.Write(data)
 }
 
 func getGlyphs(c *gin.Context) {
 	//public
+	res := NewRes()
 	user := c.Param("user") //for user privite tiles
 	log.Infof("user:%s", user)
 	fonts := c.Param("fontstack")
 	log.Infof("fontstack:%s", fonts)
-	u, err := url.Parse(fonts)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(u.Path)
-	fonts = u.String()
-	fmt.Println(fonts)
-
 	rgPBF := c.Param("rangepbf")
 	rgPBF = strings.ToLower(rgPBF)
-	rgPBFPat := `^[\\d]+-[\\d]+.pbf$`
+	rgPBFPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
-		c.JSON(http.StatusOK, "glyph range pattern error")
+		res.FailStr(c, fmt.Sprintf("glyph range pattern error,range:%s", rgPBF))
 		return
 	}
 	fontsPath := cfgV.GetString("fonts.path")
 
 	//should init first
 	lastModified := time.Now().UTC().Format("2006-01-02 03:04:05 PM")
-	callbacks := make([]string, 0, len(ss.Fonts))
+	var callbacks []string
 	for k := range ss.Fonts {
 		callbacks = append(callbacks, k)
 	}
 
-	pbfFile := getFontsPbf(fontsPath, fonts, rgPBF, callbacks)
+	pbfFile := getFontsPBF(fontsPath, fonts, rgPBF, callbacks)
 	c.Writer.Header().Set("Content-Type", "application/x-protobuf")
 	c.Writer.Header().Set("Last-Modified", lastModified)
-
 	c.Writer.Write(pbfFile)
-	c.JSON(http.StatusOK, gin.H{})
 }
 
 func getFonts(c *gin.Context) {
