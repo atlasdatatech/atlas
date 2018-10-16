@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -14,24 +16,36 @@ import (
 // ServiceSet is the base type for the HTTP handlers which combines multiple
 // mbtiles.DB tilesets.
 type ServiceSet struct {
+	User     string
+	Domain   string
+	Path     string
 	Styles   map[string]*StyleService
 	Fonts    map[string]*FontService
 	Tilesets map[string]*MBTilesService
-	Domain   string
-	Path     string
 }
 
 // LoadServiceSet interprets filename as mbtiles file which is opened and which will be
-func LoadServiceSet() (*ServiceSet, error) {
+func LoadServiceSet(user string) (*ServiceSet, error) {
+
+	home := cfgV.GetString("users.home")
+	if _, err := os.Stat(filepath.Join(home, user)); os.IsNotExist(err) {
+		// user path does not exist
+		log.Error(err)
+		return nil, err
+	}
 	s := &ServiceSet{
+		User:     user,
 		Styles:   make(map[string]*StyleService),
 		Fonts:    make(map[string]*FontService),
 		Tilesets: make(map[string]*MBTilesService),
 	}
+	tilesets := cfgV.GetString("users.tilesets")
+	styles := cfgV.GetString("users.styles")
+	fonts := cfgV.GetString("users.fonts")
 
-	tilesetsPath := cfgV.GetString("tilesets.path")
-	stylesPath := cfgV.GetString("styles.path")
-	fontsPath := cfgV.GetString("fonts.path")
+	tilesetsPath := filepath.Join(home, user, tilesets)
+	stylesPath := filepath.Join(home, user, styles)
+	fontsPath := filepath.Join(home, user, fonts)
 	s.ServeMBTiles(tilesetsPath)
 	s.ServeStyles(stylesPath)
 	s.ServeFonts(fontsPath)
@@ -41,6 +55,7 @@ func LoadServiceSet() (*ServiceSet, error) {
 
 // scheme returns the underlying URL scheme of the original request.
 func scheme(r *http.Request) string {
+
 	if r.TLS != nil {
 		return "https"
 	}

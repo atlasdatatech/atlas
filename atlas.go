@@ -15,9 +15,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+//VERSION server version
 const VERSION = "1.0"
 
 var identityKey = "id"
+var pubUser = "atlas"
 
 //定义一个内部全局的 db 指针用来进行认证，数据校验
 var db *gorm.DB
@@ -30,24 +32,20 @@ var casbinEnforcer *casbin.Enforcer
 
 var authMiddleware *jwt.GinJWTMiddleware
 
-var ss *ServiceSet
+var userSet = make(map[string]*ServiceSet)
 
 func main() {
-
 	log.SetLevel(log.DebugLevel)
-
 	cfgV = viper.New()
 	InitConf(cfgV)
-
 	identityKey = cfgV.GetString("jwt.identityKey")
-
-	if ts, err := LoadServiceSet(); err != nil {
-		log.Error("Load ServiceSet Error:" + err.Error())
+	pubUser = cfgV.GetString("users.public")
+	if ss, err := LoadServiceSet(pubUser); err != nil {
+		log.Errorf("loading %s(public) service set error: %s", pubUser, err.Error())
 	} else {
-		ss = ts
-		log.Info("Load ServiceSet successed!")
+		userSet[pubUser] = ss
+		log.Infof("load %s(public) service set successed!", pubUser)
 	}
-
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
@@ -71,10 +69,8 @@ func main() {
 	r := gin.Default()
 
 	staticsHome := cfgV.GetString("statics.home")
-	log.Debug(staticsHome)
 	r.Static("/statics", staticsHome)
 	templatesPath := cfgV.GetString("statics.templates")
-	log.Debug(templatesPath)
 	r.LoadHTMLGlob(templatesPath)
 
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
@@ -140,6 +136,8 @@ func bindRoutes(r *gin.Engine) {
 	{
 		// > styles
 		studio.GET("/", studioIndex)
+		studio.GET("/:user/create/", studioCreater)
+		studio.GET("/:user/edit/", studioEditer)
 		// studio.GET("/styles/", listStyles)
 		// studio.GET("/tilesets/", listTilesets)
 		// studio.GET("/datasets/", listDatasets)
@@ -148,14 +146,11 @@ func bindRoutes(r *gin.Engine) {
 	autoUser := func(c *gin.Context) {
 		claims := jwt.ExtractClaims(c)
 		user, ok := claims[identityKey]
-		log.Debug(c.Request.URL.Path)
 		if !ok {
 			log.Errorf("can't find %s", user)
 			c.Redirect(http.StatusFound, "/login/")
-			log.Debug(c.Request.URL.Path)
 		} else {
 			c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
-			log.Debug(c.Request.URL.Path)
 			r.HandleContext(c)
 		}
 	}
@@ -174,7 +169,7 @@ func bindRoutes(r *gin.Engine) {
 	fonts.Use(authMiddleware.MiddlewareFunc())
 	{
 		// > fonts
-		// fonts.GET("/:user", getFonts)                       //get font
+		fonts.GET("/", listFonts)                     //get font
 		fonts.GET("/:fontstack/:rangepbf", getGlyphs) //get glyph pbfs
 	}
 

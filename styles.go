@@ -1,24 +1,20 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
 
-//StyleService
+//StyleService struct for styles
 type StyleService struct {
-	User  string
 	ID    string
 	URL   string
 	Hash  string
 	State bool
-	Style *string
+	Style []byte
 }
 
 // CreateStyleService creates a new StyleService instance.
@@ -26,94 +22,75 @@ type StyleService struct {
 // its Close() method.
 func CreateStyleService(styleFile string, styleID string) (*StyleService, error) {
 	//read style.json
-	file, err := ioutil.ReadFile(styleFile)
+	styleBuf, err := ioutil.ReadFile(styleFile)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	var style map[string]interface{}
-	err = json.Unmarshal(file, &style)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	sufPat := `(?i:^(http(s)?:)?)\/\/`
-	for k, v := range style {
-		switch vv := v.(type) {
-		case string:
-			//style->sprite
-			if "sprite" == k && v != nil {
-				path := v.(string)
-				if ok, _ := regexp.MatchString(sufPat, path); !ok {
-					style["sprite"] = "local://styles/public/" + styleID + "/sprite"
-				}
-			}
-			//style->glyphs
-			if "glyphs" == k && v != nil {
-				path := v.(string)
-				if ok, _ := regexp.MatchString(sufPat, path); !ok {
-					style["glyphs"] = "local://fonts/{fontstack}/{range}.pbf"
-				}
-			}
-		case []interface{}:
-			//style->layers
-			if "layers" == k {
-				for _, u := range vv {
-					layer := u.(map[string]interface{})
-					if "symbol" == layer["type"] {
-						if layout := layer["layout"]; layout != nil {
-							layoutMap := layout.(map[string]interface{})
-							if fonts := layoutMap["text-font"]; fonts != nil {
-								for _, font := range fonts.([]interface{}) {
-									if font != nil {
-										reportFont(font.(string))
-									}
-								}
-							} else {
-								reportFont("Open Sans Regular")
-								reportFont("Arial Unicode MS Regular")
-							}
-						}
-					}
-				}
-			}
-		case map[string]interface{}:
-			if "sources" == k {
-				//style->sources
-				sources := v.(map[string]interface{})
-				for _, u := range sources {
-					source := u.(map[string]interface{})
-					url := source["url"]
-					//url 非空且为mbtiles:数据源
-					if url != nil && strings.HasPrefix(url.(string), "mbtiles:") {
-						mbtilesFile := strings.TrimPrefix(url.(string), "mbtiles://")
-						fromData := strings.HasPrefix(mbtilesFile, "{") && strings.HasSuffix(mbtilesFile, "}")
-						if fromData {
-							mbtilesFile = strings.TrimSuffix(strings.TrimPrefix(mbtilesFile, "{"), "}")
-						}
-
-						var identifier = reportMbtiles(mbtilesFile, fromData)
-						source["url"] = "local://tilesets/public/" + identifier
-					}
-				}
-			}
-		default:
-		}
-	}
-
-	f, err := json.Marshal(style)
-	styleJSON := string(f)
+	// //if has lager num of tilesets and fonts, should load style first and report fonts and mbtiles for only serve
+	// var style map[string]interface{}
+	// err = json.Unmarshal(styleBuf, &style)
+	// if err != nil {
+	// 	log.Error(err)
+	// 	return nil, err
+	// }
+	// // sufPat := `(?i:^(http(s)?:)?)\/\/`
+	// for k, v := range style {
+	// 	switch vv := v.(type) {
+	// 	case []interface{}:
+	// 		//style->layers
+	// 		if "layers" == k {
+	// 			for _, u := range vv {
+	// 				layer := u.(map[string]interface{})
+	// 				if "symbol" == layer["type"] {
+	// 					if layout := layer["layout"]; layout != nil {
+	// 						layoutMap := layout.(map[string]interface{})
+	// 						if fonts := layoutMap["text-font"]; fonts != nil {
+	// 							for _, font := range fonts.([]interface{}) {
+	// 								if font != nil {
+	// 									reportFont(font.(string))
+	// 								}
+	// 							}
+	// 						} else {
+	// 							reportFont("Open Sans Regular")
+	// 							reportFont("Arial Unicode MS Regular")
+	// 						}
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	case map[string]interface{}:
+	// 		if "sources" == k {
+	// 			//style->sources
+	// 			sources := v.(map[string]interface{})
+	// 			for _, u := range sources {
+	// 				source := u.(map[string]interface{})
+	// 				url := source["url"]
+	// 				//url 非空且为mbtiles:数据源
+	// 				if url != nil && strings.HasPrefix(url.(string), "mbtiles:") {
+	// 					mbtilesFile := strings.TrimPrefix(url.(string), "mbtiles://")
+	// 					fromData := strings.HasPrefix(mbtilesFile, "{") && strings.HasSuffix(mbtilesFile, "}")
+	// 					if fromData {
+	// 						mbtilesFile = strings.TrimSuffix(strings.TrimPrefix(mbtilesFile, "{"), "}")
+	// 					}
+	// 					var identifier = reportMbtiles(mbtilesFile, fromData)
+	// 					source["url"] = "local://tilesets/public/" + identifier
+	// 				}
+	// 			}
+	// 		}
+	// 	default:
+	// 	}
+	// }
+	// buf, err := json.Marshal(style)
 
 	out := &StyleService{
-		Style: &styleJSON,
-		User:  "public",
 		ID:    styleID,
-		URL:   "/styles/public/" + styleID, //should not add / at the end
+		URL:   styleFile, //should not add / at the end
+		State: true,
+		Style: styleBuf,
 	}
 
 	return out, nil
-
 }
 
 // AddStyle interprets filename as mbtiles file which is opened and which will be
@@ -122,12 +99,12 @@ func CreateStyleService(styleFile string, styleID string) (*StyleService, error)
 // error is non-nil.
 func (s *ServiceSet) AddStyle(styleFile string, styleID string) error {
 	var err error
-	if styleID == "" {
-		return fmt.Errorf("path parameter may not be empty")
+	if "" == styleID && "" == styleFile {
+		return fmt.Errorf("styleFile or styleID parameter may not be empty")
 	}
 	ss, err := CreateStyleService(styleFile, styleID)
 	if err != nil {
-		return fmt.Errorf("could not open mbtiles file %q: %v", styleFile, err)
+		return fmt.Errorf("could not load mbtiles file %q: %v", styleFile, err)
 	}
 	s.Styles[styleID] = ss
 	return nil
@@ -164,14 +141,14 @@ func (s *ServiceSet) ServeStyles(baseDir string) (err error) {
 	for _, styleFile := range fileNames {
 		subpath, err := filepath.Rel(baseDir, styleFile)
 		if err != nil {
-			log.Errorf("unable to extract URL path for %q: %v", styleFile, err)
+			log.Errorf("ServeStyles, unable to extract URL path for %s: %v", s.User, err)
 		}
 		styleID := filepath.Dir(subpath)
 		err = s.AddStyle(styleFile, styleID)
 		if err != nil {
-			log.Error(err)
+			log.Errorf(`ServeStyles, add style: %s; user: %s ^^`, err, s.User)
 		}
 	}
-	log.Infof("New from %s successful, tol %d", baseDir, len(fileNames))
+	log.Infof("ServeStyles,serve %d styles for %s ~", len(s.Styles), s.User)
 	return nil
 }

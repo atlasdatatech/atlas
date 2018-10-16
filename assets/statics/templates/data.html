@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{.Title}} - AtlasData</title>
-    {{if eq .fmt "pbf"}}
+    {{if eq .FMT "pbf"}}
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl.css"/>
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl-inspect.css"/>
     <script src="/statics/mapbox-gl.js"></script>
@@ -69,7 +69,7 @@
     {{end}}
 </head>
 <body>
-{{if eq .fmt "pbf"}}
+{{if eq .FMT "pbf"}}
 <h1>{{.ID}}</h1>
 <div id="map"></div>
 <div id="layerList"></div>

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -87,7 +88,6 @@ type MBTiles struct {
 
 // MBTilesService represents an mbtiles file connection.
 type MBTilesService struct {
-	User    string // name of tile mbtiles file
 	ID      string
 	URL     string // tile format: PNG, JPG, PBF, WEBP
 	Hash    string
@@ -110,16 +110,13 @@ func CreateMBTilesService(filePathName string, tileID string) (*MBTilesService, 
 	}
 
 	out := &MBTilesService{
-		User:    "public",
 		ID:      tileID,
 		URL:     filePathName, //should not add / at the end
 		Type:    mbtiles.TileFormatString(),
 		State:   true,
 		Mbtiles: mbtiles,
 	}
-
 	return out, nil
-
 }
 
 // AddMBTile interprets filename as mbtiles file which is opened and which will be
@@ -142,44 +139,40 @@ func (s *ServiceSet) AddMBTile(fileName string, tileID string) error {
 // the directory at baseDir. The DBs will all be served under their relative paths
 // to baseDir.
 func (s *ServiceSet) ServeMBTiles(baseDir string) (err error) {
+
 	var fileNames []string
-	err = filepath.Walk(baseDir, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if ext := filepath.Ext(p); ext == ".mbtiles" {
-			fileNames = append(fileNames, p)
-		}
-		return nil
-	})
+	files, err := ioutil.ReadDir(baseDir)
 	if err != nil {
-		return fmt.Errorf("unable to scan tilesets: %v", err)
+		log.Error(err)
+		return err
+	}
+	for _, file := range files {
+		if ext := filepath.Ext(file.Name()); ".mbtiles" == strings.ToLower(ext) {
+			fileNames = append(fileNames, file.Name())
+		}
 	}
 
 	for _, fileName := range fileNames {
-		subpath, err := filepath.Rel(baseDir, fileName)
+		tileFile := filepath.Join(baseDir, fileName)
+		ext := filepath.Ext(fileName)
+		id := strings.TrimSuffix(fileName, ext)
+		err = s.AddMBTile(tileFile, id)
 		if err != nil {
-			return fmt.Errorf("unable to extract URL path for %q: %v", fileName, err)
-		}
-		e := filepath.Ext(fileName)
-		p := filepath.ToSlash(subpath)
-		id := strings.ToLower(p[:len(p)-len(e)])
-		err = s.AddMBTile(fileName, id)
-		if err != nil {
-			return err
+			log.Errorf(`ServeMBTiles, add mbtiles: %s; user: %s ^^`, err, s.User)
 		}
 	}
-	log.Infof("New from %s successful, tol %d", baseDir, len(fileNames))
+	log.Infof("ServeMBTiles, loaded %d mbtiles for %s ~", len(s.Tilesets), s.User)
 	return nil
 }
 
 func reportMbtiles(mbtile string, fromData bool) string {
 	var dataItemID string
 	str := `{
-		"puhui": {"mbtiles": "puhui.mbtiles"},
 		"china": {"mbtiles": "china.mbtiles"},
-		"images": {"mbtiles": "images.mbtiles"}
-	}`
+		"satellite": {"mbtiles": "satellite.mbtiles"}
+		"puhui": {"mbtiles": "puhui.mbtiles"},
+		"hanshou": {"mbtiles": "hanshou.mbtiles"},
+		}`
 	var datas map[string]interface{}
 	json.Unmarshal([]byte(str), &datas)
 	for k, v := range datas {

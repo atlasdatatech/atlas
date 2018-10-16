@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{.title}}</title>
+    <title>{{.Title}}</title>
 </head>
 <body>
 <h3>My Account</h3>
@@ -12,24 +12,24 @@
 </div>
 <div>
     <ul>
-        <li>UserName:{{.username}}</li>
-        <li>Email:{{.email}}</li>
-        <li>UserID:{{.userid}}</li>
-        <li>IsActive:{{.active}}</li>
-        <li>JWT:{{.jwt}}</li>
-        <li>JWTExpires:{{.jwtexpire}}</li>
-        <li>AccountID:{{.accountid}}</li>
-        {{if eq .verified "no"}}
-        <li>IsVerified:<a href="/account/verification/">{{.verified}}</a></li>
+        <li>Name:{{.Name}}</li>
+        <li>Email:{{.Email}}</li>
+        <li>ID:{{.ID}}</li>
+        <li>IsActive:{{.Active}}</li>
+        <li>JWT:{{.JWT}}</li>
+        <li>JWTExpires:{{.JWTExpire}}</li>
+        <li>Account:{{.AccountID}}</li>
+        {{if eq .Verified "no"}}
+        <li>IsVerified:<a href="/account/verification/">{{.Verified}}</a></li>
         {{else}}
-        <li>IsVerified:{{.verified}}</li>
+        <li>IsVerified:{{.Verified}}</li>
         {{end}}
-        <li>Phone:{{.phone}}</li>
+        <li>Phone:{{.Phone}}</li>
     </ul>
 </div>
 <div>
     <ul>
-        {{if eq .verified "no"}}
+        {{if eq .Verified "no"}}
         <li><a href="/account/verification/">Verifiy Account</a></li>
         {{end}}
         <li><a href="/account/jwt/refresh/">Refresh Token</a></li>

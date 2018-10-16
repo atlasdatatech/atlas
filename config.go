@@ -26,14 +26,14 @@ func InitConf(v *viper.Viper) {
 		timeOut="720h"
 		timeMax="2160h"
 		identityKey="id"
-		lookup="header:Authorization, query:token, cookie:JWTToken"
+		lookup="header:Authorization, query:token, cookie:Token"
 		headName="Bearer"
 
 	[password]
 		restExpiration = "24h"
 
 	[account]
-		verification = true
+		verification = false
 
 	[attempts]
 		ip = 50
@@ -66,20 +66,13 @@ func InitConf(v *viper.Viper) {
 		home = "assets/statics/"
 		templates = "assets/statics/templates/*"
 
-	[fonts]
-		home = "assets/fonts/"
-		path = "assets/fonts/"
-
-	[styles]
-		home = "assets/styles/"
-		path = "assets/styles/"
-
-	[tilesets]
-		home="assets/tilesets/"
-		path = "E:/data/tilesets/server/"
-
-	[datasets]
-		home = "assets/datasets/"
+	[users]
+		home = "assets/users/"
+		public = "atlas"
+		fonts = "/fonts/"
+		styles = "/styles/"
+		tilesets ="/tilesets/"
+		datasets = "/datasets/"
 
 	`)
 
@@ -95,7 +88,7 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("jwt.timeOut", "720h")
 	v.SetDefault("jwt.timeMax", "2160h")
 	v.SetDefault("jwt.identityKey", "name")
-	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:JWTToken")
+	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:Token")
 	v.SetDefault("jwt.headName", "Bearer")
 
 	v.SetDefault("account.verification", true)
@@ -120,8 +113,5 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("smtp.credentials.password", "Atlas1226")
 	v.SetDefault("smtp.credentials.host", "smtp.gmail.com")
 	v.SetDefault("smtp.credentials.ssl", true)
-
-	v.SetDefault("statics.home", "assets/statics/")
-	v.SetDefault("statics.templates", "assets/statics/templates/*")
 
 }

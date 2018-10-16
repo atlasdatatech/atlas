@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -12,9 +11,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//FontService
+//FontService struct for font service
 type FontService struct {
-	User  string
 	ID    string
 	URL   string
 	State bool
@@ -31,14 +29,13 @@ func (s *ServiceSet) AddFont(fontName string, fontID string) error {
 		return err
 	}
 
-	pbfFile := fontName + "/" + "0-255.pbf"
+	pbfFile := fontName + "/" + "0-255.pbf" //use 0-255.pbf test the font can be service
 	if _, err := os.Stat(pbfFile); os.IsNotExist(err) {
-		log.Error(pbfFile, " not exists~")
+		log.Error(pbfFile, "not exists~")
 		return err
 	}
 	// exists and not has errors
 	out := &FontService{
-		User:  "public",
 		ID:    fontID,
 		URL:   fontName,
 		State: true,
@@ -54,7 +51,7 @@ func (s *ServiceSet) ServeFonts(baseDir string) (err error) {
 	var fontNames []string
 	dirs, err := ioutil.ReadDir(baseDir)
 	if err != nil {
-		log.Error("read fonts baseDir error:", err)
+		log.Error("ServeFonts, read fonts baseDir error:", err)
 	}
 	for _, dir := range dirs {
 		if dir.IsDir() {
@@ -63,29 +60,23 @@ func (s *ServiceSet) ServeFonts(baseDir string) (err error) {
 		}
 	}
 
-	var fontIDs []string
 	for _, fontName := range fontNames {
-
 		fontID := filepath.Base(fontName)
 		err = s.AddFont(fontName, fontID)
 		if err != nil {
-			log.Errorf("add font %q error: %v", fontName, err)
-		} else {
-			fontIDs = append(fontIDs, fontID)
+			log.Errorf("ServeFonts, add font %q error: %v", fontName, err)
 		}
 	}
-	log.Infof("From %s successful serve %d fonts -> %v", baseDir, len(fontIDs), fontIDs)
-
+	log.Infof("ServeFonts, loading %d fonts-> %v ", len(s.Fonts), s.Fonts)
 	return nil
 }
 
-func reportFont(font string) {
-	str := `{"fonts": ["Open Sans Regular","Arial Unicode MS Regular"]}`
-	var fonts map[string]interface{}
-	json.Unmarshal([]byte(str), &fonts)
-	for _, v := range fonts {
-		if v == font {
-			log.Debug("set font ", font, " ture")
+//reportFont if has large number of fonts ,should only serve for these reported
+func (s *ServiceSet) reportFont(font string) {
+	//set a array ServeFonts should serve only
+	for k, v := range s.Fonts {
+		if k == font && !v.State {
+			// s.ServeFont(font) //simply set State to true
 		}
 	}
 }

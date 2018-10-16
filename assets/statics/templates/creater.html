@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} | AtlasMap</title>
+    <link rel="stylesheet" type="text/css" href="/statics/index.css" />
+    <link rel="icon" href="/statics/favicon.ico" type="image/x-icon" />
+</head>
+
+<body>
+    <section>
+        <h1 class="title"><img src="/statics/images/logo.png" alt="AtlasMap" /></h1>
+        <h2 class="subtitle">AtlasMap Studio</h2>
+        {{if .Styles}}
+        <h2 class="box-header">Public Maps</h2>
+        <div class="box">
+            {{range .Styles}}
+            <div class="item">
+                <img src="/statics/images/placeholder.png" alt="{{.ID}} preview" />
+                <div class="details">
+                    <h3>{{.ID}}</h3>
+                    <p class="identifier">id: {{.ID}}</p>
+                    <p class="services">
+                        services:
+                        <a href="/styles/atlas/{{.ID}}">Style</a>
+                    </p>
+                </div>
+                <div class="viewers">
+                    <a class="btn" href="/styles/atlas/{{.ID}}/{{.Hash}}">Viewer</a>
+                    <a class="btn" href="/studio/{{$.User}}/edit/">Editer</a>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </section>
+    <footer>
+        <p>
+            <a href="http://www.atlasdata.cn/" target="_blank">Powered by AtlasDataTech </a>
+        </p>
+    </footer>
+</body>
+</html>

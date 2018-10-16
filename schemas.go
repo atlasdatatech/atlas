@@ -49,13 +49,13 @@ type Attempt struct {
 	DeletedAt *time.Time `sql:"index"`
 }
 
-func validate(username string, email string, password string) (bool, error) {
-	username = strings.ToLower(username)
-	if len(username) == 0 {
-		return false, errors.New("username: required")
+func validate(name string, email string, password string) (bool, error) {
+	name = strings.ToLower(name)
+	if len(name) == 0 && len(name) < 64 {
+		return false, errors.New("name: required and 64 letters limit")
 	}
-	if ok := rUsername.MatchString(username); !ok {
-		return false, errors.New(`username: only use letters, numbers, \'-\', \'_\'`)
+	if ok := rUsername.MatchString(name); !ok {
+		return false, errors.New(`name: only use letters, numbers, \'-\', \'_\'`)
 	}
 
 	email = strings.ToLower(email)
