@@ -20,7 +20,7 @@ import (
 )
 
 func index(c *gin.Context) {
-	claim, err := authMiddleware.GetClaimsFromJWT(c)
+	claim, err := authMid.GetClaimsFromJWT(c)
 	if err != nil {
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"Title": "AtlasMap",
@@ -78,7 +78,7 @@ func signup(c *gin.Context) {
 	user.Password = string(hashedPassword)
 	user.Email = strings.ToLower(body.Email)
 	//No verification required
-	user.JWT, user.JWTExpires, err = authMiddleware.TokenGenerator(&user)
+	user.JWT, user.JWTExpires, err = authMid.TokenGenerator(&user)
 	if err != nil {
 		res.FailStr(c, "generate token error")
 		return
@@ -195,16 +195,16 @@ func login(c *gin.Context) {
 		return
 	}
 	//Cookie
-	if authMiddleware.SendCookie {
+	if authMid.SendCookie {
 		maxage := int(user.JWTExpires.Unix() - time.Now().Unix())
 		c.SetCookie(
 			"Token",
 			user.JWT,
 			maxage,
 			"/",
-			authMiddleware.CookieDomain,
-			authMiddleware.SecureCookie,
-			authMiddleware.CookieHTTPOnly,
+			authMid.CookieDomain,
+			authMid.SecureCookie,
+			authMid.CookieHTTPOnly,
 		)
 	}
 
@@ -216,7 +216,7 @@ func login(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, "/account/")
+	c.Redirect(http.StatusFound, "/studio/")
 }
 
 func logout(c *gin.Context) {
@@ -225,9 +225,9 @@ func logout(c *gin.Context) {
 		"logout",
 		0,
 		"/",
-		authMiddleware.CookieDomain,
-		authMiddleware.SecureCookie,
-		authMiddleware.CookieHTTPOnly,
+		authMid.CookieDomain,
+		authMid.SecureCookie,
+		authMid.CookieHTTPOnly,
 	)
 	c.Redirect(http.StatusFound, "/")
 }
@@ -485,7 +485,7 @@ func verify(c *gin.Context) {
 func jwtRefresh(c *gin.Context) {
 	id := c.GetString(identityKey)
 	res := NewRes()
-	tokenString, expire, err := authMiddleware.RefreshToken(c)
+	tokenString, expire, err := authMid.RefreshToken(c)
 	if err != nil {
 		log.Errorf("jwtRefresh, refresh token: %s; user: %s", err, id)
 		res.Fail(c, err)
@@ -560,12 +560,21 @@ func studioIndex(c *gin.Context) {
 		res.FailStr(c, fmt.Sprintf("user's service set not found; user: %s", id))
 		return
 	}
+	ttt := make(map[string]*MBTilesService)
+
+	for k, v := range us.Tilesets {
+		if k == "hs_vector" {
+			v.Hash = "#8/28.88/111.88"
+			ttt[k] = v
+		}
+	}
+
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "AtlasMap",
 		"Login":    false,
 		"User":     id,
 		"Styles":   us.Styles,
-		"Tilesets": us.Tilesets,
+		"Tilesets": ttt,
 	})
 }
 

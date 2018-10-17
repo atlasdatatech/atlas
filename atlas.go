@@ -28,9 +28,9 @@ var db *gorm.DB
 var cfgV *viper.Viper
 
 //定义一个内部全局的 casbin.Enforcer 指针用来进行权限校验
-var casbinEnforcer *casbin.Enforcer
+var casEnf *casbin.Enforcer
 
-var authMiddleware *jwt.GinJWTMiddleware
+var authMid *jwt.GinJWTMiddleware
 
 var userSet = make(map[string]*ServiceSet)
 
@@ -59,9 +59,21 @@ func main() {
 	defer pg.Close()
 
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
-	casbinEnforcer = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
+	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
+	//for test
+	casEnf.LoadPolicy()
+	//下面的这些命令可以用来添加规则
+	// casEnf.AddPolicy("atlas", "/*", "(GET)|(POST)")
+	// casEnf.AddPolicy("puhui", "/auth/hello", "GET")
+	// casEnf.AddPolicy("puhui", "/auth/hello", "GET")
+	// casEnf.AddGroupingPolicy("bob", "data1_admin")
+	// casEnf.AddRoleForUser("user_a", "user")
+	// casEnf.AddRoleForUser("user_b", "user")
+	// casEnf.AddRoleForUser("user_c", "user")
+	// casEnf.AddPolicy("user", v.GetString("authPath")+"/ping", "GET")
+	casEnf.SavePolicy()
 
-	authMiddleware, err = jwt.New(JWTMiddleware())
+	authMid, err = jwt.New(JWTMiddleware())
 	if err != nil {
 		log.Fatal("JWT Error:" + err.Error())
 	}
@@ -115,7 +127,7 @@ func bindRoutes(r *gin.Engine) {
 
 	//account
 	account := r.Group("/account")
-	account.Use(authMiddleware.MiddlewareFunc())
+	account.Use(authMid.MiddlewareFunc())
 	{
 		account.GET("/", renderAccount)
 
@@ -132,7 +144,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 	//studio
 	studio := r.Group("/studio")
-	studio.Use(authMiddleware.MiddlewareFunc())
+	studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -156,7 +168,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	styles := r.Group("/styles")
-	styles.Use(authMiddleware.MiddlewareFunc())
+	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", autoUser)
@@ -166,7 +178,7 @@ func bindRoutes(r *gin.Engine) {
 		styles.GET("/:user/:sid/:sprite", getSprite) ////style.json
 	}
 	fonts := r.Group("/fonts")
-	fonts.Use(authMiddleware.MiddlewareFunc())
+	fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
 		fonts.GET("/", listFonts)                     //get font
@@ -174,7 +186,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	tilesets := r.Group("/tilesets")
-	tilesets.Use(authMiddleware.MiddlewareFunc())
+	tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", autoUser)
@@ -184,7 +196,7 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:user/:tid/:z/:x/:y", getTile)
 	}
 	datasets := r.Group("/datasets")
-	datasets.Use(authMiddleware.MiddlewareFunc())
+	datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
 		datasets.GET("/", autoUser)
