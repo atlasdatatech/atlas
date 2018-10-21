@@ -127,12 +127,17 @@ func signup(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = body.Email
-		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/signup.html"
+		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf("signup, sending verify email: %s; user: %s", err, body.Name)
 		}
 	}()
+	createPaths(user.Name)
+
+	casEnf.LoadPolicy()
+	casEnf.AddGroupingPolicy(user.Name, "user_group")
+	casEnf.SavePolicy()
 
 	c.Redirect(http.StatusFound, "/")
 }
@@ -281,7 +286,7 @@ func sendReset(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = body.Email
-		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/reset.html"
+		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/reset.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf("sendReset,sending rest password email: %s; user: %s ^^", err.Error(), user.Name)
@@ -441,7 +446,7 @@ func sendVerification(c *gin.Context) {
 		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "Your AtlasMap Account"
 		mailConf.ReplyTo = user.Email
-		mailConf.HtmlPath = cfgV.GetString("statics.home") + "email/verification.html"
+		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/verification.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf("sendVerification, sending verification email: %s; user: %s", err, id)
@@ -560,21 +565,13 @@ func studioIndex(c *gin.Context) {
 		res.FailStr(c, fmt.Sprintf("user's service set not found; user: %s", id))
 		return
 	}
-	ttt := make(map[string]*MBTilesService)
-
-	for k, v := range us.Tilesets {
-		if k == "hs_vector" {
-			v.Hash = "#8/28.88/111.88"
-			ttt[k] = v
-		}
-	}
 
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "AtlasMap",
 		"Login":    false,
 		"User":     id,
 		"Styles":   us.Styles,
-		"Tilesets": ttt,
+		"Tilesets": us.Tilesets,
 	})
 }
 
@@ -588,6 +585,7 @@ func studioCreater(c *gin.Context) {
 		"Tilesets": userSet[pubUser].Tilesets,
 	})
 }
+
 func studioEditer(c *gin.Context) {
 	//public
 	res := NewRes()
@@ -597,21 +595,24 @@ func studioEditer(c *gin.Context) {
 //GetStyleService get styleservice
 func GetStyleService(c *gin.Context) (*StyleService, error) {
 	id := c.GetString(identityKey)
-	// if user != id {
-	// 	return nil, fmt.Errorf("url {user} param error, should use you own name")
-	// }
-	us, ok := userSet[id]
-	if !ok {
-		us = userSet[pubUser]
-		// return nil, fmt.Errorf("user's service set not found")
+	user := c.Param("user")
+	if id != user && !casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method) {
+		return nil, fmt.Errorf("user: %s,url: %s,method: %s,auth: %v ^", id, c.Request.URL.String(), c.Request.Method, false)
 	}
-	styleID := c.Param("sid")
-	style, ok := us.Styles[styleID]
+
+	us, ok := userSet[user]
 	if !ok {
-		style, ok = userSet[pubUser].Styles[styleID]
-		if !ok {
-			return nil, fmt.Errorf("style id(%s) not exist in the service", styleID)
+		var err error
+		us, err = LoadServiceSet(user)
+		if err != nil {
+			return nil, fmt.Errorf("user's service set not found and load err")
 		}
+		userSet[user] = us
+	}
+	sid := c.Param("sid")
+	style, ok := us.Styles[sid]
+	if !ok {
+		return nil, fmt.Errorf("style id(%s) not exist in the service", sid)
 	}
 	return style, nil
 }
@@ -620,11 +621,6 @@ func GetStyleService(c *gin.Context) (*StyleService, error) {
 func listStyles(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	// user := c.Param("user")
-	// if user != id {
-	// 	res.FailStr(c, fmt.Sprintf("url {user} param error, should use you own name; user: %s", id))
-	// 	return
-	// }
 	us, ok := userSet[id]
 	if !ok {
 		log.Errorf(`listStyles, user's service set not found; user: %s`, id)
@@ -745,11 +741,6 @@ func viewStyle(c *gin.Context) {
 func listTilesets(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	// user := c.Param("user")
-	// if user != id {
-	// 	res.FailStr(c, fmt.Sprintf("url {user} param error, should use you own name; user: %s", id))
-	// 	return
-	// }
 	us, ok := userSet[id]
 	if !ok {
 		log.Errorf(`listTilesets, user's service set not found; user: %s`, id)
@@ -762,21 +753,26 @@ func listTilesets(c *gin.Context) {
 //GetTilesetService get from context
 func GetTilesetService(c *gin.Context) (*MBTilesService, error) {
 	id := c.GetString(identityKey)
-	// user := c.Param("user")
-	// if user != id {
-	// 	return nil, fmt.Errorf("url {user} param error, should use you own name")
-	// }
-	us, ok := userSet[id]
-	if !ok {
-		us = userSet[pubUser]
+	user := c.Param("user")
+	if id != user && !casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method) {
+		return nil, fmt.Errorf("user: %s,url: %s,method: %s,auth: %v ^", id, c.Request.URL.String(), c.Request.Method, false)
 	}
-	tilesetID := c.Param("tid")
-	tileService, ok := us.Tilesets[tilesetID]
+	us, ok := userSet[user]
 	if !ok {
-		tileService, ok = userSet[pubUser].Tilesets[tilesetID]
-		if !ok {
-			return nil, fmt.Errorf("tilesets id(%s) not exist in the service", tilesetID)
+		var err error
+		us, err = LoadServiceSet(user)
+		if err != nil {
+			return nil, fmt.Errorf("user's service set not found and load err")
 		}
+		userSet[user] = us
+	}
+	tid := c.Param("tid")
+	tileService, ok := us.Tilesets[tid]
+	if !ok {
+		// tileService, ok = userSet[pubUser].Tilesets[tid]
+		// if !ok {
+		return nil, fmt.Errorf("tilesets id(%s) not exist in the service", tid)
+		// }
 	}
 	return tileService, nil
 }
@@ -785,7 +781,7 @@ func GetTilesetService(c *gin.Context) (*MBTilesService, error) {
 func getTilejson(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	tileID := c.Param("tid")
+	tid := c.Param("tid")
 	tileServie, err := GetTilesetService(c)
 	if err != nil {
 		log.Errorf("getTilejson, error: %s; user: %s", err, id)
@@ -799,7 +795,7 @@ func getTilejson(c *gin.Context) {
 	imgFormat := tileset.TileFormatString()
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
-		"id":       tileID,
+		"id":       tid,
 		"scheme":   "xyz",
 		"format":   imgFormat,
 		"tiles":    []string{fmt.Sprintf("%s/{z}/{x}/{y}.%s", url, imgFormat)},
@@ -840,7 +836,7 @@ func getTilejson(c *gin.Context) {
 func viewTile(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	tileID := c.Param("tid")
+	tid := c.Param("tid")
 	tileService, err := GetTilesetService(c)
 	if err != nil {
 		log.Errorf("viewTile, error: %s; user: %s", err, id)
@@ -850,7 +846,7 @@ func viewTile(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "data.html", gin.H{
 		"Title": "PerView",
-		"ID":    tileID,
+		"ID":    tid,
 		"URL":   strings.TrimSuffix(c.Request.URL.Path, "/"),
 		"FMT":   tileService.Mbtiles.TileFormatString(),
 	})
@@ -948,13 +944,13 @@ func listFonts(c *gin.Context) {
 //getGlyphs get glyph pbf
 func getGlyphs(c *gin.Context) {
 	res := NewRes()
-	user := c.Param("user") //for user privite tiles
+	id := c.GetString(identityKey)
 	fonts := c.Param("fontstack")
 	rgPBF := c.Param("rangepbf")
 	rgPBF = strings.ToLower(rgPBF)
 	rgPBFPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
-		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, user)
+		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, id)
 		res.FailStr(c, fmt.Sprintf("glyph range pattern error,range:%s", rgPBF))
 		return
 	}

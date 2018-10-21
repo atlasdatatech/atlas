@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -123,7 +125,7 @@ type MailConfig struct {
 	ReplyTo  string
 	Subject  string
 	TextPath string
-	HtmlPath string
+	HTMLPath string
 	Data     interface{}
 }
 
@@ -137,7 +139,7 @@ func (conf *MailConfig) SendMail() (err error) {
 	m.SetHeader("ReplyTo", conf.ReplyTo)
 
 	m.AddAlternativeWriter("text/html", func(w io.Writer) error {
-		return template.Must(template.ParseFiles(conf.HtmlPath)).Execute(w, conf.Data)
+		return template.Must(template.ParseFiles(conf.HTMLPath)).Execute(w, conf.Data)
 	})
 
 	d := gomail.NewDialer(cfgV.GetString("smtp.credentials.host"), 587, cfgV.GetString("smtp.credentials.user"), cfgV.GetString("smtp.credentials.password"))
@@ -154,7 +156,6 @@ var rSlugify2, _ = regexp.Compile(` +`)
 var rUsername, _ = regexp.Compile(`^[a-zA-Z0-9\-\_]+$`)
 var rEmail, _ = regexp.Compile(`^[a-zA-Z0-9\-\_\.\+]+@[a-zA-Z0-9\-\_\.]+\.[a-zA-Z0-9\-\_]+$`)
 
-var rVerificationURL, _ = regexp.Compile(`^\/account\/verification\/`)
 var signupProviderReg, _ = regexp.Compile(`/[^a-zA-Z0-9\-\_]/g`)
 
 /**
@@ -187,4 +188,20 @@ func generateToken(n int) []byte {
 	token := make([]byte, n*2)
 	hex.Encode(token, b)
 	return token
+}
+
+func createPaths(name string) {
+	home := cfgV.GetString("users.home")
+	styles := cfgV.GetString("users.styles")
+	styles = filepath.Join(home, name, styles)
+	tilesets := cfgV.GetString("users.tilesets")
+	tilesets = filepath.Join(home, name, tilesets)
+	datasets := cfgV.GetString("users.datasets")
+	datasets = filepath.Join(home, name, datasets)
+	fonts := cfgV.GetString("users.fonts")
+	fonts = filepath.Join(home, name, fonts)
+	os.MkdirAll(styles, os.ModePerm)
+	os.MkdirAll(tilesets, os.ModePerm)
+	os.MkdirAll(datasets, os.ModePerm)
+	os.MkdirAll(fonts, os.ModePerm)
 }

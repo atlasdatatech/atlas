@@ -21,16 +21,14 @@ func payload(data interface{}) jwt.MapClaims {
 
 //定义一个回调函数，用来决断用户id和密码是否有效.暂时弃用
 func authenticator(c *gin.Context) (interface{}, error) {
-	user := &User{Name: "atlas"}
-	return user, nil
+	return nil, nil
 }
 
 //定义一个回调函数，用来决断用户在认证成功的前提下，是否有权限对资源进行访问
 func authorizator(user interface{}, c *gin.Context) bool {
 	if id, ok := user.(string); ok {
 		//如果可以正常取出 user 的值，就使用 casbin 来验证一下是否具备资源的访问权限
-		// return casbinEnforcer.Enforce(v, c.Request.URL.String(), c.Request.Method)
-		log.Debug(id)
+		log.Debug("jwt authorzator: ", id)
 		return true
 	}
 	//默认策略是不允许
@@ -131,20 +129,4 @@ func JWTMiddleware() *jwt.GinJWTMiddleware {
 		LoginResponse:   loginResponse,
 		RefreshResponse: refreshResponse,
 	}
-}
-
-func ensureAccount(c *gin.Context) {
-	uid := c.GetString(identityKey)
-	account := Account{}
-	db.Where("user_id = ?", uid).First(&account)
-	if cfgV.GetBool("account.verification") {
-		if account.Verification != "yes" {
-			if yes := rVerificationURL.MatchString(c.Request.URL.Path); !yes {
-				c.Redirect(http.StatusFound, "/account/verification/")
-				return
-			}
-		}
-	}
-	c.Next()
-	return
 }

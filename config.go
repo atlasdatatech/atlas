@@ -68,7 +68,6 @@ func InitConf(v *viper.Viper) {
 
 	[users]
 		home = "assets/users/"
-		public = "atlas"
 		fonts = "/fonts/"
 		styles = "/styles/"
 		tilesets ="/tilesets/"

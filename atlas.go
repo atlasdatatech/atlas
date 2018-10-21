@@ -39,7 +39,7 @@ func main() {
 	cfgV = viper.New()
 	InitConf(cfgV)
 	identityKey = cfgV.GetString("jwt.identityKey")
-	pubUser = cfgV.GetString("users.public")
+	pubUser = "atlas" //cfgV.GetString("users.public")
 	if ss, err := LoadServiceSet(pubUser); err != nil {
 		log.Errorf("loading %s(public) service set error: %s", pubUser, err.Error())
 	} else {
@@ -58,19 +58,21 @@ func main() {
 	}
 	defer pg.Close()
 
+	//Init casbin
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
 	//for test
 	casEnf.LoadPolicy()
 	//下面的这些命令可以用来添加规则
-	// casEnf.AddPolicy("atlas", "/*", "(GET)|(POST)")
-	// casEnf.AddPolicy("puhui", "/auth/hello", "GET")
-	// casEnf.AddPolicy("puhui", "/auth/hello", "GET")
-	// casEnf.AddGroupingPolicy("bob", "data1_admin")
-	// casEnf.AddRoleForUser("user_a", "user")
-	// casEnf.AddRoleForUser("user_b", "user")
-	// casEnf.AddRoleForUser("user_c", "user")
-	// casEnf.AddPolicy("user", v.GetString("authPath")+"/ping", "GET")
+	//add  atlas's assets to public resource group
+	casEnf.AddPolicy("user_group", "/styles/atlas/*", "GET")
+	casEnf.AddPolicy("user_group", "/tilesets/atlas/*", "GET")
+	casEnf.AddPolicy("user_group", "/fonts/atlas/*", "GET")
+	casEnf.AddPolicy("user_group", "/datasets/atlas/*", "GET")
+	//add puhui to user group
+	casEnf.AddGroupingPolicy("puhui", "user_group")
+	casEnf.AddPolicy("user_group", "/styles/puhui/basic*", "GET")
+	casEnf.AddGroupingPolicy("test", "user_group")
 	casEnf.SavePolicy()
 
 	authMid, err = jwt.New(JWTMiddleware())
@@ -123,6 +125,7 @@ func bindRoutes(r *gin.Engine) {
 	r.POST("/login/forgot/", sendReset)
 	r.GET("/login/reset/:email/:token/", renderReset)
 	r.POST("/login/reset/:email/:token/", resetPassword)
+	r.GET("/verification/:user/:token/", verify)
 	r.GET("/logout/", logout)
 
 	//account
@@ -134,7 +137,6 @@ func bindRoutes(r *gin.Engine) {
 		//account > verification
 		account.GET("/verification/", renderVerification)
 		account.POST("/verification/", sendVerification)
-		account.GET("/verification/:user/:token/", verify)
 		//account jwt
 		account.GET("/jwt/refresh/", jwtRefresh)
 		//account > settings
@@ -148,8 +150,8 @@ func bindRoutes(r *gin.Engine) {
 	{
 		// > styles
 		studio.GET("/", studioIndex)
-		studio.GET("/:user/create/", studioCreater)
-		studio.GET("/:user/edit/", studioEditer)
+		studio.GET("/create/", studioCreater)
+		studio.GET("/edit/", studioEditer)
 		// studio.GET("/styles/", listStyles)
 		// studio.GET("/tilesets/", listTilesets)
 		// studio.GET("/datasets/", listDatasets)
@@ -181,8 +183,8 @@ func bindRoutes(r *gin.Engine) {
 	fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
-		fonts.GET("/", listFonts)                     //get font
-		fonts.GET("/:fontstack/:rangepbf", getGlyphs) //get glyph pbfs
+		fonts.GET("/", listFonts)                           //get font
+		fonts.GET("/:user/:fontstack/:rangepbf", getGlyphs) //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")
@@ -204,7 +206,6 @@ func bindRoutes(r *gin.Engine) {
 		// datasets.GET("/:user/:did/", getDataset)
 		// datasets.GET("/:user/:did/view/", defaultDraw)
 		// datasets.GET("/:user/:did/edit/", defaultDraw)
-
 	}
 
 	//route not found
