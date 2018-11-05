@@ -23,9 +23,9 @@
     <section>
         <h1 class="title"><img src="/statics/images/logo.png" alt="AtlasMap" /></h1>
         <h2 class="subtitle">AtlasMap Studio</h2>
-        {{if .Styles}}
         <h2 class="box-header">Maps</h2>
-        <a href="/studio/{{.User}}/create/">Creater</a>
+        <a href="/studio/styles/create/">Creater</a>
+        <a href="/studio/styles/upload/">Upload</a>
         <div class="box">
             {{range .Styles}}
             <div class="item">
@@ -41,12 +41,15 @@
                 <div class="viewers">
                     <a class="btn" href="/styles/{{$.User}}/{{.ID}}/{{.Hash}}">Viewer</a>
                 </div>
+                <div class="viewers">
+                    <a class="btn" href="/studio/styles/{{$.User}}/{{.ID}}">Editor</a>
+                </div>
             </div>
             {{end}}
         </div>
-        {{end}}
-        {{if .Tilesets}}
         <h2 class="box-header">Datas</h2>
+        <a href="/studio/tilesets/create/">Creater</a>
+        <a href="/studio/tilesets/upload/">Upload</a>
         <div class="box">
             {{range .Tilesets}}
             <div class="item">
@@ -65,7 +68,6 @@
             </div>
             {{end}}
         </div>
-        {{end}}
     </section>
     <footer>
         <p>

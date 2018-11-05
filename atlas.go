@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-contrib/cors"
 	log "github.com/sirupsen/logrus"
 
 	jwt "github.com/appleboy/gin-jwt"
@@ -81,7 +82,7 @@ func main() {
 	}
 
 	r := gin.Default()
-
+	r.Use(cors.Default())
 	staticsHome := cfgV.GetString("statics.home")
 	r.Static("/statics", staticsHome)
 	templatesPath := cfgV.GetString("statics.templates")
@@ -144,18 +145,6 @@ func bindRoutes(r *gin.Engine) {
 		account.POST("/settings/password/", changePassword)
 
 	}
-	//studio
-	studio := r.Group("/studio")
-	studio.Use(authMid.MiddlewareFunc())
-	{
-		// > styles
-		studio.GET("/", studioIndex)
-		studio.GET("/create/", studioCreater)
-		studio.GET("/edit/", studioEditer)
-		// studio.GET("/styles/", listStyles)
-		// studio.GET("/tilesets/", listTilesets)
-		// studio.GET("/datasets/", listDatasets)
-	}
 
 	autoUser := func(c *gin.Context) {
 		claims := jwt.ExtractClaims(c)
@@ -169,12 +158,27 @@ func bindRoutes(r *gin.Engine) {
 		}
 	}
 
+	//studio
+	studio := r.Group("/studio")
+	studio.Use(authMid.MiddlewareFunc())
+	{
+		// > styles
+		studio.GET("/", studioIndex)
+		studio.GET("/styles/:user", studioCreater)
+		studio.GET("/styles/:user/:sid", studioEditer)
+
+		studio.GET("/tilesets/upload/", renderTilesetsUpload)
+	}
+
 	styles := r.Group("/styles")
 	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", autoUser)
 		styles.GET("/:user/", listStyles)
+		styles.POST("/:user/", createStyle)
+		styles.PUT("/:user/:sid", updateStyle)       //updateStyle
+		styles.POST("/:user/:sid", saveStyle)        //updateStyle
 		styles.GET("/:user/:sid", getStyle)          ////style.json
 		styles.GET("/:user/:sid/", viewStyle)        //view map style
 		styles.GET("/:user/:sid/:sprite", getSprite) ////style.json
@@ -193,6 +197,7 @@ func bindRoutes(r *gin.Engine) {
 		// > tilesets
 		tilesets.GET("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
+		tilesets.POST("/:user/", createTileset)
 		tilesets.GET("/:user/:tid", getTilejson) //tilejson
 		tilesets.GET("/:user/:tid/", viewTile)   //view
 		tilesets.GET("/:user/:tid/:z/:x/:y", getTile)

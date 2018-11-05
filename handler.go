@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -560,7 +561,7 @@ func studioIndex(c *gin.Context) {
 	id := c.GetString(identityKey) //for user privite tiles
 	us, ok := userSet[id]
 	if !ok {
-		log.Errorf("studioIndex, user's service set not exist; user: %s", id)
+		log.Errorf("studio, user's service set not exist; user: %s", id)
 		c.Redirect(http.StatusFound, "/login/")
 		res.FailStr(c, fmt.Sprintf("user's service set not found; user: %s", id))
 		return
@@ -577,10 +578,10 @@ func studioIndex(c *gin.Context) {
 
 func studioCreater(c *gin.Context) {
 	//public
-	id := c.GetString(identityKey) //for user privite tiles
+	user := c.Param("user")
 	c.HTML(http.StatusOK, "creater.html", gin.H{
 		"Title":    "Creater",
-		"User":     id,
+		"User":     user,
 		"Styles":   userSet[pubUser].Styles,
 		"Tilesets": userSet[pubUser].Tilesets,
 	})
@@ -588,8 +589,15 @@ func studioCreater(c *gin.Context) {
 
 func studioEditer(c *gin.Context) {
 	//public
-	res := NewRes()
-	res.Done(c, "deving")
+	id := c.GetString(identityKey) //for user privite tiles
+	log.Debug(id)
+	user := c.Param("user")
+	c.HTML(http.StatusOK, "editor.html", gin.H{
+		"Title":    "Creater",
+		"User":     user,
+		"Styles":   userSet[pubUser].Styles,
+		"Tilesets": userSet[pubUser].Tilesets,
+	})
 }
 
 //GetStyleService get styleservice
@@ -628,6 +636,101 @@ func listStyles(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, us.Styles)
+}
+
+func renderStyleUpload(c *gin.Context) {
+	id := c.GetString(identityKey)
+	c.HTML(http.StatusOK, "upload-s.html", gin.H{
+		"Title": "AtlasMap",
+		"User":  id,
+	})
+}
+
+//createStyle create a style
+func createStyle(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	// style source
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Errorf(`createStyle, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`createStyle, get form: %s; user: %s`, err, id))
+		return
+	}
+
+	home := cfgV.GetString("users.home")
+	styles := cfgV.GetString("users.styles")
+	sid, _ := shortid.Generate()
+	// sid = sid + ".json"//also delete the ext
+	dst := filepath.Join(home, id, styles, sid)
+	fmt.Println(dst)
+
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`createStyle, upload file: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`createStyle, upload file: %s; user: %s`, err, id))
+		return
+	}
+
+	styleBuf, err := ioutil.ReadFile(dst)
+	out := make(map[string]interface{})
+	json.Unmarshal(styleBuf, &out)
+	out["id"] = sid
+	out["created"] = time.Now().Format("2006-01-02 03:04:05 PM")
+	out["modified"] = time.Now().Format("2006-01-02 03:04:05 PM")
+	out["owner"] = id
+	newfile, err := json.Marshal(out)
+	ioutil.WriteFile(dst, newfile, os.ModePerm)
+	c.JSON(http.StatusOK, &out)
+}
+
+//updateStyle create a style
+func updateStyle(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	log.Debug("updateStyle---------", id)
+	style, err := GetStyleService(c)
+	if err != nil {
+		log.Errorf("updateStyle, error: %s; user: %s ^^", err, id)
+		res.Fail(c, err)
+		return
+	}
+	body, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		return
+	}
+	style.Style = body
+	var out map[string]interface{}
+	json.Unmarshal(style.Style, &out)
+	c.JSON(http.StatusOK, &out)
+}
+
+//saveStyle create a style
+func saveStyle(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	log.Debug("saveStyle---------", id)
+	user := c.Param("user")
+	sid := c.Param("sid")
+	body, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		return
+	}
+	home := cfgV.GetString("users.home")
+	styles := cfgV.GetString("users.styles")
+	dst := filepath.Join(home, user, styles, sid, "style.json")
+	fmt.Println(dst)
+	out := make(map[string]interface{})
+	json.Unmarshal(body, &out)
+	out["id"] = sid
+	out["modified"] = time.Now().Format("2006-01-02 03:04:05 PM")
+	out["owner"] = id
+	file, err := json.Marshal(out)
+	ioutil.WriteFile(dst, file, os.ModePerm)
+	c.JSON(http.StatusOK, &out)
 }
 
 //getStyle get user style by id
@@ -750,6 +853,44 @@ func listTilesets(c *gin.Context) {
 	c.JSON(http.StatusOK, us.Tilesets)
 }
 
+func renderTilesetsUpload(c *gin.Context) {
+	id := c.GetString(identityKey)
+	c.HTML(http.StatusOK, "upload-t.html", gin.H{
+		"Title": "AtlasMap",
+		"User":  id,
+	})
+}
+
+//listTilesets list user's tilesets
+func createTileset(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	// style source
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Errorf(`createTileset, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`createTileset, get form: %s; user: %s`, err, id))
+		return
+	}
+	home := cfgV.GetString("users.home")
+	tilesets := cfgV.GetString("users.tilesets")
+	tid, _ := shortid.Generate()
+	name := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
+	tid = name + "." + tid
+	dst := filepath.Join(home, id, tilesets, tid)
+	fmt.Println(dst)
+
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`createTileset, upload file: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`createTileset, upload file: %s; user: %s`, err, id))
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tid": tid,
+	})
+}
+
 //GetTilesetService get from context
 func GetTilesetService(c *gin.Context) (*MBTilesService, error) {
 	id := c.GetString(identityKey)
@@ -769,10 +910,7 @@ func GetTilesetService(c *gin.Context) (*MBTilesService, error) {
 	tid := c.Param("tid")
 	tileService, ok := us.Tilesets[tid]
 	if !ok {
-		// tileService, ok = userSet[pubUser].Tilesets[tid]
-		// if !ok {
 		return nil, fmt.Errorf("tilesets id(%s) not exist in the service", tid)
-		// }
 	}
 	return tileService, nil
 }
