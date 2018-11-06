@@ -110,6 +110,7 @@ func (res *Res) Done(c *gin.Context, msg string) {
 	res.Code = http.StatusOK
 	res.Error = codes[http.StatusOK]
 	res.Message = msg
+	c.JSON(http.StatusOK, res)
 }
 
 //Reset reset to init

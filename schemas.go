@@ -10,34 +10,20 @@ import (
 
 // User 用户表
 type User struct {
-	ID        string `json:"id" gorm:"primary_key"`
-	Name      string `json:"name" gorm:"unique;not null;unique_index"`
-	Password  string `json:"-"`
-	Email     string `json:"email" gorm:"unique;not null;unique_index"`
-	AccountID string `json:"account" gorm:"index"`
+	ID         string `json:"id" gorm:"primary_key"`
+	Name       string `json:"name" gorm:"unique;not null;unique_index"`
+	Password   string `json:"-"`
+	Role       string `json:"role"`
+	Phone      string `json:"phone" gorm:"index"`
+	Department string `json:"department"`
 
-	JWT        string    `json:"-" gorm:"column:jwt"`
-	JWTExpires time.Time `json:"jwtExpires" gorm:"column:jwt_expires"`
+	JWT     string    `json:"jwt" gorm:"column:jwt"`
+	Expires time.Time `json:"expires"`
 
-	Activation           string         `json:"activation"`
-	ResetPasswordToken   string         `json:"-"`
-	ResetPasswordExpires time.Time      `json:"resetPasswordExpires"`
-	Search               pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
-}
-
-// Account 账户信息表
-type Account struct {
-	ID                string         `json:"id" gorm:"primary_key"`
-	UserID            string         `json:"user" gorm:"index"`
-	Verification      string         `json:"verification"`
-	VerificationToken string         `json:"-"`
-	Company           string         `json:"company"`
-	Phone             string         `json:"phone"`
-	Search            pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	Activation string         `json:"activation"`
+	Search     pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 //Attempt 登录记录表
@@ -46,24 +32,15 @@ type Attempt struct {
 	IP        string `gorm:"index"`
 	Name      string `gorm:"index"`
 	CreatedAt time.Time
-	DeletedAt *time.Time `sql:"index"`
 }
 
-func validate(name string, email string, password string) (bool, error) {
+func validate(name string, password string) (bool, error) {
 	name = strings.ToLower(name)
 	if len(name) == 0 && len(name) < 64 {
 		return false, errors.New("name: required and 64 letters limit")
 	}
 	if ok := rUsername.MatchString(name); !ok {
 		return false, errors.New(`name: only use letters, numbers, \'-\', \'_\'`)
-	}
-
-	email = strings.ToLower(email)
-	if len(email) == 0 {
-		return false, errors.New("email: required")
-	}
-	if ok := rEmail.MatchString(email); !ok {
-		return false, errors.New(`email: invalid email format`)
 	}
 
 	if len(password) == 0 {

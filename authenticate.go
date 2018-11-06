@@ -28,8 +28,7 @@ func authenticator(c *gin.Context) (interface{}, error) {
 func authorizator(user interface{}, c *gin.Context) bool {
 	if id, ok := user.(string); ok {
 		//如果可以正常取出 user 的值，就使用 casbin 来验证一下是否具备资源的访问权限
-		log.Debug("jwt authorzator: ", id)
-		return true
+		return casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method)
 	}
 	//默认策略是不允许
 	return false
@@ -37,7 +36,6 @@ func authorizator(user interface{}, c *gin.Context) bool {
 
 //定义一个函数用来处理，认证不成功的情况
 func unauthorized(c *gin.Context, code int, message string) {
-	c.Redirect(http.StatusFound, "/login/")
 	c.JSON(code, gin.H{
 		"code":    code,
 		"message": message,

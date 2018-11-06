@@ -165,45 +165,6 @@ func (s *ServiceSet) ServeMBTiles(baseDir string) (err error) {
 	return nil
 }
 
-func reportMbtiles(mbtile string, fromData bool) string {
-	var dataItemID string
-	str := `{
-		"china": {"mbtiles": "china.mbtiles"},
-		"satellite": {"mbtiles": "satellite.mbtiles"}
-		"puhui": {"mbtiles": "puhui.mbtiles"},
-		"hanshou": {"mbtiles": "hanshou.mbtiles"},
-		}`
-	var datas map[string]interface{}
-	json.Unmarshal([]byte(str), &datas)
-	for k, v := range datas {
-		if fromData {
-			if k == mbtile {
-				dataItemID = k
-			}
-		} else {
-			vv := v.(map[string]interface{})
-			if vv["mbtiles"] == mbtile {
-				dataItemID = k
-			}
-		}
-	}
-
-	if dataItemID != "" { // mbtiles exist in the data config
-		return dataItemID
-	} else if fromData {
-		log.Errorf(`ERROR: data "%s" not found!`, mbtile)
-		return ""
-	} else { //generate data config ?
-		// var id = mbtile.substr(0, mbtiles.lastIndexOf('.')) || mbtile
-		// while (data[id]) id += '_';
-		// data[id] = {
-		//   'mbtiles': mbtiles
-		// };
-		// return id;
-		return ""
-	}
-}
-
 // CreateMBTiles creates a new MBTiles instance.
 // Connection is closed by runtime on application termination or by calling
 // its Close() method.

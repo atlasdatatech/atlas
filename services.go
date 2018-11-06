@@ -5,8 +5,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -25,30 +23,18 @@ type ServiceSet struct {
 }
 
 // LoadServiceSet interprets filename as mbtiles file which is opened and which will be
-func LoadServiceSet(user string) (*ServiceSet, error) {
-
-	home := cfgV.GetString("users.home")
-	if _, err := os.Stat(filepath.Join(home, user)); os.IsNotExist(err) {
-		// user path does not exist
-		log.Error(err)
-		return nil, err
-	}
+func LoadServiceSet() (*ServiceSet, error) {
 	s := &ServiceSet{
-		User:     user,
 		Styles:   make(map[string]*StyleService),
 		Fonts:    make(map[string]*FontService),
 		Tilesets: make(map[string]*MBTilesService),
 	}
-	tilesets := cfgV.GetString("users.tilesets")
-	styles := cfgV.GetString("users.styles")
-	fonts := cfgV.GetString("users.fonts")
-
-	tilesetsPath := filepath.Join(home, user, tilesets)
-	stylesPath := filepath.Join(home, user, styles)
-	fontsPath := filepath.Join(home, user, fonts)
-	s.ServeMBTiles(tilesetsPath)
-	s.ServeStyles(stylesPath)
-	s.ServeFonts(fontsPath)
+	tilesets := cfgV.GetString("assets.tilesets")
+	styles := cfgV.GetString("assets.styles")
+	fonts := cfgV.GetString("assets.fonts")
+	s.ServeMBTiles(tilesets)
+	s.ServeStyles(styles)
+	s.ServeFonts(fonts)
 	log.Infof("Load ServiceSet all successful")
 	return s, nil
 }

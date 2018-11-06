@@ -24,16 +24,10 @@ func InitConf(v *viper.Viper) {
 		realm="atlasmap"
 		key="salta-atad-6221"
 		timeOut="720h"
-		timeMax="2160h"
+		timeMax="72000h"
 		identityKey="id"
 		lookup="header:Authorization, query:token, cookie:Token"
 		headName="Bearer"
-
-	[password]
-		restExpiration = "24h"
-
-	[account]
-		verification = false
 
 	[attempts]
 		ip = 50
@@ -45,33 +39,7 @@ func InitConf(v *viper.Viper) {
 		port     = "5432"
 		user     = "postgres"
 		password = "postgres"
-		name   = "atlas"
-
-	[casbin]
-		config = "./auth.conf"
-		policy = "./auth.csv"
-
-	[smtp]
-		[smtp.from]
-			name = "atlasmap"
-			address = "atlasdatatech@gmail.com"
-
-		[smtp.credentials]
-			user = "atlasdatatech@gmail.com"
-			password = "Atlas1226"
-			host = "smtp.gmail.com"
-			ssl = true
-
-	[statics]
-		home = "assets/statics/"
-		templates = "assets/statics/templates/*"
-
-	[users]
-		home = "assets/users/"
-		fonts = "/fonts/"
-		styles = "/styles/"
-		tilesets ="/tilesets/"
-		datasets = "/datasets/"
+		name   = "lzyh"
 
 	`)
 
@@ -90,8 +58,6 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:Token")
 	v.SetDefault("jwt.headName", "Bearer")
 
-	v.SetDefault("account.verification", true)
-
 	v.SetDefault("attempts.ip", 99)
 	v.SetDefault("attempts.user", 9)
 	v.SetDefault("attempts.expiration", "-5m")
@@ -100,17 +66,14 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("db.port", "5432")
 	v.SetDefault("db.user", "postgres")
 	v.SetDefault("db.password", "postgres")
-	v.SetDefault("db.name", "test")
+	v.SetDefault("db.name", "postgres")
 
 	v.SetDefault("casbin.config", "./auth.conf")
-	v.SetDefault("casbin.policy", "./auth.csv")
 
-	v.SetDefault("smtp.from.name", "atlasmap")
-	v.SetDefault("smtp.from.address", "atlasdatatech@gmail.com")
-
-	v.SetDefault("smtp.credentials.user", "atlasdatatech@gmail.com")
-	v.SetDefault("smtp.credentials.password", "Atlas1226")
-	v.SetDefault("smtp.credentials.host", "smtp.gmail.com")
-	v.SetDefault("smtp.credentials.ssl", true)
+	v.SetDefault("assets.statics", "assets/statics/")
+	v.SetDefault("assets.styles", "assets/styles/")
+	v.SetDefault("assets.fonts", "assets/fonts/")
+	v.SetDefault("assets.tilesets", "assets/tilesets/")
+	v.SetDefault("assets.datasets", "assets/datasets/")
 
 }

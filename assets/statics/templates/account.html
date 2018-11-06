@@ -1,42 +1,39 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>{{.Title}}</title>
+    <title>AtlasMap</title>
 </head>
+
 <body>
-<h3>My Account</h3>
-<div>
-    <ul>
-        <li><a href="/studio/">Studio</a></li>
-    </ul>
-</div>
-<div>
-    <ul>
-        <li>Name:{{.Name}}</li>
-        <li>Email:{{.Email}}</li>
-        <li>ID:{{.ID}}</li>
-        <li>IsActive:{{.Active}}</li>
-        <li>JWT:{{.JWT}}</li>
-        <li>JWTExpires:{{.JWTExpire}}</li>
-        <li>Account:{{.AccountID}}</li>
-        {{if eq .Verified "no"}}
-        <li>IsVerified:<a href="/account/verification/">{{.Verified}}</a></li>
-        {{else}}
-        <li>IsVerified:{{.Verified}}</li>
-        {{end}}
-        <li>Phone:{{.Phone}}</li>
-    </ul>
-</div>
-<div>
-    <ul>
-        {{if eq .Verified "no"}}
-        <li><a href="/account/verification/">Verifiy Account</a></li>
-        {{end}}
-        <li><a href="/account/jwt/refresh/">Refresh Token</a></li>
-        <li><a href="/account/settings/password/">Change Password</a></li>
-    </ul>
-</div>
+    <h3>My Account</h3>
+    <div>
+        <ul>
+            <li>ID:{{.ID}}</li>
+            <li>Name:{{.Name}}</li>
+            <li>Role:{{.Role}}</li>
+            <li>Activation:{{.Activation}}</li>
+            <li>JWT:{{.JWT}}</li>
+            <li>Expires:{{.Expires}}</li>
+            <li>Phone:{{.Phone}}</li>
+            <li>Department:{{.Department}}</li>
+        </ul>
+    </div>
+    <div>
+        <ul>
+            <li><a href="/account/logout/">退出</a></li>
+            <li><a href="/account/refresh/">刷新Token</a></li>
+            <li><a href="/account/update/">更新信息</a></li>
+            <li><a href="/account/password/">更改密码</a></li>
+        </ul>
+    </div>
+    {{if eq .Name "root"}}
+    <div>
+        <ul>
+            <li><a href="/users/">获取用户列表</a></li>
+        </ul>
+    </div>
+    {{end}}
 </body>
+
 </html>
-
-

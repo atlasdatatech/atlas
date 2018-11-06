@@ -21,126 +21,14 @@ import (
 )
 
 func index(c *gin.Context) {
-	claim, err := authMid.GetClaimsFromJWT(c)
+	_, err := authMid.GetClaimsFromJWT(c)
 	if err != nil {
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"Title": "AtlasMap",
 			"Login": true,
 		})
 	}
-	log.Debug(claim)
 	c.Redirect(http.StatusFound, "/studio/")
-}
-
-func renderSignup(c *gin.Context) {
-	c.HTML(http.StatusOK, "signup.html", gin.H{
-		"Title": "AtlasMap",
-	})
-}
-
-func signup(c *gin.Context) {
-	res := NewRes()
-	var body struct {
-		Name     string `form:"name" binding:"required"`
-		Email    string `form:"email" binding:"required"`
-		Password string `form:"password" binding:"required"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, err)
-		return
-	}
-	// validate
-	if ok, err := validate(body.Name, body.Email, body.Password); !ok {
-		res.Fail(c, err)
-		return
-	}
-	user := User{}
-	if err := db.Where("name = ?", body.Name).Or("email = ?", body.Email).First(&user).Error; err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-		} else {
-			res.FailStr(c, "get user info error")
-			log.Errorf("signup, get user info: %s; user: %s", err, body.Name)
-			return
-		}
-	}
-	// duplicate UsernameCheck EmailCheck
-	if len(user.Name) != 0 {
-		if user.Name == body.Name || user.Email == body.Email {
-			res.FailStr(c, "name or email already taken")
-			return
-		}
-	}
-	// createUser
-	user.ID, _ = shortid.Generate()
-	user.Activation = "yes"
-	user.Name = body.Name
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	user.Password = string(hashedPassword)
-	user.Email = strings.ToLower(body.Email)
-	//No verification required
-	user.JWT, user.JWTExpires, err = authMid.TokenGenerator(&user)
-	if err != nil {
-		res.FailStr(c, "generate token error")
-		return
-	}
-	user.Search = []string{body.Name, body.Email}
-	// createAccount
-	account := Account{}
-	account.ID, _ = shortid.Generate()
-	user.AccountID = account.ID
-	account.UserID = user.ID
-	account.Search = []string{body.Name}
-	var verifyURL string
-	if cfgV.GetBool("account.verification") {
-		account.Verification = "no"
-		//Create a verification token
-		token := generateToken(21)
-		hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-		account.VerificationToken = string(hash)
-		verifyURL = "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
-	} else {
-		account.Verification = "yes"
-	}
-	// insertUser
-	err = db.Create(&user).Error
-	if err != nil {
-		res.FailStr(c, "create user error")
-		return
-	}
-	// insertAccount
-	err = db.Create(&account).Error
-	if err != nil {
-		res.FailStr(c, "create account error")
-		return
-	}
-	// sendWelcomeEmail
-	log.Debug("Loging verify url for debug: " + verifyURL)
-	go func() {
-		mailConf := MailConfig{}
-		mailConf.Data = gin.H{
-			"VerifyURL":    verifyURL,
-			"Verification": account.Verification,
-			"LoginURL":     "http://" + c.Request.Host + "/login/",
-			"Email":        body.Email,
-			"Name":         body.Name,
-		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
-		mailConf.Subject = "Your AtlasMap Account"
-		mailConf.ReplyTo = body.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/signup.html"
-
-		if err := mailConf.SendMail(); err != nil {
-			log.Errorf("signup, sending verify email: %s; user: %s", err, body.Name)
-		}
-	}()
-	createPaths(user.Name)
-
-	casEnf.LoadPolicy()
-	casEnf.AddGroupingPolicy(user.Name, "user_group")
-	casEnf.SavePolicy()
-
-	c.Redirect(http.StatusFound, "/")
 }
 
 func renderLogin(c *gin.Context) {
@@ -189,8 +77,8 @@ func login(c *gin.Context) {
 	}
 	// attemptLogin
 	user := User{}
-	if db.Where("name = ?", body.Name).Or("email = ?", body.Name).First(&user).RecordNotFound() {
-		res.FailStr(c, "check username or email")
+	if db.Where("name = ?", body.Name).First(&user).RecordNotFound() {
+		res.FailStr(c, "check user name")
 		return
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
@@ -202,7 +90,7 @@ func login(c *gin.Context) {
 	}
 	//Cookie
 	if authMid.SendCookie {
-		maxage := int(user.JWTExpires.Unix() - time.Now().Unix())
+		maxage := int(user.Expires.Unix() - time.Now().Unix())
 		c.SetCookie(
 			"Token",
 			user.JWT,
@@ -213,143 +101,12 @@ func login(c *gin.Context) {
 			authMid.CookieHTTPOnly,
 		)
 	}
-
-	//loading user service
-	userSet[user.Name], err = LoadServiceSet(user.Name)
-	if err != nil {
-		log.Errorf("login,load user service set: %s; user: %s ^^", err.Error(), user.Name)
-		res.FailStr(c, "check password")
-		return
-	}
-
-	c.Redirect(http.StatusFound, "/studio/")
-}
-
-func logout(c *gin.Context) {
-	c.SetCookie(
-		"Token",
-		"logout",
-		0,
-		"/",
-		authMid.CookieDomain,
-		authMid.SecureCookie,
-		authMid.CookieHTTPOnly,
-	)
-	c.Redirect(http.StatusFound, "/")
-}
-
-func renderForgot(c *gin.Context) {
-	c.HTML(http.StatusOK, "forgot.html", gin.H{
-		"Title": "AtlasMap",
+	c.JSON(http.StatusOK, gin.H{
+		"code":    http.StatusOK,
+		"token":   user.JWT,
+		"expire":  user.Expires.Format(time.RFC3339),
+		"message": "success",
 	})
-}
-
-func sendReset(c *gin.Context) {
-	res := NewRes()
-	var body struct {
-		Email    string `form:"email" binding:"required"`
-		Password string `form:"password"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, err)
-		return
-	}
-	if ok := rEmail.MatchString(body.Email); !ok {
-		res.FailStr(c, `email: invalid email`)
-		return
-	}
-	token := generateToken(21)
-	hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	user := User{}
-	if db.Where("email = ?", body.Email).First(&user).RecordNotFound() {
-		res.FailStr(c, `email: email doesn't exist`)
-		return
-	}
-
-	user.ResetPasswordToken = string(hash)
-	user.ResetPasswordExpires = time.Now().Add(cfgV.GetDuration("password.restExpiration"))
-
-	if err := db.Save(&user).Error; err != nil {
-		log.Errorf("sendReset,update reset password: %s; email: %s", err, body.Email)
-		res.FailStr(c, `update reset password error`)
-		return
-	}
-
-	resetURL := "http" + "://" + c.Request.Host + "/login/reset/" + body.Email + "/" + string(token) + "/"
-	log.Debug("loging reset url for debug: " + resetURL)
-	go func() {
-		mailConf := MailConfig{}
-		mailConf.Data = gin.H{
-			"ResetURL": resetURL,
-			"Name":     user.Name,
-		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
-		mailConf.Subject = "Your AtlasMap Account"
-		mailConf.ReplyTo = body.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/reset.html"
-
-		if err := mailConf.SendMail(); err != nil {
-			log.Errorf("sendReset,sending rest password email: %s; user: %s ^^", err.Error(), user.Name)
-		}
-	}()
-
-	res.Done(c, string(token))
-}
-
-func renderReset(c *gin.Context) {
-	c.HTML(http.StatusOK, "reset.html", gin.H{
-		"Title": "AtlasMap",
-		"Email": c.Param("email"),
-		"Token": c.Param("token"),
-	}) // can't handle /login/reset/:email:token
-}
-
-func resetPassword(c *gin.Context) {
-	res := NewRes()
-	var body struct {
-		Password string `form:"password" binding:"required"`
-		Confirm  string `form:"confirm" binding:"required"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, err)
-		return
-	}
-
-	if len(body.Password) == 0 || len(body.Confirm) == 0 {
-		res.FailStr(c, "password and confirm required")
-		return
-	}
-	if body.Password != body.Confirm {
-		res.FailStr(c, "passwords do not match")
-		return
-	}
-
-	user := User{}
-	err = db.Where("email = ? AND reset_password_expires > ?", c.Param("email"), time.Now()).First(&user).Error
-	if err != nil {
-		res.FailStr(c, "reset password token expired")
-		return
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(user.ResetPasswordToken), []byte(c.Param("token")))
-	if err != nil {
-		res.FailStr(c, "reset password token error")
-		return
-	}
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	user.Password = string(hashedPassword)
-	user.ResetPasswordExpires = time.Now() // after reset set token expi
-
-	if err := db.Save(&user).Error; err != nil {
-		log.Errorf("resetPassword,update password: %s; user: %s", err, user.Name)
-		res.FailStr(c, "update user password error: "+err.Error())
-		return
-	}
-	c.Redirect(http.StatusFound, "/login/")
-	// res.Done(c, "reset password successful")
-	return
 }
 
 func renderAccount(c *gin.Context) {
@@ -363,141 +120,183 @@ func renderAccount(c *gin.Context) {
 		}
 		return
 	}
-	account := &Account{}
-	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		log.Errorf("renderAccount, get account info: %s; user: %s", err, id)
-		res.FailStr(c, "get account error")
-		return
-	}
 
-	c.HTML(http.StatusOK, "account.html", gin.H{
-		"Title":     "AtlasMap",
-		"Name":      user.Name,
-		"Email":     user.Email,
-		"ID":        user.ID,
-		"Active":    user.Activation,
-		"JWT":       user.JWT,
-		"JWTExpire": user.JWTExpires.Format("2006-01-02 03:04:05 PM"),
-		"AccountID": account.ID,
-		"Verified":  account.Verification,
-		"Phone":     account.Phone,
-	})
+	c.HTML(http.StatusOK, "account.html", user)
 }
 
-func renderVerification(c *gin.Context) {
+func renderUpdateUser(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	user := &User{}
 	if err := db.Where("name = ?", id).First(&user).Error; err != nil {
-		res.Fail(c, err)
+		res.FailStr(c, fmt.Sprintf("renderAccount, get user info: %s; user: %s", err, id))
 		if !gorm.IsRecordNotFoundError(err) {
-			log.Errorf("renderVerification, get user info: %s; user: %s", err, id)
+			log.Errorf("renderAccount, get user info: %s; user: %s", err, id)
 		}
 		return
 	}
-	account := &Account{}
-	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		log.Errorf("renderVerification, get account info: %s; user: %s", err, id)
-		res.Fail(c, err)
-		return
-	}
 
-	if account.Verification == "yes" {
-		c.Redirect(http.StatusFound, "/account/")
-		return
-	}
-
-	if len(account.VerificationToken) > 0 {
-		c.HTML(http.StatusOK, "verify.html", gin.H{
-			"Title": "AtlasMap",
-			"Send":  true,
-			"Name":  user.Name,
-		})
-	}
+	c.HTML(http.StatusOK, "update.html", user)
 }
 
-func sendVerification(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	token := generateToken(21)
-	hash, _ := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
-	user := &User{}
-	if err := db.Where("name = ?", id).First(&user).Error; err != nil {
-		res.Fail(c, err)
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Errorf("sendVerification, get user info: %s; user: %s", err, id)
-		}
-		return
-	}
-
-	if err := db.Model(&Account{}).Where("id = ?", user.AccountID).Update(Account{VerificationToken: string(hash)}).Error; err != nil {
-		log.Errorf("sendVerification, get account info: %s; user: %s", err, id)
-		res.Fail(c, err)
-		return
-	}
-
-	verifyURL := "http" + "://" + c.Request.Host + "/account/verification/" + user.Name + "/" + string(token) + "/"
-	log.Println("loging verify url for debug: " + verifyURL)
-	go func() {
-
-		mailConf := MailConfig{}
-		mailConf.Data = gin.H{
-			"VerifyURL": verifyURL,
-		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
-		mailConf.Subject = "Your AtlasMap Account"
-		mailConf.ReplyTo = user.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/verification.html"
-
-		if err := mailConf.SendMail(); err != nil {
-			log.Errorf("sendVerification, sending verification email: %s; user: %s", err, id)
-		}
-	}()
-
-	res.Done(c, "A verification email has been sent")
+func renderChangePassword(c *gin.Context) {
+	c.HTML(http.StatusOK, "change.html", gin.H{
+		"Title": "AtlasMap",
+	}) // can't handle /login/reset/:email:token
 }
 
-func verify(c *gin.Context) {
+func createUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("user")
+	var body struct {
+		Name       string `form:"name" json:"name" binding:"required"`
+		Password   string `form:"password" json:"password" binding:"required"`
+		Role       string `form:"role" json:"role"`
+		Phone      string `form:"phone" json:"phone"`
+		Department string `form:"department" json:"department"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	// validate
+	if ok, err := validate(body.Name, body.Password); !ok {
+		res.Fail(c, err)
+		return
+	}
+	user := User{}
+	if err := db.Where("name = ?", body.Name).First(&user).Error; err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+		} else {
+			res.FailStr(c, "get user info error")
+			log.Errorf("createUser, get user info: %s; user: %s", err, body.Name)
+			return
+		}
+	}
+	// duplicate UsernameCheck EmailCheck
+	if len(user.Name) != 0 {
+		if user.Name == body.Name {
+			res.FailStr(c, "name already taken")
+			return
+		}
+	}
+	// createUser
+	user.ID, _ = shortid.Generate()
+	user.Name = body.Name
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	user.Password = string(hashedPassword)
+	user.Role = body.Role
+	user.Phone = body.Phone
+	user.Department = body.Department
+	//No verification required
+	user.JWT, user.Expires, err = authMid.TokenGenerator(&user)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	user.Activation = "yes"
+	user.Search = []string{body.Name, body.Phone, body.Department}
+	// insertUser
+	err = db.Create(&user).Error
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+
+	// casEnf.LoadPolicy()
+	if strings.Compare(body.Role, "admin") == 0 {
+		casEnf.AddGroupingPolicy(user.Name, "admin_group")
+	} else {
+		casEnf.AddGroupingPolicy(user.Name, "user_group")
+	}
+	// casEnf.SavePolicy()
+
+	res.Done(c, "done")
+}
+
+func listUsers(c *gin.Context) {
+	// 获取所有记录
+	var users []User
+	db.Find(&users)
+	c.JSON(http.StatusOK, users)
+}
+
+func readUser(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("id")
+	if name == "" {
+		name = c.GetString(identityKey)
+	}
 	user := &User{}
 	if err := db.Where("name = ?", name).First(&user).Error; err != nil {
-		res.Fail(c, err)
+		res.FailStr(c, fmt.Sprintf("readUser, get user info: %s; user: %s", err, name))
 		if !gorm.IsRecordNotFoundError(err) {
-			log.Errorf("verify, get user info: %s; user: %s", err, name)
+			log.Errorf("readUser, get user info: %s; user: %s", err, name)
 		}
 		return
 	}
-	account := &Account{}
-	if err := db.Where("id = ?", user.AccountID).First(&account).Error; err != nil {
-		log.Errorf("verify, get account info: %s; user: %s", err, name)
+	c.JSON(http.StatusOK, user)
+}
+
+func updateUser(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("id")
+	if name == "" {
+		name = c.GetString(identityKey)
+	}
+	var body struct {
+		Phone      string `form:"phone" json:"phone"`
+		Department string `form:"department" json:"department"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	search := []string{name, body.Phone, body.Department} //更新搜索字段
+	err = db.Model(&User{}).Where("name = ?", name).Update(User{Phone: body.Phone, Department: body.Department, Search: search}).Error
+	if err != nil {
+		log.Errorf("updateUser, update user info: %s; user: %s", err, name)
+		res.Fail(c, err)
+		return
+	}
+	res.Done(c, "done")
+}
+
+func deleteUser(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if id == "roo" {
+		res.FailStr(c, "unable to delete root")
+		return
+	}
+	//更新角色
+	casEnf.RemoveGroupingPolicy(id, "admin_group")
+	casEnf.RemoveGroupingPolicy(id, "user_group")
+
+	err := db.Where("name = ?", id).Delete(&User{}).Error
+	if err != nil {
+		log.Errorf("deleteUser, delete user : %s; user: %s", err, id)
 		res.Fail(c, err)
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(account.VerificationToken), []byte(c.Param("token"))); err != nil {
-		res.Fail(c, err)
-		return
-	}
-
-	if err := db.Model(&Account{}).Where("id = ?", user.AccountID).Updates(Account{VerificationToken: "null", Verification: "yes"}).Error; err != nil {
-		log.Errorf("verify,update verification: %s; user: %s ^^", err, name)
-		res.Fail(c, err)
-		return
-	}
-	c.Redirect(http.StatusFound, "/account/")
+	res.Done(c, "done")
 }
 
 func jwtRefresh(c *gin.Context) {
-	id := c.GetString(identityKey)
 	res := NewRes()
+	id := c.Param("id")
+	if id == "" {
+		id = c.GetString(identityKey)
+	}
 	tokenString, expire, err := authMid.RefreshToken(c)
 	if err != nil {
 		log.Errorf("jwtRefresh, refresh token: %s; user: %s", err, id)
 		res.Fail(c, err)
 		return
 	}
-	if err := db.Model(&User{}).Where("name = ?", id).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
+	if err := db.Model(&User{}).Where("name = ?", id).Update(User{JWT: tokenString, Expires: expire}).Error; err != nil {
 		log.Errorf("jwtRefresh, update jwt: %s; user: %s", err, id)
 		res.Fail(c, err)
 		return
@@ -516,18 +315,16 @@ func jwtRefresh(c *gin.Context) {
 
 }
 
-func renderChangePassword(c *gin.Context) {
-	c.HTML(http.StatusOK, "change.html", gin.H{
-		"Title": "AtlasMap",
-	}) // can't handle /login/reset/:email:token
-}
-
 func changePassword(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
+	id := c.Param("id")
+	if id == "" {
+		id = c.GetString(identityKey)
+	}
+
 	var body struct {
-		Confirm  string `form:"confirm" binding:"required"`
-		Password string `form:"password" binding:"required"`
+		Password string `form:"password" binding:"required,gt=3"`
+		Confirm  string `form:"confirm" binding:"required,eqfield=Password"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -535,15 +332,6 @@ func changePassword(c *gin.Context) {
 		return
 	}
 
-	// validate
-	if len(body.Password) == 0 || len(body.Confirm) == 0 {
-		res.FailStr(c, `password and confirm required and can't empty`)
-		return
-	}
-	if body.Password != body.Confirm {
-		res.FailStr(c, `passwords do not match`)
-		return
-	}
 	// user.setPassword(body.Password)
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	err = db.Model(&User{}).Where("name = ?", id).Update(User{Password: string(hashedPassword)}).Error
@@ -552,38 +340,61 @@ func changePassword(c *gin.Context) {
 		res.Fail(c, err)
 		return
 	}
-	res.Done(c, "change pass world success")
+	res.Done(c, "done")
+}
+
+func changeRole(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	var body struct {
+		Role string `form:"role" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	//清空角色
+	casEnf.RemoveGroupingPolicy(id, "admin_group")
+	casEnf.RemoveGroupingPolicy(id, "user_group")
+
+	err = db.Model(&User{}).Where("name = ?", id).Update(User{Role: body.Role}).Error
+	if err != nil {
+		log.Errorf("changeRole, update user role: %s; user: %s", err, id)
+		res.Fail(c, err)
+		return
+	}
+	//更新角色
+	if body.Role == "admin" {
+		casEnf.AddGroupingPolicy(id, "admin_group")
+	} else {
+		casEnf.AddGroupingPolicy(id, "user_group")
+	}
+
+	res.Done(c, "done")
+}
+
+func logout(c *gin.Context) {
+	res := NewRes()
+	c.SetCookie(
+		"Token",
+		"",
+		0,
+		"/",
+		authMid.CookieDomain,
+		authMid.SecureCookie,
+		authMid.CookieHTTPOnly,
+	)
+	res.Done(c, "success")
 }
 
 func studioIndex(c *gin.Context) {
 	//public
-	res := NewRes()
-	id := c.GetString(identityKey) //for user privite tiles
-	us, ok := userSet[id]
-	if !ok {
-		log.Errorf("studio, user's service set not exist; user: %s", id)
-		c.Redirect(http.StatusFound, "/login/")
-		res.FailStr(c, fmt.Sprintf("user's service set not found; user: %s", id))
-		return
-	}
-
 	c.HTML(http.StatusOK, "index.html", gin.H{
 		"Title":    "AtlasMap",
 		"Login":    false,
-		"User":     id,
-		"Styles":   us.Styles,
-		"Tilesets": us.Tilesets,
-	})
-}
-
-func studioCreater(c *gin.Context) {
-	//public
-	user := c.Param("user")
-	c.HTML(http.StatusOK, "creater.html", gin.H{
-		"Title":    "Creater",
-		"User":     user,
-		"Styles":   userSet[pubUser].Styles,
-		"Tilesets": userSet[pubUser].Tilesets,
+		"Styles":   pubSet.Styles,
+		"Tilesets": pubSet.Tilesets,
 	})
 }
 
@@ -595,92 +406,55 @@ func studioEditer(c *gin.Context) {
 	c.HTML(http.StatusOK, "editor.html", gin.H{
 		"Title":    "Creater",
 		"User":     user,
-		"Styles":   userSet[pubUser].Styles,
-		"Tilesets": userSet[pubUser].Tilesets,
+		"Styles":   pubSet.Styles,
+		"Tilesets": pubSet.Tilesets,
 	})
-}
-
-//GetStyleService get styleservice
-func GetStyleService(c *gin.Context) (*StyleService, error) {
-	id := c.GetString(identityKey)
-	user := c.Param("user")
-	if id != user && !casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method) {
-		return nil, fmt.Errorf("user: %s,url: %s,method: %s,auth: %v ^", id, c.Request.URL.String(), c.Request.Method, false)
-	}
-
-	us, ok := userSet[user]
-	if !ok {
-		var err error
-		us, err = LoadServiceSet(user)
-		if err != nil {
-			return nil, fmt.Errorf("user's service set not found and load err")
-		}
-		userSet[user] = us
-	}
-	sid := c.Param("sid")
-	style, ok := us.Styles[sid]
-	if !ok {
-		return nil, fmt.Errorf("style id(%s) not exist in the service", sid)
-	}
-	return style, nil
 }
 
 //listStyles list user style
 func listStyles(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	us, ok := userSet[id]
-	if !ok {
-		log.Errorf(`listStyles, user's service set not found; user: %s`, id)
-		res.FailStr(c, fmt.Sprintf("user's service set not found %s", id))
-		return
-	}
-	c.JSON(http.StatusOK, us.Styles)
+	// id := c.GetString(identityKey)
+	c.JSON(http.StatusOK, pubSet.Styles)
 }
 
 func renderStyleUpload(c *gin.Context) {
-	id := c.GetString(identityKey)
 	c.HTML(http.StatusOK, "upload-s.html", gin.H{
 		"Title": "AtlasMap",
-		"User":  id,
 	})
 }
 
-//createStyle create a style
-func createStyle(c *gin.Context) {
+func renderSpriteUpload(c *gin.Context) {
+	c.HTML(http.StatusOK, "upload-ss.html", gin.H{
+		"Title": "AtlasMap",
+		"sid":   c.Param("sid"),
+	})
+}
+
+//uploadStyle create a style
+func uploadStyle(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`createStyle, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`createStyle, get form: %s; user: %s`, err, id))
+		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadStyle, get form: %s; user: %s`, err, id))
 		return
 	}
 
-	home := cfgV.GetString("users.home")
-	styles := cfgV.GetString("users.styles")
+	styles := cfgV.GetString("assets.styles")
+	name := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
 	sid, _ := shortid.Generate()
-	// sid = sid + ".json"//also delete the ext
-	dst := filepath.Join(home, id, styles, sid)
+	sid = name + "." + sid
+	dst := filepath.Join(styles, sid, "style.json")
 	fmt.Println(dst)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`createStyle, upload file: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`createStyle, upload file: %s; user: %s`, err, id))
+		log.Errorf(`uploadStyle, upload file: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadStyle, upload file: %s; user: %s`, err, id))
 		return
 	}
-
-	styleBuf, err := ioutil.ReadFile(dst)
-	out := make(map[string]interface{})
-	json.Unmarshal(styleBuf, &out)
-	out["id"] = sid
-	out["created"] = time.Now().Format("2006-01-02 03:04:05 PM")
-	out["modified"] = time.Now().Format("2006-01-02 03:04:05 PM")
-	out["owner"] = id
-	newfile, err := json.Marshal(out)
-	ioutil.WriteFile(dst, newfile, os.ModePerm)
-	c.JSON(http.StatusOK, &out)
+	res.Done(c, "done")
 }
 
 //updateStyle create a style
@@ -688,12 +462,15 @@ func updateStyle(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	log.Debug("updateStyle---------", id)
-	style, err := GetStyleService(c)
-	if err != nil {
-		log.Errorf("updateStyle, error: %s; user: %s ^^", err, id)
-		res.Fail(c, err)
+
+	sid := c.Param("sid")
+	style, ok := pubSet.Styles[sid]
+	if !ok {
+		log.Errorf("style id(%s) not exist in the service", sid)
+		res.FailStr(c, "style not exist in the service")
 		return
 	}
+
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
@@ -736,11 +513,11 @@ func saveStyle(c *gin.Context) {
 //getStyle get user style by id
 func getStyle(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
-	style, err := GetStyleService(c)
-	if err != nil {
-		log.Errorf("getStyle, error: %s; user: %s ^^", err, id)
-		res.Fail(c, err)
+	sid := c.Param("sid")
+	style, ok := pubSet.Styles[sid]
+	if !ok {
+		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+		res.FailStr(c, "style not exist in the service")
 		return
 	}
 
@@ -789,14 +566,15 @@ func getStyle(c *gin.Context) {
 func getSprite(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	style, err := GetStyleService(c)
-	if err != nil {
-		log.Errorf("getSprite, error: %s; user: %s ^^", err, id)
-		res.Fail(c, err)
+	sid := c.Param("sid")
+	style, ok := pubSet.Styles[sid]
+	if !ok {
+		log.Errorf("getSprite, style not exist in the service, sid: %s ^^", sid)
+		res.FailStr(c, "style not exist in the service")
 		return
 	}
-
-	sprite := c.Param("sprite")
+	sprite := c.Param("fmt")
+	sprite = "sprite" + sprite
 	spritePat := `^sprite(@[2]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Errorf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id)
@@ -822,35 +600,57 @@ func getSprite(c *gin.Context) {
 	c.Writer.Write(file)
 }
 
+func uploadSprite(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	sid := c.Param("sid")
+
+	// Multipart form
+	form, err := c.MultipartForm()
+	if err != nil {
+		log.Errorf(`uploadSprite, get form: %s; user: %s`, err, id)
+		c.String(http.StatusBadRequest, fmt.Sprintf("get form err: %s", err.Error()))
+		// res.FailStr(c, fmt.Sprintf(`uploadSprite, get form: %s; user: %s`, err, id))
+		return
+	}
+
+	styles := cfgV.GetString("assets.styles")
+
+	files := form.File["files"]
+	for _, file := range files {
+		dst := filepath.Join(styles, sid, file.Filename)
+		if err := c.SaveUploadedFile(file, dst); err != nil {
+			log.Errorf(`uploadSprite, upload file: %s; user: %s`, err, id)
+			// res.FailStr(c, fmt.Sprintf(`uploadSprite, upload file: %s; user: %s`, err, id))
+			c.String(http.StatusBadRequest, fmt.Sprintf("upload file err: %s", err.Error()))
+			return
+		}
+	}
+
+	res.Done(c, "done")
+}
+
 //viewStyle load style map
 func viewStyle(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
-	_, err := GetStyleService(c)
-	if err != nil {
-		log.Errorf("viewStyle, error: %s; user: %s ^^", err, id)
-		res.Fail(c, err)
+	sid := c.Param("sid")
+	_, ok := pubSet.Styles[sid]
+	if !ok {
+		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)
+		res.FailStr(c, "style not exist in the service")
 		return
 	}
-	styleID := c.Param("sid")
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
 		"Title": "Viewer",
-		"ID":    styleID,
+		"ID":    sid,
 		"URL":   strings.TrimSuffix(c.Request.URL.Path, "/"),
 	})
 }
 
 //listTilesets list user's tilesets
 func listTilesets(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	us, ok := userSet[id]
-	if !ok {
-		log.Errorf(`listTilesets, user's service set not found; user: %s`, id)
-		res.FailStr(c, fmt.Sprintf("user's service set not found %s", id))
-		return
-	}
-	c.JSON(http.StatusOK, us.Tilesets)
+	// id := c.GetString(identityKey)
+	c.JSON(http.StatusOK, pubSet.Tilesets)
 }
 
 func renderTilesetsUpload(c *gin.Context) {
@@ -861,28 +661,26 @@ func renderTilesetsUpload(c *gin.Context) {
 	})
 }
 
-//listTilesets list user's tilesets
-func createTileset(c *gin.Context) {
+//uploadTileset list user's tilesets
+func uploadTileset(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`createTileset, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`createTileset, get form: %s; user: %s`, err, id))
+		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadTileset, get form: %s; user: %s`, err, id))
 		return
 	}
-	home := cfgV.GetString("users.home")
-	tilesets := cfgV.GetString("users.tilesets")
+	tilesets := cfgV.GetString("assets.tilesets")
 	tid, _ := shortid.Generate()
 	name := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
 	tid = name + "." + tid
-	dst := filepath.Join(home, id, tilesets, tid)
-	fmt.Println(dst)
+	dst := filepath.Join(tilesets, tid)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`createTileset, upload file: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`createTileset, upload file: %s; user: %s`, err, id))
+		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
 		return
 	}
 
@@ -891,45 +689,21 @@ func createTileset(c *gin.Context) {
 	})
 }
 
-//GetTilesetService get from context
-func GetTilesetService(c *gin.Context) (*MBTilesService, error) {
-	id := c.GetString(identityKey)
-	user := c.Param("user")
-	if id != user && !casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method) {
-		return nil, fmt.Errorf("user: %s,url: %s,method: %s,auth: %v ^", id, c.Request.URL.String(), c.Request.Method, false)
-	}
-	us, ok := userSet[user]
-	if !ok {
-		var err error
-		us, err = LoadServiceSet(user)
-		if err != nil {
-			return nil, fmt.Errorf("user's service set not found and load err")
-		}
-		userSet[user] = us
-	}
-	tid := c.Param("tid")
-	tileService, ok := us.Tilesets[tid]
-	if !ok {
-		return nil, fmt.Errorf("tilesets id(%s) not exist in the service", tid)
-	}
-	return tileService, nil
-}
-
 //getTilejson get tilejson
 func getTilejson(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	tid := c.Param("tid")
-	tileServie, err := GetTilesetService(c)
-	if err != nil {
-		log.Errorf("getTilejson, error: %s; user: %s", err, id)
-		res.Fail(c, err)
+	tileService, ok := pubSet.Tilesets[tid]
+	if !ok {
+		log.Errorf("tilesets id(%s) not exist in the service", tid)
+		res.FailStr(c, "tilesets not exist in the service")
 		return
 	}
 
 	url := strings.Split(c.Request.URL.Path, ".")[0]
-	url = fmt.Sprintf("%s%s", userSet[pubUser].rootURL(c.Request), url) //need use user own service set
-	tileset := tileServie.Mbtiles
+	url = fmt.Sprintf("%s%s", pubSet.rootURL(c.Request), url) //need use user own service set
+	tileset := tileService.Mbtiles
 	imgFormat := tileset.TileFormatString()
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
@@ -973,12 +747,11 @@ func getTilejson(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
 	tid := c.Param("tid")
-	tileService, err := GetTilesetService(c)
-	if err != nil {
-		log.Errorf("viewTile, error: %s; user: %s", err, id)
-		res.Fail(c, err)
+	tileService, ok := pubSet.Tilesets[tid]
+	if !ok {
+		log.Errorf("tilesets id(%s) not exist in the service", tid)
+		res.FailStr(c, "tilesets not exist in the service")
 		return
 	}
 
@@ -996,16 +769,15 @@ func getTile(c *gin.Context) {
 	pcs := strings.Split(c.Request.URL.Path[1:], "/")
 	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
 	size := len(pcs)
-	if size < 6 || pcs[5] == "" {
+	if size < 5 || pcs[4] == "" {
 		res.FailStr(c, "request path is too short")
 		return
 	}
-	id := pcs[2]
-
-	tileService, err := GetTilesetService(c) //need to optimize
-	if err != nil {
-		log.Errorf("getTile, error: %s; user: %s", err, id)
-		res.Fail(c, err)
+	tid := c.Param("tid")
+	tileService, ok := pubSet.Tilesets[tid]
+	if !ok {
+		log.Errorf("tilesets id(%s) not exist in the service", tid)
+		res.FailStr(c, "tilesets not exist in the service")
 		return
 	}
 
@@ -1076,7 +848,7 @@ func getTile(c *gin.Context) {
 }
 
 func listFonts(c *gin.Context) {
-	c.JSON(http.StatusOK, userSet[pubUser].Fonts)
+	c.JSON(http.StatusOK, pubSet.Fonts)
 }
 
 //getGlyphs get glyph pbf
@@ -1095,7 +867,7 @@ func getGlyphs(c *gin.Context) {
 	//should init first
 	var fontsPath string
 	var callbacks []string
-	for k, v := range userSet[pubUser].Fonts {
+	for k, v := range pubSet.Fonts {
 		callbacks = append(callbacks, k)
 		fontsPath = v.URL
 	}

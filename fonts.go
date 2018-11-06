@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/atlasdatatech/atlasmap/glyphs"
+	"github.com/atlasdatatech/lzyh/glyphs"
 	log "github.com/sirupsen/logrus"
 )
 
