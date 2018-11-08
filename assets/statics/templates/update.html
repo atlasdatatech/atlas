@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>AtlasMap</title>
+</head>
+
+<body>
+    <h3>更新信息</h3>
+
+    <form id="form" action="/account/update/" method="post">
+        <div>
+            <label>Name:</label>
+            <input type="text" name="name" value="{{.Name}}" readonly /><span></span>
+        </div>
+        <div>
+            <label>Phone:</label>
+            <input type="text" name="phone" value="{{.Phone}}" /><span></span>
+        </div>
+        <div>
+            <label>Department:</label>
+            <input type="text" name="department" value="{{.Department}}" /><span></span>
+        </div>
+        <div>
+            <input type="submit" value="更新信息"></input>
+        </div>
+    </form>
+</body>
+
+</html>

@@ -86,8 +86,8 @@ type MBTiles struct {
 	hasUTFGridData     bool       // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
 }
 
-// MBTilesService represents an mbtiles file connection.
-type MBTilesService struct {
+// TileService represents an mbtiles file connection.
+type TileService struct {
 	ID      string
 	URL     string // tile format: PNG, JPG, PBF, WEBP
 	Hash    string
@@ -96,10 +96,10 @@ type MBTilesService struct {
 	Mbtiles *MBTiles // database connection for mbtiles file
 }
 
-// CreateMBTilesService creates a new StyleService instance.
+// CreateTileService creates a new StyleService instance.
 // Connection is closed by runtime on application termination or by calling
 // its Close() method.
-func CreateMBTilesService(filePathName string, tileID string) (*MBTilesService, error) {
+func CreateTileService(filePathName string, tileID string) (*TileService, error) {
 
 	if filePathName == "" || tileID == "" {
 		return nil, fmt.Errorf("path parameter may not be empty")
@@ -109,7 +109,7 @@ func CreateMBTilesService(filePathName string, tileID string) (*MBTilesService, 
 		return nil, fmt.Errorf("could not open mbtiles file %q: %v", filePathName, err)
 	}
 
-	out := &MBTilesService{
+	out := &TileService{
 		ID:      tileID,
 		URL:     filePathName, //should not add / at the end
 		Type:    mbtiles.TileFormatString(),
@@ -127,7 +127,7 @@ func (s *ServiceSet) AddMBTile(fileName string, tileID string) error {
 	if tileID == "" || "" == fileName {
 		return fmt.Errorf("path parameter may not be empty")
 	}
-	ts, err := CreateMBTilesService(fileName, tileID)
+	ts, err := CreateTileService(fileName, tileID)
 	if err != nil {
 		return fmt.Errorf("could not open mbtiles file %q: %v", fileName, err)
 	}

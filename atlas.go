@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"path/filepath"
 
 	"github.com/gin-contrib/cors"
@@ -56,6 +55,8 @@ func main() {
 	} else {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{})
+		//业务数据表
+		pg.AutoMigrate(&Bank{}, &Money{}, &Other{}, &Basepoi{}, &Residential{}, &Business{}, &Organization{})
 		db = pg
 	}
 	defer pg.Close()
@@ -66,7 +67,14 @@ func main() {
 	// casEnf.LoadPolicy()
 	//初始化添加默认规则,三条策略可修改
 	casEnf.AddPolicy("admin_group", "/account/*", "(GET)|(POST)|(PUT)")
+	casEnf.AddPolicy("admin_group", "/studio/*", "(GET)|(POST)")
+	casEnf.AddPolicy("admin_group", "/styles/*", "(GET)|(POST)|(PUT)")
+	casEnf.AddPolicy("admin_group", "/tilesets/*", "(GET)|(POST)")
+	casEnf.AddPolicy("admin_group", "/datasets/*", "(GET)|(POST)|(PUT)")
 	casEnf.AddPolicy("user_group", "/account/*", "GET")
+	casEnf.AddPolicy("user_group", "/styles/*", "GET")
+	casEnf.AddPolicy("user_group", "/tilesets/*", "GET")
+	casEnf.AddPolicy("user_group", "/datasets/*", "GET")
 	// casEnf.SavePolicy()
 
 	authMid, err = jwt.New(JWTMiddleware())
@@ -125,21 +133,21 @@ func bindRoutes(r *gin.Engine) {
 		account.POST("/password/", changePassword)
 	}
 
-	autoUser := func(c *gin.Context) {
-		claims := jwt.ExtractClaims(c)
-		user, ok := claims[identityKey]
-		if !ok {
-			log.Errorf("can't find %s", user)
-			c.Redirect(http.StatusFound, "/login/")
-		} else {
-			c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
-			r.HandleContext(c)
-		}
-	}
+	// autoUser := func(c *gin.Context) {
+	// 	claims := jwt.ExtractClaims(c)
+	// 	user, ok := claims[identityKey]
+	// 	if !ok {
+	// 		log.Errorf("can't find %s", user)
+	// 		c.Redirect(http.StatusFound, "/login/")
+	// 	} else {
+	// 		c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
+	// 		r.HandleContext(c)
+	// 	}
+	// }
 
 	//studio
 	studio := r.Group("/studio")
-	// studio.Use(authMid.MiddlewareFunc())
+	studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -147,10 +155,11 @@ func bindRoutes(r *gin.Engine) {
 		studio.GET("/styles/upload/", renderStyleUpload)
 		studio.GET("/styles/upload/:sid/", renderSpriteUpload)
 		studio.GET("/tilesets/upload/", renderTilesetsUpload)
+		studio.GET("/datasets/upload/", renderDatasetsUpload)
 	}
 
 	styles := r.Group("/styles")
-	// styles.Use(authMid.MiddlewareFunc())
+	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -166,12 +175,12 @@ func bindRoutes(r *gin.Engine) {
 	// fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
-		fonts.GET("/", listFonts)                     //get font
-		fonts.GET("/:fontstack/:rangepbf", getGlyphs) //get glyph pbfs
+		fonts.GET("/", listFonts)                  //get font
+		fonts.GET("/:fontstack/:range", getGlyphs) //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")
-	// tilesets.Use(authMid.MiddlewareFunc())
+	tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -181,11 +190,11 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
 	datasets := r.Group("/datasets")
-	// datasets.Use(authMid.MiddlewareFunc())
+	datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
-		datasets.GET("/", autoUser)
-		// datasets.GET("/:user/", listDatasets)
+		datasets.GET("/", listDatasets)
+		datasets.POST("/", uploadDataset)
 		// datasets.GET("/:user/:did/", getDataset)
 		// datasets.GET("/:user/:did/view/", defaultDraw)
 		// datasets.GET("/:user/:did/edit/", defaultDraw)

@@ -446,7 +446,9 @@ func uploadStyle(c *gin.Context) {
 	name := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
 	sid, _ := shortid.Generate()
 	sid = name + "." + sid
-	dst := filepath.Join(styles, sid, "style.json")
+	dst := filepath.Join(styles, sid)
+	os.MkdirAll(dst, os.ModePerm)
+	dst = filepath.Join(dst, "style.json")
 	fmt.Println(dst)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
@@ -454,6 +456,10 @@ func uploadStyle(c *gin.Context) {
 		res.FailStr(c, fmt.Sprintf(`uploadStyle, upload file: %s; user: %s`, err, id))
 		return
 	}
+
+	//更新服务
+	pubSet.AddStyle(dst, sid)
+
 	res.Done(c, "done")
 }
 
@@ -673,15 +679,22 @@ func uploadTileset(c *gin.Context) {
 		return
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
+	ext := filepath.Ext(file.Filename)
+	name := strings.TrimSuffix(file.Filename, ext)
 	tid, _ := shortid.Generate()
-	name := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
 	tid = name + "." + tid
-	dst := filepath.Join(tilesets, tid)
+	dst := filepath.Join(tilesets, tid+ext)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
 		res.FailStr(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
 		return
+	}
+
+	//更新服务
+	err = pubSet.AddMBTile(dst, tid)
+	if err != nil {
+		log.Errorf(`uploadTileset, add mbtiles: %s ^^`, err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -847,6 +860,67 @@ func getTile(c *gin.Context) {
 	c.Writer.Write(data)
 }
 
+func renderDatasetsUpload(c *gin.Context) {
+	id := c.GetString(identityKey)
+	c.HTML(http.StatusOK, "upload-d.html", gin.H{
+		"Title": "AtlasMap",
+		"User":  id,
+	})
+}
+
+func listDatasets(c *gin.Context) {
+	c.JSON(http.StatusOK, pubSet.Datasets)
+}
+
+func uploadDataset(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	// style source
+	file, err := c.FormFile("banks")
+	if err != nil {
+		log.Errorf(`uploadDataset, get form: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadDataset, get form: %s; user: %s`, err, id))
+		return
+	}
+	tilesets := cfgV.GetString("assets.datasets")
+	ext := filepath.Ext(file.Filename)
+	name := strings.TrimSuffix(file.Filename, ext)
+	did, _ := shortid.Generate()
+	did = name + "." + did
+	dst := filepath.Join(tilesets, did+ext)
+
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
+		res.FailStr(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
+		return
+	}
+	absDst, _ := filepath.Abs(dst)
+	//数据入库
+	// bank := Bank{}
+	// db.Create(&Bank{})
+	sql := fmt.Sprintf(`COPY banks(num,name,state,region,type,admin,manager,house,area,term,time,staff,class,lat,lng) FROM '%s' DELIMITERS ',' CSV HEADER;`, absDst)
+	log.Debug(sql)
+	result := db.Exec(sql)
+	if result.Error != nil {
+		log.Errorf(result.Error.Error())
+	}
+	sql = `UPDATE banks	SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326);`
+	result = db.Exec(sql)
+	if result.Error != nil {
+		log.Errorf(result.Error.Error())
+	}
+	//更新元数据
+	pubSet.updateMeta(name, did)
+	//更新服务
+	err = pubSet.AddDataset(dst, did)
+	if err != nil {
+		log.Errorf(`uploadTileset, add mbtiles: %s ^^`, err)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"did": did,
+	})
+}
+
 func listFonts(c *gin.Context) {
 	c.JSON(http.StatusOK, pubSet.Fonts)
 }
@@ -856,7 +930,7 @@ func getGlyphs(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	fonts := c.Param("fontstack")
-	rgPBF := c.Param("rangepbf")
+	rgPBF := c.Param("range")
 	rgPBF = strings.ToLower(rgPBF)
 	rgPBFPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {

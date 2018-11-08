@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>AtlasMap</title>
+</head>
+
+<body>
+    <h1>上传数据</h1>
+    <ul>
+        <li>
+            <form action="/datasets/" method="post" enctype="multipart/form-data">
+                本行机构: <input type="file" name="banks"><br>
+                日均存款: <input type="file" name="cunkuan"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+                他行机构: <input type="file" name="others"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+                基础需求点: <input type="file" name="basepoi"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+                住宅: <input type="file" name="xiaoqu"><br>
+                商业: <input type="file" name="shangye"><br>
+                单位: <input type="file" name="danwei"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+                立地条件: <input type="file" name="m1"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+                宏观数据: <input type="file" name="m5"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+    </ul>
+</body>

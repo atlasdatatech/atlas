@@ -19,7 +19,8 @@ type ServiceSet struct {
 	Path     string
 	Styles   map[string]*StyleService
 	Fonts    map[string]*FontService
-	Tilesets map[string]*MBTilesService
+	Tilesets map[string]*TileService
+	Datasets map[string]*DataService
 }
 
 // LoadServiceSet interprets filename as mbtiles file which is opened and which will be
@@ -27,12 +28,15 @@ func LoadServiceSet() (*ServiceSet, error) {
 	s := &ServiceSet{
 		Styles:   make(map[string]*StyleService),
 		Fonts:    make(map[string]*FontService),
-		Tilesets: make(map[string]*MBTilesService),
+		Tilesets: make(map[string]*TileService),
+		Datasets: make(map[string]*DataService),
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
+	datasets := cfgV.GetString("assets.datasets")
 	styles := cfgV.GetString("assets.styles")
 	fonts := cfgV.GetString("assets.fonts")
 	s.ServeMBTiles(tilesets)
+	s.ServeDatasets(datasets)
 	s.ServeStyles(styles)
 	s.ServeFonts(fonts)
 	log.Infof("Load ServiceSet all successful")
