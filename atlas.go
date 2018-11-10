@@ -67,7 +67,9 @@ func main() {
 	// casEnf.LoadPolicy()
 	//初始化添加默认规则,三条策略可修改
 	casEnf.AddPolicy("admin_group", "/account/*", "(GET)|(POST)|(PUT)")
-	casEnf.AddPolicy("admin_group", "/studio/*", "(GET)|(POST)")
+	casEnf.AddNamedGroupingPolicy("g2", "/studio/", "res_group")
+	casEnf.AddNamedGroupingPolicy("g2", "/studio/styles/upload/", "res_group")
+	casEnf.AddPolicy("admin_group", "res_group", "(GET)|(POST)")
 	casEnf.AddPolicy("admin_group", "/styles/*", "(GET)|(POST)|(PUT)")
 	casEnf.AddPolicy("admin_group", "/tilesets/*", "(GET)|(POST)")
 	casEnf.AddPolicy("admin_group", "/datasets/*", "(GET)|(POST)|(PUT)")
@@ -105,18 +107,44 @@ func bindRoutes(r *gin.Engine) {
 	r.POST("/login/", login)
 
 	//admin
-	admin := r.Group("/users")
+	admin := r.Group("/authn")
 	admin.Use(authMid.MiddlewareFunc())
 	{
-		//admin > users
-		admin.GET("/", listUsers)
-		admin.POST("/", createUser)
-		admin.GET("/:id/", readUser)
-		admin.PUT("/:id/", updateUser)
-		admin.GET("/:id/refresh/", jwtRefresh)
-		admin.PUT("/:id/password/", changePassword)
-		admin.PUT("/:id/role/", changeRole)
-		admin.DELETE("/:id/", deleteUser)
+		//authn > users
+		admin.GET("/users/", listUsers)
+		admin.POST("/users/", createUser)
+		admin.GET("/users/:uid/", readUser)
+		admin.PUT("/users/:uid/", updateUser)
+		admin.DELETE("/users/:uid/", deleteUser)
+		admin.GET("/users/:uid/refresh/", jwtRefresh)
+		admin.PUT("/users/:uid/password/", changePassword)
+
+		admin.GET("/users/:uid/roles/", getUserRoles)           //该用户拥有哪些角色
+		admin.POST("/users/:uid/roles/:rid/", addUserRole)      //添加用户角色
+		admin.DELETE("/users/:uid/roles/:rid/", deleteUserRole) //删除用户角色
+
+		admin.GET("/users/:uid/assets/", getUserAssets) //该用户拥有那些资源
+		admin.POST("/users/:rid/assets/:aid/", addUserAsset)
+		admin.DELETE("/users/:rid/assets/:aid/", deleteUserAsset)
+		//authn > roles
+		admin.GET("/roles/", listRoles)
+		admin.POST("/roles/", createRole)
+		admin.GET("/roles/:rid/", getRoleUsers) //该角色包含哪些用户
+		admin.DELETE("/roles/:rid/", deleteRole)
+		admin.GET("/roles/:rid/assets/", getRoleAssets) //该角色拥有哪些资源
+		admin.POST("/roles/:rid/assets/:aid/", addRoleAsset)
+		admin.DELETE("/roles/:rid/assets/:aid/", deleteRoleAsset)
+		//authn > assets
+		admin.GET("/assets/", listAssets)
+		admin.GET("/assets/:aid/users/", getAssetUsers) //哪些用户拥有该资源
+
+		admin.GET("/assets/group/", listAssetGroups)
+		admin.POST("/assets/group/", createAssetGroup)
+		admin.DELETE("/assets/group/:gid/", deleteAssetGroup)
+		admin.GET("/assets/group/:gid/assets/", getGroupAssets)           //该域包含哪些资源
+		admin.POST("/assets/group/:gid/assets/:aid/", addGroupAsset)      //添加资源to该域
+		admin.DELETE("/assets/group/:gid/assets/:aid/", deleteGroupAsset) //删除资源from该域
+		admin.GET("/assets/group/:gid/users/", getGroupUsers)
 	}
 	//account
 	account := r.Group("/account")
@@ -207,7 +235,7 @@ func bindRoutes(r *gin.Engine) {
 func initSuperUser() {
 	name := "root"
 	password := "1234"
-	role := "super"
+	role := []string{"super"}
 	phone := "13579246810"
 	department := "system"
 	user := User{}

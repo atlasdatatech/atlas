@@ -108,7 +108,7 @@ func (res *Res) FailStr(c *gin.Context, err string) {
 //Done done
 func (res *Res) Done(c *gin.Context, msg string) {
 	res.Code = http.StatusOK
-	res.Error = codes[http.StatusOK]
+	res.Error = ""
 	res.Message = msg
 	c.JSON(http.StatusOK, res)
 }

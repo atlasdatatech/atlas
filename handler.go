@@ -150,7 +150,6 @@ func createUser(c *gin.Context) {
 	var body struct {
 		Name       string `form:"name" json:"name" binding:"required"`
 		Password   string `form:"password" json:"password" binding:"required"`
-		Role       string `form:"role" json:"role"`
 		Phone      string `form:"phone" json:"phone"`
 		Department string `form:"department" json:"department"`
 	}
@@ -185,7 +184,6 @@ func createUser(c *gin.Context) {
 	user.Name = body.Name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Role = body.Role
 	user.Phone = body.Phone
 	user.Department = body.Department
 	//No verification required
@@ -202,15 +200,6 @@ func createUser(c *gin.Context) {
 		res.Fail(c, err)
 		return
 	}
-
-	// casEnf.LoadPolicy()
-	if strings.Compare(body.Role, "admin") == 0 {
-		casEnf.AddGroupingPolicy(user.Name, "admin_group")
-	} else {
-		casEnf.AddGroupingPolicy(user.Name, "user_group")
-	}
-	// casEnf.SavePolicy()
-
 	res.Done(c, "done")
 }
 
@@ -223,7 +212,7 @@ func listUsers(c *gin.Context) {
 
 func readUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("id")
+	name := c.Param("uid")
 	if name == "" {
 		name = c.GetString(identityKey)
 	}
@@ -240,7 +229,7 @@ func readUser(c *gin.Context) {
 
 func updateUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("id")
+	name := c.Param("uid")
 	if name == "" {
 		name = c.GetString(identityKey)
 	}
@@ -265,7 +254,7 @@ func updateUser(c *gin.Context) {
 
 func deleteUser(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
+	id := c.Param("uid")
 	if id == "roo" {
 		res.FailStr(c, "unable to delete root")
 		return
@@ -286,7 +275,7 @@ func deleteUser(c *gin.Context) {
 
 func jwtRefresh(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
+	id := c.Param("uid")
 	if id == "" {
 		id = c.GetString(identityKey)
 	}
@@ -317,7 +306,7 @@ func jwtRefresh(c *gin.Context) {
 
 func changePassword(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
+	id := c.Param("uid")
 	if id == "" {
 		id = c.GetString(identityKey)
 	}
@@ -343,35 +332,211 @@ func changePassword(c *gin.Context) {
 	res.Done(c, "done")
 }
 
-func changeRole(c *gin.Context) {
+func getUserRoles(c *gin.Context) {
+	id := c.Param("uid")
+
+	roles := casEnf.GetRolesForUser(id)
+	c.JSON(http.StatusOK, roles)
+	// rj, err := json.Marshal(roles)
+}
+
+func addUserRole(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
+	uid := c.Param("uid")
+	rid := c.Param("rid")
+	if rid == "" || uid == "" {
+		res.FailStr(c, "rid and uid must not null")
+		return
+	}
+	if casEnf.AddRoleForUser(uid, rid) {
+		res.Done(c, "Done")
+		return
+	}
+	res.FailStr(c, fmt.Sprintf("the user->%s already has the role->%s", uid, rid))
+}
+
+func deleteUserRole(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("uid")
+	rid := c.Param("rid")
+	if rid == "" || uid == "" {
+		res.FailStr(c, "rid and uid must not null")
+		return
+	}
+	if casEnf.DeleteRoleForUser(uid, rid) {
+		res.Done(c, "Done")
+		return
+	}
+	res.FailStr(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
+}
+
+func getUserAssets(c *gin.Context) {
+	uid := c.Param("uid")
+	pers := casEnf.GetPermissionsForUser(uid)
+	assets := make(map[string]string)
+	for _, v := range pers {
+		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+	}
+	fmt.Println(assets)
+	c.JSON(http.StatusOK, assets)
+}
+
+func addUserAsset(c *gin.Context) {
+	uid := c.Param("uid")
+	pers := casEnf.GetPermissionsForUser(uid)
+	assets := make(map[string]string)
+	for _, v := range pers {
+		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+	}
+	fmt.Println(assets)
+	c.JSON(http.StatusOK, assets)
+}
+
+func deleteUserAsset(c *gin.Context) {
+	uid := c.Param("uid")
+	pers := casEnf.GetPermissionsForUser(uid)
+	assets := make(map[string]string)
+	for _, v := range pers {
+		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+	}
+	fmt.Println(assets)
+	c.JSON(http.StatusOK, assets)
+}
+
+func listRoles(c *gin.Context) {
+	roles := casEnf.GetAllRoles()
+	c.JSON(http.StatusOK, roles)
+}
+
+func createRole(c *gin.Context) {
+	res := NewRes()
 	var body struct {
-		Role string `form:"role" binding:"required"`
+		Role string `form:"role", binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
 		res.Fail(c, err)
 		return
 	}
-	//清空角色
-	casEnf.RemoveGroupingPolicy(id, "admin_group")
-	casEnf.RemoveGroupingPolicy(id, "user_group")
-
-	err = db.Model(&User{}).Where("name = ?", id).Update(User{Role: body.Role}).Error
-	if err != nil {
-		log.Errorf("changeRole, update user role: %s; user: %s", err, id)
-		res.Fail(c, err)
+	if casEnf.AddGroupingPolicy("root", body.Role) {
+		res.Done(c, "Done")
 		return
 	}
-	//更新角色
-	if body.Role == "admin" {
-		casEnf.AddGroupingPolicy(id, "admin_group")
-	} else {
-		casEnf.AddGroupingPolicy(id, "user_group")
+	res.FailStr(c, fmt.Sprintf("the role %s already exists", body.Role))
+}
+
+func deleteRole(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("rid")
+	if rid == "" {
+		res.FailStr(c, "rid must not null")
+		return
+	}
+	casEnf.DeleteRole(rid)
+	res.Done(c, "Done")
+}
+
+func getRoleUsers(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("rid")
+	if rid == "" {
+		res.FailStr(c, "rid must not null")
+		return
+	}
+	users := casEnf.GetUsersForRole(rid)
+	c.JSON(http.StatusOK, users)
+}
+
+func getRoleAssets(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("rid")
+	if rid == "" {
+		res.FailStr(c, "rid must not null")
+		return
 	}
 
-	res.Done(c, "done")
+	fmt.Println(casEnf.GetPermissionsForUser(rid))
+
+	p0 := casEnf.GetAllObjects()
+	p2 := casEnf.GetPolicy()
+	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
+	p4 := casEnf.GetGroupingPolicy()
+	p5 := casEnf.GetNamedGroupingPolicy("g2")
+	fmt.Println(p0)
+	fmt.Println(p2)
+	fmt.Println(p4)
+	fmt.Println(p5)
+	c.JSON(http.StatusOK, "users")
+}
+
+func addRoleAsset(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("rid")
+	if rid == "" {
+		res.FailStr(c, "rid must not null")
+		return
+	}
+
+	fmt.Println(casEnf.GetPermissionsForUser(rid))
+
+	p0 := casEnf.GetAllObjects()
+	p2 := casEnf.GetPolicy()
+	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
+	p4 := casEnf.GetGroupingPolicy()
+	p5 := casEnf.GetNamedGroupingPolicy("g2")
+	fmt.Println(p0)
+	fmt.Println(p2)
+	fmt.Println(p4)
+	fmt.Println(p5)
+	c.JSON(http.StatusOK, "users")
+}
+
+func deleteRoleAsset(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("rid")
+	if rid == "" {
+		res.FailStr(c, "rid must not null")
+		return
+	}
+
+	fmt.Println(casEnf.GetPermissionsForUser(rid))
+
+	p0 := casEnf.GetAllObjects()
+	p2 := casEnf.GetPolicy()
+	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
+	p4 := casEnf.GetGroupingPolicy()
+	p5 := casEnf.GetNamedGroupingPolicy("g2")
+	fmt.Println(p0)
+	fmt.Println(p2)
+	fmt.Println(p4)
+	fmt.Println(p5)
+	c.JSON(http.StatusOK, "users")
+}
+
+func listAssets(c *gin.Context) {
+}
+
+func getAssetUsers(c *gin.Context) {
+}
+
+func listAssetGroups(c *gin.Context) {
+}
+
+func createAssetGroup(c *gin.Context) {
+}
+
+func deleteAssetGroup(c *gin.Context) {
+}
+func getGroupAssets(c *gin.Context) {
+}
+
+func addGroupAsset(c *gin.Context) {
+}
+
+func deleteGroupAsset(c *gin.Context) {
+}
+
+func getGroupUsers(c *gin.Context) {
 }
 
 func logout(c *gin.Context) {
@@ -713,9 +878,10 @@ func getTilejson(c *gin.Context) {
 		res.FailStr(c, "tilesets not exist in the service")
 		return
 	}
-
-	url := strings.Split(c.Request.URL.Path, ".")[0]
-	url = fmt.Sprintf("%s%s", pubSet.rootURL(c.Request), url) //need use user own service set
+	urlPath := c.Request.URL.Path
+	// ext := filepath.Ext(urlPath)
+	// path := strings.TrimSuffix(urlPath, ext)
+	url := fmt.Sprintf("%s%s", pubSet.rootURL(c.Request), urlPath) //need use user own service set
 	tileset := tileService.Mbtiles
 	imgFormat := tileset.TileFormatString()
 	out := map[string]interface{}{
@@ -899,12 +1065,11 @@ func uploadDataset(c *gin.Context) {
 	// bank := Bank{}
 	// db.Create(&Bank{})
 	sql := fmt.Sprintf(`COPY banks(num,name,state,region,type,admin,manager,house,area,term,time,staff,class,lat,lng) FROM '%s' DELIMITERS ',' CSV HEADER;`, absDst)
-	log.Debug(sql)
 	result := db.Exec(sql)
 	if result.Error != nil {
 		log.Errorf(result.Error.Error())
 	}
-	sql = `UPDATE banks	SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326);`
+	sql = `UPDATE banks	SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326),search =ARRAY[name,num,region,manager];;`
 	result = db.Exec(sql)
 	if result.Error != nil {
 		log.Errorf(result.Error.Error())

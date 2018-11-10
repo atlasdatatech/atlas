@@ -11,12 +11,12 @@ import (
 
 // User 用户表
 type User struct {
-	ID         string `json:"id" gorm:"primary_key"`
-	Name       string `json:"name" gorm:"unique;not null;unique_index"`
-	Password   string `json:"-"`
-	Role       string `json:"role"`
-	Phone      string `json:"phone" gorm:"index"`
-	Department string `json:"department"`
+	ID         string         `json:"id" gorm:"primary_key"`
+	Name       string         `json:"name" gorm:"unique;not null;unique_index"`
+	Password   string         `json:"-"`
+	Role       pq.StringArray `json:"role" gorm:"type:varchar(64)[]"`
+	Phone      string         `json:"phone"`
+	Department string         `json:"department"`
 
 	JWT     string    `json:"jwt" gorm:"column:jwt"`
 	Expires time.Time `json:"expires"`

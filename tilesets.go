@@ -113,6 +113,7 @@ func CreateTileService(filePathName string, tileID string) (*TileService, error)
 		ID:      tileID,
 		URL:     filePathName, //should not add / at the end
 		Type:    mbtiles.TileFormatString(),
+		Hash:    mbtiles.GetHash(),
 		State:   true,
 		Mbtiles: mbtiles,
 	}
@@ -394,6 +395,23 @@ func (tileset *MBTiles) GetInfo() (map[string]interface{}, error) {
 		metadata["maxzoom"] = maxZoom
 	}
 	return metadata, nil
+}
+
+// GetHash reads the metadata table center value into a string
+func (tileset *MBTiles) GetHash() string {
+	var value string
+	err := tileset.db.QueryRow("select value from metadata where name='center'").Scan(&value)
+	if err != nil {
+		log.Error(err)
+		return ""
+	}
+	split := strings.Split(value, ",")
+	if len(split) != 3 {
+		log.Error("metadata center has invalid vaule number(!=3) ^^")
+		return ""
+	}
+	hash := "#" + strings.TrimSpace(split[2]) + "/" + strings.TrimSpace(split[1]) + "/" + strings.TrimSpace(split[0])
+	return hash
 }
 
 // TileFormat returns the TileFormat of the DB.
