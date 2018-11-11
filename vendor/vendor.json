@@ -9,7 +9,7 @@
 			"revisionTime": "2017-10-22T00:36:10Z"
 		},
 		{
-			"checksumSHA1": "abuoAb9rPLwI15emOBt7dM/Lw1I=",
+			"checksumSHA1": "u7GnGX48VqbJYHReB8oP393aRvE=",
 			"path": "github.com/appleboy/gin-jwt",
 			"revision": "a4d85f559a8daf618d7925dc6d896524d7d7777a",
 			"revisionTime": "2018-09-17T07:25:34Z"
@@ -87,7 +87,7 @@
 			"revisionTime": "2018-08-30T22:02:26Z"
 		},
 		{
-			"checksumSHA1": "z8fWak9vP260B7wXZd+c63YkHyY=",
+			"checksumSHA1": "yNw7LsCcmU4KA4lRdEWEfxnP9pM=",
 			"path": "github.com/gin-contrib/cors",
 			"revision": "488de3ec974f4e37bb0eb426cdee1aa897726300",
 			"revisionTime": "2018-10-08T11:31:11Z"
@@ -201,6 +201,12 @@
 			"revisionTime": "2018-03-08T03:36:59Z"
 		},
 		{
+			"checksumSHA1": "W4cByvvu+jwClgwuAKbJn8vlDwI=",
+			"path": "github.com/json-iterator/go",
+			"revision": "05d041de1043ba04b678fb046bd35455a9b1b33b",
+			"revisionTime": "2018-10-24T15:28:41Z"
+		},
+		{
 			"checksumSHA1": "j+vBozuP9t1baDRdfEykQSP4AGw=",
 			"path": "github.com/lib/pq",
 			"revision": "4ded0e9383f75c197b3a2aaa6d590ac52df6fd79",
@@ -237,7 +243,19 @@
 			"revisionTime": "2018-08-24T00:32:02Z"
 		},
 		{
-			"checksumSHA1": "rZDVWlHAQ1KtUSm/FsSAJ7KovAU=",
+			"checksumSHA1": "ZTcgWKWHsrX0RXYVXn5Xeb8Q0go=",
+			"path": "github.com/modern-go/concurrent",
+			"revision": "bacd9c7ef1dd9b15be4a9909b8ac7a4e313eec94",
+			"revisionTime": "2018-03-06T01:26:44Z"
+		},
+		{
+			"checksumSHA1": "qvH48wzTIV3QKSDqI0dLFtVjaDI=",
+			"path": "github.com/modern-go/reflect2",
+			"revision": "94122c33edd36123c84d5368cfb2b69df93a0ec8",
+			"revisionTime": "2018-07-18T01:23:57Z"
+		},
+		{
+			"checksumSHA1": "vh+fVpvM31M4NPKyKWUf9WvCxXc=",
 			"path": "github.com/paulmach/orb",
 			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
 			"revisionTime": "2018-09-11T19:35:47Z"
@@ -327,16 +345,16 @@
 			"revisionTime": "2018-06-14T19:19:50Z"
 		},
 		{
-			"checksumSHA1": "KCYCTBMeP7P1B8CSa94/9Nse9Wc=",
+			"checksumSHA1": "rpVGMdgqNVY3sYQZg2RPtiwPzsY=",
 			"path": "golang.org/x/sys/unix",
-			"revision": "eda9bb28ed513021f3e6a2a361031adc3d8a6301",
-			"revisionTime": "2018-10-20T16:41:32Z"
+			"revision": "4526dd3c8b56729dc6b5a24d9dafb1915e89945b",
+			"revisionTime": "2018-09-09T03:36:07Z"
 		},
 		{
-			"checksumSHA1": "Y7nctMxT58lRM78VtElPerhcnEs=",
+			"checksumSHA1": "wvpEa7a7bm3i833AmLpSarI51Yc=",
 			"path": "golang.org/x/sys/windows",
-			"revision": "eda9bb28ed513021f3e6a2a361031adc3d8a6301",
-			"revisionTime": "2018-10-20T16:41:32Z"
+			"revision": "4526dd3c8b56729dc6b5a24d9dafb1915e89945b",
+			"revisionTime": "2018-09-09T03:36:07Z"
 		},
 		{
 			"checksumSHA1": "ziMb9+ANGRJSSIuxYdRbA+cDRBQ=",
@@ -349,6 +367,12 @@
 			"path": "golang.org/x/text/unicode/norm",
 			"revision": "905a57155faa8230500121607930ebb9dd8e139c",
 			"revisionTime": "2018-09-08T17:02:15Z"
+		},
+		{
+			"checksumSHA1": "6IzzHO9p32aHJhMYMwijccDUIVA=",
+			"path": "gopkg.in/alexcesaro/quotedprintable.v3",
+			"revision": "2caba252f4dc53eaf6b553000885530023f54623",
+			"revisionTime": "2015-07-16T17:19:45Z"
 		},
 		{
 			"checksumSHA1": "q190bL03wQok3wVwYmMub2XhOiU=",
