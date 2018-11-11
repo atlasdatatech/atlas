@@ -200,7 +200,8 @@ func createUser(c *gin.Context) {
 		res.Fail(c, err)
 		return
 	}
-	res.Done(c, "done")
+	//add to user_group
+	res.Done(c, "")
 }
 
 func listUsers(c *gin.Context) {
@@ -249,28 +250,31 @@ func updateUser(c *gin.Context) {
 		res.Fail(c, err)
 		return
 	}
-	res.Done(c, "done")
+	res.Done(c, "")
 }
 
 func deleteUser(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("uid")
-	if id == "roo" {
+	uid := c.Param("uid")
+	if uid == "root" {
 		res.FailStr(c, "unable to delete root")
 		return
 	}
 	//更新角色
-	casEnf.RemoveGroupingPolicy(id, "admin_group")
-	casEnf.RemoveGroupingPolicy(id, "user_group")
+	casEnf.RemoveGroupingPolicy(uid, "admin_group")
+	casEnf.RemoveGroupingPolicy(uid, "user_group")
 
-	err := db.Where("name = ?", id).Delete(&User{}).Error
+	err := db.Where("name = ?", uid).Delete(&User{}).Error
 	if err != nil {
-		log.Errorf("deleteUser, delete user : %s; user: %s", err, id)
+		log.Errorf("deleteUser, delete user : %s; user: %s", err, uid)
 		res.Fail(c, err)
 		return
 	}
-
-	res.Done(c, "done")
+	//delete user from casbin
+	if !casEnf.DeleteUser(uid) {
+		log.Errorf("deleteUser, %s not in RBAC when deleting", uid)
+	}
+	res.Done(c, "")
 }
 
 func jwtRefresh(c *gin.Context) {
@@ -329,15 +333,13 @@ func changePassword(c *gin.Context) {
 		res.Fail(c, err)
 		return
 	}
-	res.Done(c, "done")
+	res.Done(c, "")
 }
 
 func getUserRoles(c *gin.Context) {
-	id := c.Param("uid")
-
-	roles := casEnf.GetRolesForUser(id)
+	uid := c.Param("uid")
+	roles := casEnf.GetRolesForUser(uid)
 	c.JSON(http.StatusOK, roles)
-	// rj, err := json.Marshal(roles)
 }
 
 func addUserRole(c *gin.Context) {
@@ -349,7 +351,7 @@ func addUserRole(c *gin.Context) {
 		return
 	}
 	if casEnf.AddRoleForUser(uid, rid) {
-		res.Done(c, "Done")
+		res.Done(c, "")
 		return
 	}
 	res.FailStr(c, fmt.Sprintf("the user->%s already has the role->%s", uid, rid))
@@ -364,43 +366,59 @@ func deleteUserRole(c *gin.Context) {
 		return
 	}
 	if casEnf.DeleteRoleForUser(uid, rid) {
-		res.Done(c, "Done")
+		res.Done(c, "")
 		return
 	}
 	res.FailStr(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
 }
 
-func getUserAssets(c *gin.Context) {
-	uid := c.Param("uid")
-	pers := casEnf.GetPermissionsForUser(uid)
-	assets := make(map[string]string)
-	for _, v := range pers {
-		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+func getSubAssets(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if id == "" {
+		res.FailStr(c, "id must not null")
+		return
 	}
-	fmt.Println(assets)
-	c.JSON(http.StatusOK, assets)
+	uperms := casEnf.GetPermissionsForUser(id)
+	c.JSON(http.StatusOK, uperms)
 }
 
-func addUserAsset(c *gin.Context) {
-	uid := c.Param("uid")
-	pers := casEnf.GetPermissionsForUser(uid)
-	assets := make(map[string]string)
-	for _, v := range pers {
-		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+func addSubAsset(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	aid := c.Param("aid")
+	var body struct {
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	fmt.Println(assets)
-	c.JSON(http.StatusOK, assets)
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	if !casEnf.AddPolicy(id, aid, body.Action) {
+		res.FailStr(c, "policy already exist")
+		return
+	}
+	res.Done(c, "")
 }
 
-func deleteUserAsset(c *gin.Context) {
-	uid := c.Param("uid")
-	pers := casEnf.GetPermissionsForUser(uid)
-	assets := make(map[string]string)
-	for _, v := range pers {
-		assets[strings.Join(v[1:], "⇐")] = v[:1][0]
+func deleteSubAsset(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	aid := c.Param("aid")
+	var body struct {
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	fmt.Println(assets)
-	c.JSON(http.StatusOK, assets)
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	if !casEnf.RemovePolicy(id, aid, body.Action) {
+		res.FailStr(c, "policy does not exist")
+		return
+	}
+	res.Done(c, "")
 }
 
 func listRoles(c *gin.Context) {
@@ -411,7 +429,7 @@ func listRoles(c *gin.Context) {
 func createRole(c *gin.Context) {
 	res := NewRes()
 	var body struct {
-		Role string `form:"role", binding:"required"`
+		Role string `form:"role" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -419,7 +437,7 @@ func createRole(c *gin.Context) {
 		return
 	}
 	if casEnf.AddGroupingPolicy("root", body.Role) {
-		res.Done(c, "Done")
+		res.Done(c, "")
 		return
 	}
 	res.FailStr(c, fmt.Sprintf("the role %s already exists", body.Role))
@@ -433,7 +451,7 @@ func deleteRole(c *gin.Context) {
 		return
 	}
 	casEnf.DeleteRole(rid)
-	res.Done(c, "Done")
+	res.Done(c, "")
 }
 
 func getRoleUsers(c *gin.Context) {
@@ -447,73 +465,9 @@ func getRoleUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-func getRoleAssets(c *gin.Context) {
-	res := NewRes()
-	rid := c.Param("rid")
-	if rid == "" {
-		res.FailStr(c, "rid must not null")
-		return
-	}
-
-	fmt.Println(casEnf.GetPermissionsForUser(rid))
-
-	p0 := casEnf.GetAllObjects()
-	p2 := casEnf.GetPolicy()
-	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
-	p4 := casEnf.GetGroupingPolicy()
-	p5 := casEnf.GetNamedGroupingPolicy("g2")
-	fmt.Println(p0)
-	fmt.Println(p2)
-	fmt.Println(p4)
-	fmt.Println(p5)
-	c.JSON(http.StatusOK, "users")
-}
-
-func addRoleAsset(c *gin.Context) {
-	res := NewRes()
-	rid := c.Param("rid")
-	if rid == "" {
-		res.FailStr(c, "rid must not null")
-		return
-	}
-
-	fmt.Println(casEnf.GetPermissionsForUser(rid))
-
-	p0 := casEnf.GetAllObjects()
-	p2 := casEnf.GetPolicy()
-	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
-	p4 := casEnf.GetGroupingPolicy()
-	p5 := casEnf.GetNamedGroupingPolicy("g2")
-	fmt.Println(p0)
-	fmt.Println(p2)
-	fmt.Println(p4)
-	fmt.Println(p5)
-	c.JSON(http.StatusOK, "users")
-}
-
-func deleteRoleAsset(c *gin.Context) {
-	res := NewRes()
-	rid := c.Param("rid")
-	if rid == "" {
-		res.FailStr(c, "rid must not null")
-		return
-	}
-
-	fmt.Println(casEnf.GetPermissionsForUser(rid))
-
-	p0 := casEnf.GetAllObjects()
-	p2 := casEnf.GetPolicy()
-	fmt.Println(casEnf.GetFilteredPolicy(0, rid))
-	p4 := casEnf.GetGroupingPolicy()
-	p5 := casEnf.GetNamedGroupingPolicy("g2")
-	fmt.Println(p0)
-	fmt.Println(p2)
-	fmt.Println(p4)
-	fmt.Println(p5)
-	c.JSON(http.StatusOK, "users")
-}
-
 func listAssets(c *gin.Context) {
+	p := casEnf.GetAllObjects()
+	c.JSON(http.StatusOK, p)
 }
 
 func getAssetUsers(c *gin.Context) {
@@ -550,7 +504,7 @@ func logout(c *gin.Context) {
 		authMid.SecureCookie,
 		authMid.CookieHTTPOnly,
 	)
-	res.Done(c, "success")
+	res.Done(c, "")
 }
 
 func studioIndex(c *gin.Context) {
@@ -625,7 +579,7 @@ func uploadStyle(c *gin.Context) {
 	//更新服务
 	pubSet.AddStyle(dst, sid)
 
-	res.Done(c, "done")
+	res.Done(c, "")
 }
 
 //updateStyle create a style
@@ -798,7 +752,7 @@ func uploadSprite(c *gin.Context) {
 		}
 	}
 
-	res.Done(c, "done")
+	res.Done(c, "")
 }
 
 //viewStyle load style map

@@ -124,28 +124,28 @@ func bindRoutes(r *gin.Engine) {
 		admin.POST("/users/:uid/roles/:rid/", addUserRole)      //添加用户角色
 		admin.DELETE("/users/:uid/roles/:rid/", deleteUserRole) //删除用户角色
 
-		admin.GET("/users/:uid/assets/", getUserAssets) //该用户拥有那些资源
-		admin.POST("/users/:uid/assets/:aid/", addUserAsset)
-		admin.DELETE("/users/:uid/assets/:aid/", deleteUserAsset)
+		admin.GET("/users/:uid/assets/", getSubAssets) //该用户拥有那些资源
+		admin.POST("/users/:uid/assets/:aid/", addSubAsset)
+		admin.DELETE("/users/:uid/assets/:aid/", deleteSubAsset)
 		//authn > roles
 		admin.GET("/roles/", listRoles)
 		admin.POST("/roles/", createRole)
 		admin.GET("/roles/:rid/", getRoleUsers) //该角色包含哪些用户
 		admin.DELETE("/roles/:rid/", deleteRole)
-		admin.GET("/roles/:rid/assets/", getRoleAssets) //该角色拥有哪些资源
-		admin.POST("/roles/:rid/assets/:aid/", addRoleAsset)
-		admin.DELETE("/roles/:rid/assets/:aid/", deleteRoleAsset)
+		admin.GET("/roles/:rid/assets/", getSubAssets) //该角色拥有哪些资源
+		admin.POST("/roles/:rid/assets/:aid/", addSubAsset)
+		admin.DELETE("/roles/:rid/assets/:aid/", deleteSubAsset)
 		//authn > assets
 		admin.GET("/assets/", listAssets)
 		// admin.GET("/assets/:aid/users/", getAssetUsers) //哪些用户拥有该资源
-
-		admin.GET("/assets/group/", listAssetGroups)
-		admin.POST("/assets/group/", createAssetGroup)
-		admin.DELETE("/assets/group/:gid/", deleteAssetGroup)
-		admin.GET("/assets/group/:gid/assets/", getGroupAssets)           //该域包含哪些资源
-		admin.POST("/assets/group/:gid/assets/:aid/", addGroupAsset)      //添加资源to该域
-		admin.DELETE("/assets/group/:gid/assets/:aid/", deleteGroupAsset) //删除资源from该域
-		admin.GET("/assets/group/:gid/users/", getGroupUsers)
+		//authn > assetsgroup
+		admin.GET("/assetgroups/", listAssetGroups)
+		admin.POST("/assetgroups/", createAssetGroup)
+		admin.DELETE("/assetgroups/:gid/", deleteAssetGroup)
+		admin.GET("/assetgroups/:gid/assets/", getGroupAssets)           //该域包含哪些资源
+		admin.POST("/assetgroups/:gid/assets/:aid/", addGroupAsset)      //添加资源to该域
+		admin.DELETE("/assetgroups/:gid/assets/:aid/", deleteGroupAsset) //删除资源from该域
+		admin.GET("/assetgroups/:gid/users/", getGroupUsers)
 	}
 	//account
 	account := r.Group("/account")
