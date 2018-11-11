@@ -125,8 +125,8 @@ func bindRoutes(r *gin.Engine) {
 		admin.DELETE("/users/:uid/roles/:rid/", deleteUserRole) //删除用户角色
 
 		admin.GET("/users/:uid/assets/", getUserAssets) //该用户拥有那些资源
-		admin.POST("/users/:rid/assets/:aid/", addUserAsset)
-		admin.DELETE("/users/:rid/assets/:aid/", deleteUserAsset)
+		admin.POST("/users/:uid/assets/:aid/", addUserAsset)
+		admin.DELETE("/users/:uid/assets/:aid/", deleteUserAsset)
 		//authn > roles
 		admin.GET("/roles/", listRoles)
 		admin.POST("/roles/", createRole)
@@ -137,7 +137,7 @@ func bindRoutes(r *gin.Engine) {
 		admin.DELETE("/roles/:rid/assets/:aid/", deleteRoleAsset)
 		//authn > assets
 		admin.GET("/assets/", listAssets)
-		admin.GET("/assets/:aid/users/", getAssetUsers) //哪些用户拥有该资源
+		// admin.GET("/assets/:aid/users/", getAssetUsers) //哪些用户拥有该资源
 
 		admin.GET("/assets/group/", listAssetGroups)
 		admin.POST("/assets/group/", createAssetGroup)
@@ -236,7 +236,7 @@ func bindRoutes(r *gin.Engine) {
 func initSuperUser() {
 	name := "root"
 	password := "1234"
-	role := []string{"super"}
+	role := "super"
 	phone := "13579246810"
 	department := "system"
 	user := User{}
