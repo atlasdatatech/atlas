@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -192,15 +191,10 @@ func generateToken(n int) []byte {
 }
 
 func createPaths(name string) {
-	home := cfgV.GetString("users.home")
-	styles := cfgV.GetString("users.styles")
-	styles = filepath.Join(home, name, styles)
-	tilesets := cfgV.GetString("users.tilesets")
-	tilesets = filepath.Join(home, name, tilesets)
-	datasets := cfgV.GetString("users.datasets")
-	datasets = filepath.Join(home, name, datasets)
-	fonts := cfgV.GetString("users.fonts")
-	fonts = filepath.Join(home, name, fonts)
+	styles := cfgV.GetString("assets.styles")
+	fonts := cfgV.GetString("assets.fonts")
+	tilesets := cfgV.GetString("assets.tilesets")
+	datasets := cfgV.GetString("assets.datasets")
 	os.MkdirAll(styles, os.ModePerm)
 	os.MkdirAll(tilesets, os.ModePerm)
 	os.MkdirAll(datasets, os.ModePerm)

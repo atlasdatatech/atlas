@@ -85,6 +85,7 @@ func main() {
 	}
 
 	initSuperUser()
+	createPaths("pub")
 
 	r := gin.Default()
 	r.Use(cors.Default())
