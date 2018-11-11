@@ -236,7 +236,7 @@ func bindRoutes(r *gin.Engine) {
 func initSuperUser() {
 	name := "root"
 	password := "1234"
-	role := "super"
+	role := []string{"super"}
 	phone := "13579246810"
 	department := "system"
 	user := User{}
