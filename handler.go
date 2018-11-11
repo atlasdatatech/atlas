@@ -470,6 +470,12 @@ func listAssets(c *gin.Context) {
 	c.JSON(http.StatusOK, p)
 }
 
+func addAsset(c *gin.Context) {
+}
+
+func deleteAsset(c *gin.Context) {
+}
+
 func getAssetUsers(c *gin.Context) {
 }
 
@@ -481,6 +487,7 @@ func createAssetGroup(c *gin.Context) {
 
 func deleteAssetGroup(c *gin.Context) {
 }
+
 func getGroupAssets(c *gin.Context) {
 }
 

@@ -137,7 +137,8 @@ func bindRoutes(r *gin.Engine) {
 		admin.DELETE("/roles/:rid/assets/:aid/", deleteSubAsset)
 		//authn > assets
 		admin.GET("/assets/", listAssets)
-		// admin.GET("/assets/:aid/users/", getAssetUsers) //哪些用户拥有该资源
+		admin.POST("/assets/", createAsset)
+		admin.DELETE("/assets/:aid/", deleteAsset)
 		//authn > assetsgroup
 		admin.GET("/assetgroups/", listAssetGroups)
 		admin.POST("/assetgroups/", createAssetGroup)
