@@ -6,3 +6,4 @@ users
 /*.exe
 /assets/public
 /vendor/*/
+/debug
