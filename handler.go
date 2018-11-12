@@ -372,7 +372,7 @@ func deleteUserRole(c *gin.Context) {
 	res.FailStr(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
 }
 
-func getSubAssets(c *gin.Context) {
+func getPermissions(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
 	if id == "" {
@@ -383,39 +383,32 @@ func getSubAssets(c *gin.Context) {
 	c.JSON(http.StatusOK, uperms)
 }
 
-func addSubAsset(c *gin.Context) {
+func addPolicy(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	aid := c.Param("aid")
-	var body struct {
-		Action string `form:"action" json:"action" binding:"required"`
+	perm := c.Param("perm")
+	perms := strings.Split(perm, ",")
+	if len(perms) < 2 {
+		res.FailStr(c, `param 'perm' has wrong format`)
 	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, err)
-		return
-	}
-	if !casEnf.AddPolicy(id, aid, body.Action) {
+	if !casEnf.AddPolicy(id, strings.TrimSpace(perms[0]), strings.TrimSpace(perms[0])) {
 		res.FailStr(c, "policy already exist")
 		return
 	}
 	res.Done(c, "")
 }
 
-func deleteSubAsset(c *gin.Context) {
+func deletePolicy(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	aid := c.Param("aid")
-	var body struct {
-		Action string `form:"action" json:"action" binding:"required"`
+	perm := c.Param("perm")
+
+	perms := strings.Split(perm, ",")
+	if len(perms) < 2 {
+		res.FailStr(c, `param 'perm' has wrong format`)
 	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, err)
-		return
-	}
-	if !casEnf.RemovePolicy(id, aid, body.Action) {
-		res.FailStr(c, "policy does not exist")
+	if !casEnf.RemovePolicy(id, strings.TrimSpace(perms[0]), strings.TrimSpace(perms[1])) {
+		res.FailStr(c, "policy  does not  exist")
 		return
 	}
 	res.Done(c, "")
@@ -466,38 +459,99 @@ func getRoleUsers(c *gin.Context) {
 }
 
 func listAssets(c *gin.Context) {
-	p := casEnf.GetAllObjects()
-	c.JSON(http.StatusOK, p)
+	c.JSON(http.StatusOK, "deving")
 }
 
-func addAsset(c *gin.Context) {
+func createAsset(c *gin.Context) {
+	c.JSON(http.StatusOK, "deving")
 }
 
 func deleteAsset(c *gin.Context) {
-}
-
-func getAssetUsers(c *gin.Context) {
+	res := NewRes()
+	aid := c.Param("id")
+	if aid == "" {
+		res.FailStr(c, "group or asset id can not be nil")
+		return
+	}
+	aa := casEnf.GetFilteredPolicy(0, aid)
+	fmt.Println(aa)
+	casEnf.RemoveFilteredPolicy(0, aid)
+	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, aid)
+	res.Done(c, "")
 }
 
 func listAssetGroups(c *gin.Context) {
+	groups := casEnf.GetNamedGroupingPolicy("g2")
+	c.JSON(http.StatusOK, groups)
 }
 
 func createAssetGroup(c *gin.Context) {
+	res := NewRes()
+	var body struct {
+		Name string `form:"name" json:"name" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	if !casEnf.AddNamedGroupingPolicy("g2", "root", body.Name) {
+		res.FailStr(c, fmt.Sprintf("group '%s' already exist", body.Name))
+		return
+	}
+	res.Done(c, "")
 }
 
 func deleteAssetGroup(c *gin.Context) {
+	res := NewRes()
+	gid := c.Param("id")
+	if !casEnf.RemoveNamedGroupingPolicy("g2", gid) {
+		res.FailStr(c, fmt.Sprintf("group '%s' does not exist", gid))
+		return
+	}
+	res.Done(c, "")
 }
 
 func getGroupAssets(c *gin.Context) {
+	res := NewRes()
+	gid := c.Param("id")
+	if gid == "" {
+		res.FailStr(c, "group id can not be nil")
+		return
+	}
+	a := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
+	c.JSON(http.StatusOK, a)
 }
 
 func addGroupAsset(c *gin.Context) {
+	res := NewRes()
+	gid := c.Param("id")
+	aid := c.Param("aid")
+	if gid == "" || aid == "" {
+		res.FailStr(c, "group or asset id can not be nil")
+		return
+	}
+	if !casEnf.AddNamedGroupingPolicy("g2", aid, gid) {
+		res.FailStr(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
+		return
+	}
+	res.Done(c, "")
 }
 
 func deleteGroupAsset(c *gin.Context) {
-}
-
-func getGroupUsers(c *gin.Context) {
+	c.JSON(http.StatusOK, "deving")
+	// res := NewRes()
+	// gid := c.Param("id")
+	// aid := c.Param("aid")
+	// if gid == "" || aid == "" {
+	// 	res.FailStr(c, "group or asset id can not be nil")
+	// 	return
+	// }
+	// if !casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, aid) {
+	// 	res.FailStr(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
+	// 	return
+	// }
+	// res.Done(c, "")
 }
 
 func logout(c *gin.Context) {

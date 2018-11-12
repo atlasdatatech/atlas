@@ -114,39 +114,39 @@ func bindRoutes(r *gin.Engine) {
 		//authn > users
 		admin.GET("/users/", listUsers)
 		admin.POST("/users/", createUser)
-		admin.GET("/users/:uid/", readUser)
-		admin.PUT("/users/:uid/", updateUser)
-		admin.DELETE("/users/:uid/", deleteUser)
-		admin.GET("/users/:uid/refresh/", jwtRefresh)
-		admin.PUT("/users/:uid/password/", changePassword)
+		admin.GET("/users/:id/", readUser)
+		admin.PUT("/users/:id/", updateUser)
+		admin.DELETE("/users/:id/", deleteUser)
+		admin.GET("/users/:id/refresh/", jwtRefresh)
+		admin.PUT("/users/:id/password/", changePassword)
 
-		admin.GET("/users/:uid/roles/", getUserRoles)           //该用户拥有哪些角色
-		admin.POST("/users/:uid/roles/:rid/", addUserRole)      //添加用户角色
-		admin.DELETE("/users/:uid/roles/:rid/", deleteUserRole) //删除用户角色
+		admin.GET("/users/:id/roles/", getUserRoles)           //该用户拥有哪些角色
+		admin.POST("/users/:id/roles/:rid/", addUserRole)      //添加用户角色
+		admin.DELETE("/users/:id/roles/:rid/", deleteUserRole) //删除用户角色
 
-		admin.GET("/users/:uid/assets/", getSubAssets) //该用户拥有那些资源
-		admin.POST("/users/:uid/assets/:aid/", addSubAsset)
-		admin.DELETE("/users/:uid/assets/:aid/", deleteSubAsset)
+		admin.GET("/users/:id/perms/", getPermissions) //该用户拥有哪些权限（含资源与操作）
+		admin.POST("/users/:id/perms/:perm/", addPolicy)
+		admin.DELETE("/users/:id/perms/:perm/", deletePolicy)
 		//authn > roles
 		admin.GET("/roles/", listRoles)
 		admin.POST("/roles/", createRole)
-		admin.GET("/roles/:rid/", getRoleUsers) //该角色包含哪些用户
-		admin.DELETE("/roles/:rid/", deleteRole)
-		admin.GET("/roles/:rid/assets/", getSubAssets) //该角色拥有哪些资源
-		admin.POST("/roles/:rid/assets/:aid/", addSubAsset)
-		admin.DELETE("/roles/:rid/assets/:aid/", deleteSubAsset)
+		admin.GET("/roles/:id/", getRoleUsers) //该角色包含哪些用户
+		admin.DELETE("/roles/:id/", deleteRole)
+		admin.GET("/roles/:id/perms/", getPermissions) //该角色拥有哪些资源
+		admin.POST("/roles/:id/perms/", addPolicy)
+		admin.DELETE("/roles/:id/perms/", deletePolicy)
 		//authn > assets
 		admin.GET("/assets/", listAssets)
 		admin.POST("/assets/", createAsset)
-		admin.DELETE("/assets/:aid/", deleteAsset)
+		admin.DELETE("/assets/:id/", deleteAsset)
 		//authn > assetsgroup
 		admin.GET("/assetgroups/", listAssetGroups)
 		admin.POST("/assetgroups/", createAssetGroup)
-		admin.DELETE("/assetgroups/:gid/", deleteAssetGroup)
-		admin.GET("/assetgroups/:gid/assets/", getGroupAssets)           //该域包含哪些资源
-		admin.POST("/assetgroups/:gid/assets/:aid/", addGroupAsset)      //添加资源to该域
-		admin.DELETE("/assetgroups/:gid/assets/:aid/", deleteGroupAsset) //删除资源from该域
-		admin.GET("/assetgroups/:gid/users/", getGroupUsers)
+		admin.DELETE("/assetgroups/:id/", deleteAssetGroup)
+		//delete an asset from all groups in delete asset
+		admin.GET("/assetgroups/:id/assets/", getGroupAssets)           //该域包含哪些资源
+		admin.POST("/assetgroups/:id/assets/:aid/", addGroupAsset)      //添加资源to该域
+		admin.DELETE("/assetgroups/:id/assets/:aid/", deleteGroupAsset) //删除资源from该域
 	}
 	//account
 	account := r.Group("/account")
