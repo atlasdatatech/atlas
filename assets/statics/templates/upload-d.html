@@ -10,46 +10,64 @@
     <h1>上传数据</h1>
     <ul>
         <li>
-            <form action="/datasets/" method="post" enctype="multipart/form-data">
+            <form action="/datasets/banks/" method="post" enctype="multipart/form-data">
                 本行机构: <input type="file" name="banks"><br>
-                日均存款: <input type="file" name="cunkuan"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+            <form action="/datasets/savings/" method="post" enctype="multipart/form-data">
+                日均存款: <input type="file" name="savings"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/datasets/others/" method="post" enctype="multipart/form-data">
                 他行机构: <input type="file" name="others"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/tilesets/" method="post" enctype="multipart/form-data">
-                基础需求点: <input type="file" name="basepoi"><br>
+            <form action="/datasets/basepois/" method="post" enctype="multipart/form-data">
+                基础需求点: <input type="file" name="basepois"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/tilesets/" method="post" enctype="multipart/form-data">
-                住宅: <input type="file" name="xiaoqu"><br>
-                商业: <input type="file" name="shangye"><br>
-                单位: <input type="file" name="danwei"><br>
+            <form action="/datasets/pois/" method="post" enctype="multipart/form-data">
+                需求点: <input type="file" name="pois"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/tilesets/" method="post" enctype="multipart/form-data">
+            <form action="/datasets/m1/" method="post" enctype="multipart/form-data">
                 立地条件: <input type="file" name="m1"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/tilesets/" method="post" enctype="multipart/form-data">
-                宏观数据: <input type="file" name="m5"><br>
+            <form action="/datasets/m2/" method="post" enctype="multipart/form-data">
+                竞争力: <input type="file" name="m2"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/datasets/m3/" method="post" enctype="multipart/form-data">
+                竞争度: <input type="file" name="m3"><br>
+                <input type="submit" value="上传">
+            </form>
+        </li>
+        <br>
+        <li>
+            <form action="/datasets/m4/" method="post" enctype="multipart/form-data">
+                宏观战略: <input type="file" name="m4"><br>
                 <input type="submit" value="上传">
             </form>
         </li>

@@ -56,7 +56,7 @@ func main() {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Asset{}, &AssetGroup{})
 		//业务数据表
-		pg.AutoMigrate(&Bank{}, &Money{}, &Other{}, &Basepoi{}, &Residential{}, &Business{}, &Organization{})
+		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Basepoi{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{})
 		db = pg
 	}
 	defer pg.Close()
@@ -207,10 +207,7 @@ func bindRoutes(r *gin.Engine) {
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
-		datasets.POST("/", uploadDataset)
-		// datasets.GET("/:user/:did/", getDataset)
-		// datasets.GET("/:user/:did/view/", defaultDraw)
-		// datasets.GET("/:user/:did/edit/", defaultDraw)
+		datasets.POST("/:name/", importDataset)
 	}
 
 	//route not found

@@ -55,112 +55,126 @@ type Attempt struct {
 
 // Bank 本行机构表
 type Bank struct {
-	ID        uint           `json:"id" gorm:"primary_key"`
-	Num       string         `json:"num"`
-	Name      string         `json:"name" gorm:"index"`
-	State     string         `json:"state"`
-	Region    string         `json:"region"`
-	Type      string         `json:"type"`
-	Admin     string         `json:"admin"`
-	Manager   string         `json:"manager"`
-	House     string         `json:"house"`
-	Area      float32        `json:"area"`
-	Term      string         `json:"term"`
-	Time      string         `json:"time"`
-	Staff     string         `json:"staff"`
-	Class     string         `json:"class"`
-	Lat       float32        `json:"lat"`
-	Lng       float32        `json:"lng"`
-	Geom      orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search    pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID      string         `json:"id" gorm:"unique;index"`
+	Name    string         `json:"name" gorm:"index"`
+	State   string         `json:"state"`
+	Region  string         `json:"region"`
+	Type    string         `json:"type"`
+	Admin   string         `json:"admin"`
+	Manager string         `json:"manager"`
+	House   string         `json:"house"`
+	Area    float32        `json:"area"`
+	Term    string         `json:"term"`
+	Date    string         `json:"date"`
+	Staff   string         `json:"staff"`
+	Class   string         `json:"class"`
+	Lat     float32        `json:"lat"`
+	Lng     float32        `json:"lng"`
+	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
 }
 
-// Money 存款表
-type Money struct {
-	ID        uint    `json:"id" gorm:"primary_key"`
-	Num       string  `json:"num"`
-	Year      string  `json:"year" gorm:"index"`
+// Saving 存款表
+type Saving struct {
+	No        uint    `json:"no" gorm:"primary_key"`
+	ID        string  `json:"id" gorm:"index"`
+	Year      string  `json:"year"`
 	Total     float32 `json:"total"`
 	Corporate float32 `json:"corporate"`
 	Personal  float32 `json:"personal"`
 	Margin    float32 `json:"margin"`
 	Other     float32 `json:"other"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
 }
 
 // Other 他行机构表
 type Other struct {
-	ID        uint           `json:"id" gorm:"primary_key"`
-	Num       string         `json:"num"`
-	Name      string         `json:"name" gorm:"index"`
-	Class     string         `json:"class"`
-	Address   string         `json:"address"`
-	Lat       float32        `json:"lat"`
-	Lng       float32        `json:"lng"`
-	Geom      orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search    pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	No      uint           `json:"no" gorm:"primary_key"`
+	ID      string         `json:"id" gorm:"index"`
+	Name    string         `json:"name" gorm:"index"`
+	Class   string         `json:"class"`
+	Address string         `json:"address"`
+	Lat     float32        `json:"lat"`
+	Lng     float32        `json:"lng"`
+	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
 }
 
 // Basepoi 基础需求点
 type Basepoi struct {
-	ID        uint      `json:"id" gorm:"primary_key"`
-	Name      string    `json:"name" gorm:"index"`
-	Lat       float32   `json:"lat"`
-	Lng       float32   `json:"lng"`
-	Geom      orb.Point `sql:"type:geometry(Geometry,4326)"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID    uint      `json:"id" gorm:"primary_key"`
+	Name  string    `json:"name" gorm:"index"`
+	Class string    `json:"class"`
+	Lat   float32   `json:"lat"`
+	Lng   float32   `json:"lng"`
+	Geom  orb.Point `sql:"type:geometry(Geometry,4326)"`
 }
 
-// Residential 住宅POI
-type Residential struct {
-	ID        uint           `json:"id" gorm:"primary_key"`
-	Name      string         `json:"name" gorm:"index"`
-	Area      float32        `json:"area"`
-	Number    float32        `json:"number"`
-	Price     float32        `json:"price"`
-	Date      string         `json:"date"`
-	Lat       float32        `json:"lat"`
-	Lng       float32        `json:"lng"`
-	Geom      orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search    pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+// Poi 需求点POI
+type Poi struct {
+	ID         uint           `json:"id" gorm:"primary_key"`
+	Name       string         `json:"name" gorm:"index"`
+	Class      int            `json:"class"`
+	Type       string         `json:"type"`
+	Hit        string         `json:"hit"`
+	Per        float32        `json:"per"`
+	Area       float32        `json:"area"`
+	Households int            `json:"households"`
+	Date       string         `json:"date"`
+	Lat        float32        `json:"lat"`
+	Lng        float32        `json:"lng"`
+	Geom       orb.Point      `sql:"type:geometry(Geometry,4326)"`
+	Search     pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
 }
 
-// Business 商业POI
-type Business struct {
-	ID        uint           `json:"id" gorm:"primary_key"`
-	Name      string         `json:"name" gorm:"index"`
-	Type      string         `json:"type"`
-	Hot       string         `json:"hot"`
-	Consume   string         `json:"consume"`
-	Lat       float32        `json:"lat"`
-	Lng       float32        `json:"lng"`
-	Geom      orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search    pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+// M1 立地条件
+type M1 struct {
+	No     uint    `json:"no" gorm:"primary_key"`
+	ID     string  `json:"id" gorm:"index"`
+	C1     float32 `json:"c1"`
+	C2     float32 `json:"c2"`
+	C3     float32 `json:"c3"`
+	C4     float32 `json:"c4"`
+	C5     float32 `json:"c5"`
+	C6     float32 `json:"c6"`
+	C7     float32 `json:"c7"`
+	C8     float32 `json:"c8"`
+	C9     float32 `json:"c9"`
+	C10    float32 `json:"c10"`
+	C11    float32 `json:"c11"`
+	C12    float32 `json:"c12"`
+	C13    float32 `json:"c13"`
+	C14    float32 `json:"c14"`
+	C15    float32 `json:"c15"`
+	C16    float32 `json:"c16"`
+	Result float32 `json:"result"`
 }
 
-// Organization 公司单位组织POI
-type Organization struct {
-	ID        uint           `json:"id" gorm:"primary_key"`
-	Name      string         `json:"name" gorm:"index"`
-	Type      string         `json:"type"`
-	Capital   float32        `json:"capital"`
-	Class     string         `json:"class"`
-	Lat       float32        `json:"lat"`
-	Lng       float32        `json:"lng"`
-	Geom      orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search    pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+//M2 竞争力
+type M2 struct {
+	No     uint    `json:"no" gorm:"primary_key"`
+	ID     string  `json:"id" gorm:"index"`
+	Count  float32 `json:"count"`
+	Number float32 `json:"number"`
+	Result float32 `json:"result"`
+}
+
+//M3 竞争度
+type M3 struct {
+	Name   string  `json:"name"`
+	Weight float32 `json:"weight"`
+}
+
+//M4 宏观战略
+type M4 struct {
+	Region     string  `json:"region"`
+	GDP        float32 `json:"name" gorm:"column:gdp"`
+	Population float32 `json:"population"`
+	Area       float32 `json:"area"`
+	Price      float32 `json:"price"`
+	Cusume     float32 `json:"cusume"`
+	Industrial float32 `json:"industrial"`
+	Saving     float32 `json:"saving"`
+	Loan       float32 `json:"loan"`
 }
 
 func validate(name string, password string) (bool, error) {

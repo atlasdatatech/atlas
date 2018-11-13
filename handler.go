@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -1131,52 +1133,120 @@ func listDatasets(c *gin.Context) {
 	c.JSON(http.StatusOK, pubSet.Datasets)
 }
 
-func uploadDataset(c *gin.Context) {
+func importDataset(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
-	// style source
-	file, err := c.FormFile("banks")
+	name := c.Param("name")
+
+	file, err := c.FormFile(name)
 	if err != nil {
-		log.Errorf(`uploadDataset, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadDataset, get form: %s; user: %s`, err, id))
+		log.Errorf(`importDataset, get form: %s; file: %s`, err, name)
+		res.FailStr(c, fmt.Sprintf(`importDataset, get form: %s; file: %s`, err, name))
 		return
 	}
+
 	tilesets := cfgV.GetString("assets.datasets")
 	ext := filepath.Ext(file.Filename)
-	name := strings.TrimSuffix(file.Filename, ext)
-	did, _ := shortid.Generate()
-	did = name + "." + did
-	dst := filepath.Join(tilesets, did+ext)
+	name = strings.TrimSuffix(file.Filename, ext)
+	id, _ := shortid.Generate()
+	id = name + "." + id
+	dst := filepath.Join(tilesets, id+ext)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
+		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
+		res.FailStr(c, fmt.Sprintf(`importDataset, upload file: %s; file: %s`, err, name))
 		return
 	}
 	absDst, _ := filepath.Abs(dst)
-	//数据入库
-	// bank := Bank{}
-	// db.Create(&Bank{})
-	sql := fmt.Sprintf(`COPY banks(num,name,state,region,type,admin,manager,house,area,term,time,staff,class,lat,lng) FROM '%s' DELIMITERS ',' CSV HEADER;`, absDst)
-	result := db.Exec(sql)
-	if result.Error != nil {
-		log.Errorf(result.Error.Error())
-	}
-	sql = `UPDATE banks	SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326),search =ARRAY[name,num,region,manager];;`
-	result = db.Exec(sql)
-	if result.Error != nil {
-		log.Errorf(result.Error.Error())
-	}
-	//更新元数据
-	pubSet.updateMeta(name, did)
-	//更新服务
-	err = pubSet.AddDataset(dst, did)
+	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
-		log.Errorf(`uploadTileset, add mbtiles: %s ^^`, err)
+		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
+		res.FailStr(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"did": did,
-	})
+	reader := csv.NewReader(bytes.NewReader(buf))
+	csvHeader, err := reader.Read()
+	if err != nil {
+		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
+		res.FailStr(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		return
+	}
+	//数据入库
+	var header, search string
+	switch name {
+	case "banks", "others", "basepois", "pois":
+		switch name {
+		case "banks":
+			header = "id,name,state,region,type,admin,manager,house,area,term,date,staff,class,lat,lng"
+			search = ",search =ARRAY[id,name,region,manager]"
+		case "others":
+			header = "id,name,class,address,lat,lng"
+			search = ",search =ARRAY[id,name,class,address]"
+		case "basepois":
+			header = "name,class,lat,lng"
+		case "pois":
+			header = "name,class,type,hit,per,area,households,date,lat,lng"
+			search = ",search =ARRAY[name]"
+		}
+		// header != strings.Join(csvHeader, ",") {
+		if len(strings.Split(header, ",")) != len(csvHeader) {
+			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
+			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
+			return
+		}
+		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
+		result := db.Exec(sql)
+		if result.Error != nil {
+			log.Errorf("import %s error:%s", name, result.Error.Error())
+			res.FailStr(c, fmt.Sprintf("import %s error:%s", name, result.Error.Error()))
+			return
+		}
+		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326)%s;`, name, search)
+		result = db.Exec(update)
+		if result.Error != nil {
+			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+			res.FailStr(c, fmt.Sprintf("update %s create geom error:%s", name, result.Error.Error()))
+			return
+		}
+		//更新元数据
+		pubSet.updateMeta(name, id)
+		//更新服务
+		err = pubSet.AddDataset(dst, id)
+		if err != nil {
+			log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
+			res.FailStr(c, fmt.Sprintf(`importDataset, add %s to dataset service: %s ^^`, name, err))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"id": id,
+		})
+	case "savings", "m1", "m2", "m3", "m4":
+		switch name {
+		case "savings":
+			header = "id,year,total,corporate,personal,margin,other"
+		case "m1":
+			header = "id,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,result"
+		case "m2":
+			header = "id,count,number,result"
+		case "m3":
+			header = "name,weight"
+		case "m4":
+			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
+		}
+		// header != strings.Join(csvHeader, ",") {
+		if len(strings.Split(header, ",")) != len(csvHeader) {
+			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
+			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
+			return
+		}
+		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
+		result := db.Exec(sql)
+		if result.Error != nil {
+			log.Errorf("import %s error:%s", name, result.Error.Error())
+			res.FailStr(c, fmt.Sprintf("import %s error:%s", name, result.Error.Error()))
+			return
+		}
+		res.Done(c, "")
+	}
 }
 
 func listFonts(c *gin.Context) {
