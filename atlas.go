@@ -54,7 +54,7 @@ func main() {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{})
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Asset{}, &AssetGroup{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Money{}, &Other{}, &Basepoi{}, &Residential{}, &Business{}, &Organization{})
 		db = pg
@@ -63,21 +63,6 @@ func main() {
 	//Init casbin
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
-	//for test
-	// casEnf.LoadPolicy()
-	//初始化添加默认规则,三条策略可修改
-	casEnf.AddPolicy("admin_group", "/account/*", "(GET)|(POST)|(PUT)")
-	casEnf.AddNamedGroupingPolicy("g2", "/studio/", "res_group")
-	casEnf.AddNamedGroupingPolicy("g2", "/studio/styles/upload/", "res_group")
-	casEnf.AddPolicy("admin_group", "res_group", "(GET)|(POST)")
-	casEnf.AddPolicy("admin_group", "/styles/*", "(GET)|(POST)|(PUT)")
-	casEnf.AddPolicy("admin_group", "/tilesets/*", "(GET)|(POST)")
-	casEnf.AddPolicy("admin_group", "/datasets/*", "(GET)|(POST)|(PUT)")
-	casEnf.AddPolicy("user_group", "/account/*", "GET")
-	casEnf.AddPolicy("user_group", "/styles/*", "GET")
-	casEnf.AddPolicy("user_group", "/tilesets/*", "GET")
-	casEnf.AddPolicy("user_group", "/datasets/*", "GET")
-	// casEnf.SavePolicy()
 
 	authMid, err = jwt.New(JWTMiddleware())
 	if err != nil {
@@ -124,21 +109,19 @@ func bindRoutes(r *gin.Engine) {
 		admin.POST("/users/:id/roles/:rid/", addUserRole)      //添加用户角色
 		admin.DELETE("/users/:id/roles/:rid/", deleteUserRole) //删除用户角色
 
-		admin.GET("/users/:id/perms/", getPermissions) //该用户拥有哪些权限（含资源与操作）
-		admin.POST("/users/:id/perms/:perm/", addPolicy)
-		admin.DELETE("/users/:id/perms/:perm/", deletePolicy)
 		//authn > roles
 		admin.GET("/roles/", listRoles)
 		admin.POST("/roles/", createRole)
 		admin.GET("/roles/:id/", getRoleUsers) //该角色包含哪些用户
 		admin.DELETE("/roles/:id/", deleteRole)
-		admin.GET("/roles/:id/perms/", getPermissions) //该角色拥有哪些资源
-		admin.POST("/roles/:id/perms/", addPolicy)
-		admin.DELETE("/roles/:id/perms/", deletePolicy)
+
+		admin.GET("/perms/:id/", getPermissions) //该用户拥有哪些权限（含资源与操作）
+		admin.POST("/perms/:id/", addPolicy)
+		admin.DELETE("/perms/:id/:aid/:action/", deletePermissions)
 		//authn > assets
 		admin.GET("/assets/", listAssets)
 		admin.POST("/assets/", createAsset)
-		admin.DELETE("/assets/:id/", deleteAsset)
+		admin.DELETE("/assets/:aid/", deleteAsset)
 		//authn > assetsgroup
 		admin.GET("/assetgroups/", listAssetGroups)
 		admin.POST("/assetgroups/", createAssetGroup)
@@ -177,7 +160,7 @@ func bindRoutes(r *gin.Engine) {
 
 	//studio
 	studio := r.Group("/studio")
-	studio.Use(authMid.MiddlewareFunc())
+	// studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -189,7 +172,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	styles := r.Group("/styles")
-	styles.Use(authMid.MiddlewareFunc())
+	// styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -210,7 +193,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	tilesets := r.Group("/tilesets")
-	tilesets.Use(authMid.MiddlewareFunc())
+	// tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -220,7 +203,7 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
 	datasets := r.Group("/datasets")
-	datasets.Use(authMid.MiddlewareFunc())
+	// datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
@@ -237,7 +220,7 @@ func bindRoutes(r *gin.Engine) {
 func initSuperUser() {
 	name := "root"
 	password := "1234"
-	role := []string{"super"}
+	role := "super"
 	phone := "13579246810"
 	department := "system"
 	user := User{}
@@ -251,7 +234,7 @@ func initSuperUser() {
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Role = role
+	user.Role = []string{role}
 	user.Phone = phone
 	user.Department = department
 	//No verification required
@@ -263,4 +246,5 @@ func initSuperUser() {
 		log.Errorf("super user create error")
 		return
 	}
+	casEnf.AddGroupingPolicy(name, role)
 }

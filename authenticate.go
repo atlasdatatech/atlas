@@ -28,6 +28,7 @@ func authenticator(c *gin.Context) (interface{}, error) {
 func authorizator(user interface{}, c *gin.Context) bool {
 	if id, ok := user.(string); ok {
 		//如果可以正常取出 user 的值，就使用 casbin 来验证一下是否具备资源的访问权限
+		log.Debug(id, c.Request.URL.String(), c.Request.Method)
 		return casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method)
 	}
 	//默认策略是不允许

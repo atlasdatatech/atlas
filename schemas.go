@@ -27,9 +27,27 @@ type User struct {
 	UpdatedAt  time.Time
 }
 
+//Role 角色表
+type Role struct {
+	ID   string `form:"id" json:"id" gorm:"unique;index" binding:"required"`
+	Name string `form:"name" json:"name" gorm:"unique" binding:"required"`
+}
+
+//Asset 资源表
+type Asset struct {
+	ID  string `form:"id" json:"id" gorm:"unique;index"`
+	URL string `form:"url" json:"url" gorm:"unique;column:url" binding:"required"`
+}
+
+//AssetGroup 资源组表
+type AssetGroup struct {
+	ID   string `form:"id" json:"id" gorm:"unique;index" binding:"required"`
+	Name string `form:"name" json:"name" gorm:"unique" binding:"required"`
+}
+
 //Attempt 登录记录表
 type Attempt struct {
-	ID        uint   `gorm:"primary_key"`
+	ID        string `gorm:"primary_key"`
 	IP        string `gorm:"index"`
 	Name      string `gorm:"index"`
 	CreatedAt time.Time

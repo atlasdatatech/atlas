@@ -213,7 +213,7 @@ func listUsers(c *gin.Context) {
 
 func readUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("uid")
+	name := c.Param("id")
 	if name == "" {
 		name = c.GetString(identityKey)
 	}
@@ -230,7 +230,7 @@ func readUser(c *gin.Context) {
 
 func updateUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("uid")
+	name := c.Param("id")
 	if name == "" {
 		name = c.GetString(identityKey)
 	}
@@ -242,6 +242,14 @@ func updateUser(c *gin.Context) {
 	if err != nil {
 		res.Fail(c, err)
 		return
+	}
+	user := &User{}
+	db.Select("search").Where("name=?", name).First(user)
+	if body.Phone == "" && len(user.Search) == 3 {
+		body.Phone = user.Search[1]
+	}
+	if body.Department == "" && len(user.Search) == 3 {
+		body.Department = user.Search[2]
 	}
 	search := []string{name, body.Phone, body.Department} //更新搜索字段
 	err = db.Model(&User{}).Where("name = ?", name).Update(User{Phone: body.Phone, Department: body.Department, Search: search}).Error
@@ -255,31 +263,26 @@ func updateUser(c *gin.Context) {
 
 func deleteUser(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("uid")
-	if uid == "root" {
-		res.FailStr(c, "unable to delete root")
+	uid := c.Param("id")
+	self := c.GetString(identityKey)
+	if uid == self {
+		res.FailStr(c, "unable to delete yourself")
 		return
 	}
-	//更新角色
-	casEnf.RemoveGroupingPolicy(uid, "admin_group")
-	casEnf.RemoveGroupingPolicy(uid, "user_group")
-
+	casEnf.DeleteUser(uid)
 	err := db.Where("name = ?", uid).Delete(&User{}).Error
 	if err != nil {
 		log.Errorf("deleteUser, delete user : %s; user: %s", err, uid)
 		res.Fail(c, err)
 		return
 	}
-	//delete user from casbin
-	if !casEnf.DeleteUser(uid) {
-		log.Errorf("deleteUser, %s not in RBAC when deleting", uid)
-	}
+
 	res.Done(c, "")
 }
 
 func jwtRefresh(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("uid")
+	id := c.Param("id")
 	if id == "" {
 		id = c.GetString(identityKey)
 	}
@@ -310,7 +313,7 @@ func jwtRefresh(c *gin.Context) {
 
 func changePassword(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("uid")
+	id := c.Param("id")
 	if id == "" {
 		id = c.GetString(identityKey)
 	}
@@ -337,14 +340,14 @@ func changePassword(c *gin.Context) {
 }
 
 func getUserRoles(c *gin.Context) {
-	uid := c.Param("uid")
+	uid := c.Param("id")
 	roles := casEnf.GetRolesForUser(uid)
 	c.JSON(http.StatusOK, roles)
 }
 
 func addUserRole(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("uid")
+	uid := c.Param("id")
 	rid := c.Param("rid")
 	if rid == "" || uid == "" {
 		res.FailStr(c, "rid and uid must not null")
@@ -359,7 +362,7 @@ func addUserRole(c *gin.Context) {
 
 func deleteUserRole(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("uid")
+	uid := c.Param("id")
 	rid := c.Param("rid")
 	if rid == "" || uid == "" {
 		res.FailStr(c, "rid and uid must not null")
@@ -386,70 +389,42 @@ func getPermissions(c *gin.Context) {
 func addPolicy(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	perm := c.Param("perm")
-	perms := strings.Split(perm, ",")
-	if len(perms) < 2 {
-		res.FailStr(c, `param 'perm' has wrong format`)
-	}
-	if !casEnf.AddPolicy(id, strings.TrimSpace(perms[0]), strings.TrimSpace(perms[0])) {
-		res.FailStr(c, "policy already exist")
-		return
-	}
-	res.Done(c, "")
-}
-
-func deletePolicy(c *gin.Context) {
-	res := NewRes()
-	id := c.Param("id")
-	perm := c.Param("perm")
-
-	perms := strings.Split(perm, ",")
-	if len(perms) < 2 {
-		res.FailStr(c, `param 'perm' has wrong format`)
-	}
-	if !casEnf.RemovePolicy(id, strings.TrimSpace(perms[0]), strings.TrimSpace(perms[1])) {
-		res.FailStr(c, "policy  does not  exist")
-		return
-	}
-	res.Done(c, "")
-}
-
-func listRoles(c *gin.Context) {
-	roles := casEnf.GetAllRoles()
-	c.JSON(http.StatusOK, roles)
-}
-
-func createRole(c *gin.Context) {
-	res := NewRes()
 	var body struct {
-		Role string `form:"role" binding:"required"`
+		URL    string `form:"url" json:"url" binding:"required"`
+		Action string `form:"action" json:"action" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
 		res.Fail(c, err)
 		return
 	}
-	if casEnf.AddGroupingPolicy("root", body.Role) {
-		res.Done(c, "")
+	if !casEnf.AddPolicy(id, body.URL, body.Action) {
+		res.Done(c, "policy already exist")
 		return
 	}
-	res.FailStr(c, fmt.Sprintf("the role %s already exists", body.Role))
+	res.Done(c, "")
 }
 
-func deleteRole(c *gin.Context) {
+func deletePermissions(c *gin.Context) {
 	res := NewRes()
-	rid := c.Param("rid")
-	if rid == "" {
-		res.FailStr(c, "rid must not null")
+	id := c.Param("id")
+	aid := c.Param("aid")
+	action := c.Param("action")
+	if id == "" || aid == "" || action == "" {
+		res.FailStr(c, "asset id can not be nil")
 		return
 	}
-	casEnf.DeleteRole(rid)
+
+	if !casEnf.RemovePolicy(id, aid, action) {
+		res.Done(c, "policy does not  exist")
+		return
+	}
 	res.Done(c, "")
 }
 
 func getRoleUsers(c *gin.Context) {
 	res := NewRes()
-	rid := c.Param("rid")
+	rid := c.Param("id")
 	if rid == "" {
 		res.FailStr(c, "rid must not null")
 		return
@@ -458,45 +433,115 @@ func getRoleUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-func listAssets(c *gin.Context) {
-	c.JSON(http.StatusOK, "deving")
+func listRoles(c *gin.Context) {
+	// 获取所有记录
+	var roles []Role
+	db.Find(&roles)
+	c.JSON(http.StatusOK, roles)
 }
 
-func createAsset(c *gin.Context) {
-	c.JSON(http.StatusOK, "deving")
-}
-
-func deleteAsset(c *gin.Context) {
+func createRole(c *gin.Context) {
 	res := NewRes()
-	aid := c.Param("id")
-	if aid == "" {
-		res.FailStr(c, "group or asset id can not be nil")
-		return
-	}
-	aa := casEnf.GetFilteredPolicy(0, aid)
-	fmt.Println(aa)
-	casEnf.RemoveFilteredPolicy(0, aid)
-	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, aid)
-	res.Done(c, "")
-}
-
-func listAssetGroups(c *gin.Context) {
-	groups := casEnf.GetNamedGroupingPolicy("g2")
-	c.JSON(http.StatusOK, groups)
-}
-
-func createAssetGroup(c *gin.Context) {
-	res := NewRes()
-	var body struct {
-		Name string `form:"name" json:"name" binding:"required"`
-	}
-	err := c.Bind(&body)
+	role := &Role{}
+	err := c.Bind(role)
 	if err != nil {
 		res.Fail(c, err)
 		return
 	}
-	if !casEnf.AddNamedGroupingPolicy("g2", "root", body.Name) {
-		res.FailStr(c, fmt.Sprintf("group '%s' already exist", body.Name))
+	err = db.Create(&role).Error
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	res.Done(c, "")
+}
+
+func deleteRole(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("id")
+	if rid == "" {
+		res.FailStr(c, "asset id can not be nil")
+		return
+	}
+	casEnf.DeleteRole(rid)
+	err := db.Where("id = ?", rid).Delete(&Role{}).Error
+	if err != nil {
+		log.Errorf("deleteRole, delete role : %s; roleid: %s", err, rid)
+		res.Fail(c, err)
+		return
+	}
+	res.Done(c, "")
+}
+
+func listAssets(c *gin.Context) {
+	// 获取所有记录
+	var assets []Asset
+	db.Find(&assets)
+	c.JSON(http.StatusOK, assets)
+}
+
+func createAsset(c *gin.Context) {
+	res := NewRes()
+	asset := &Asset{}
+	err := c.Bind(asset)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	asset.ID, _ = shortid.Generate()
+	// insertUser
+	err = db.Create(&asset).Error
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, asset)
+}
+
+func deleteAsset(c *gin.Context) {
+	res := NewRes()
+	aid := c.Param("aid")
+	if aid == "" {
+		res.FailStr(c, "asset id can not be nil")
+		return
+	}
+	asset := &Asset{}
+	err := db.Where("id = ?", aid).Find(asset).Error
+	if err != nil {
+		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
+		res.Fail(c, err)
+		return
+	}
+	casEnf.RemoveFilteredPolicy(1, asset.URL)
+	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, asset.URL)
+
+	err = db.Where("id = ?", aid).Delete(&Asset{}).Error
+	if err != nil {
+		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
+		res.Fail(c, err)
+		return
+	}
+	res.Done(c, "")
+}
+
+func listAssetGroups(c *gin.Context) {
+	// 获取所有记录
+	var ags []AssetGroup
+	db.Find(&ags)
+	c.JSON(http.StatusOK, ags)
+}
+
+func createAssetGroup(c *gin.Context) {
+	res := NewRes()
+	ag := &AssetGroup{}
+	err := c.Bind(ag)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	err = db.Create(&ag).Error
+	if err != nil {
+		res.Fail(c, err)
 		return
 	}
 	res.Done(c, "")
@@ -505,8 +550,15 @@ func createAssetGroup(c *gin.Context) {
 func deleteAssetGroup(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
-	if !casEnf.RemoveNamedGroupingPolicy("g2", gid) {
-		res.FailStr(c, fmt.Sprintf("group '%s' does not exist", gid))
+	if gid == "" {
+		res.FailStr(c, "asset id can not be nil")
+		return
+	}
+	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 1, gid)
+	err := db.Where("id = ?", gid).Delete(&AssetGroup{}).Error
+	if err != nil {
+		log.Errorf("deleteAssetGroup, delete asset group : %s; groupid: %s", err, gid)
+		res.Fail(c, err)
 		return
 	}
 	res.Done(c, "")
@@ -519,8 +571,14 @@ func getGroupAssets(c *gin.Context) {
 		res.FailStr(c, "group id can not be nil")
 		return
 	}
-	a := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
-	c.JSON(http.StatusOK, a)
+	p := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
+	var assets []string
+	for _, v := range p {
+		if len(v) > 0 {
+			assets = append(assets, v[0])
+		}
+	}
+	c.JSON(http.StatusOK, assets)
 }
 
 func addGroupAsset(c *gin.Context) {
@@ -531,27 +589,47 @@ func addGroupAsset(c *gin.Context) {
 		res.FailStr(c, "group or asset id can not be nil")
 		return
 	}
-	if !casEnf.AddNamedGroupingPolicy("g2", aid, gid) {
-		res.FailStr(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
+	asset := &Asset{}
+	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			if !casEnf.AddNamedGroupingPolicy("g2", aid, gid) {
+				res.Done(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
+				return
+			}
+		}
+		return
+	}
+
+	if !casEnf.AddNamedGroupingPolicy("g2", asset.URL, gid) {
+		res.Done(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
 		return
 	}
 	res.Done(c, "")
 }
 
 func deleteGroupAsset(c *gin.Context) {
-	c.JSON(http.StatusOK, "deving")
-	// res := NewRes()
-	// gid := c.Param("id")
-	// aid := c.Param("aid")
-	// if gid == "" || aid == "" {
-	// 	res.FailStr(c, "group or asset id can not be nil")
-	// 	return
-	// }
-	// if !casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, aid) {
-	// 	res.FailStr(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
-	// 	return
-	// }
-	// res.Done(c, "")
+	// c.JSON(http.StatusOK, "deving")
+	res := NewRes()
+	gid := c.Param("id")
+	aid := c.Param("aid")
+	if gid == "" || aid == "" {
+		res.FailStr(c, "group or asset id can not be nil")
+		return
+	}
+	asset := &Asset{}
+	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
+		res.FailStr(c, fmt.Sprintf("addGroupAsset, get asset url: %s; assetid: %s", err, aid))
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Errorf("addGroupAsset, get asset info: %s; assetid: %s", err, aid)
+		}
+		return
+	}
+
+	if !casEnf.RemoveNamedGroupingPolicy("g2", asset.URL, gid) {
+		res.Done(c, fmt.Sprintf("asset %s does not in group %s", aid, gid))
+		return
+	}
+	res.Done(c, "")
 }
 
 func logout(c *gin.Context) {

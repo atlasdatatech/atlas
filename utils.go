@@ -107,7 +107,7 @@ func (res *Res) FailStr(c *gin.Context, err string) {
 //Done done
 func (res *Res) Done(c *gin.Context, msg string) {
 	res.Code = http.StatusOK
-	res.Error = ""
+	res.Error = "none"
 	if msg == "" {
 		res.Message = "done"
 	} else {
