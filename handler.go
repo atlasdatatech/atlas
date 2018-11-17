@@ -1347,11 +1347,14 @@ func queryDataset(c *gin.Context) {
 
 			switch t.Name() {
 			case "geom":
-				s := wkb.Scanner(&f.Geometry)
-				err := s.Scan(*rb)
+				pt := orb.Point{0, 0}
+				s := wkb.Scanner(&pt)
+				err := s.Scan([]byte(*rb))
 				if err != nil {
 					log.Errorf("unable to convert geometry field (geom) into bytes.")
+					log.Error(err)
 				}
+				f.Geometry = pt
 			default:
 				switch vex := t.ScanType().(type) {
 				default:
