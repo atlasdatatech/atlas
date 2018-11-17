@@ -3,12 +3,14 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -203,4 +205,30 @@ func createPaths(name string) {
 	os.MkdirAll(tilesets, os.ModePerm)
 	os.MkdirAll(datasets, os.ModePerm)
 	os.MkdirAll(fonts, os.ModePerm)
+}
+func GID(v interface{}) (gid uint64, err error) {
+	switch aval := v.(type) {
+	case float64:
+		return uint64(aval), nil
+	case int64:
+		return uint64(aval), nil
+	case uint64:
+		return aval, nil
+	case uint:
+		return uint64(aval), nil
+	case int8:
+		return uint64(aval), nil
+	case uint8:
+		return uint64(aval), nil
+	case uint16:
+		return uint64(aval), nil
+	case int32:
+		return uint64(aval), nil
+	case uint32:
+		return uint64(aval), nil
+	case string:
+		return strconv.ParseUint(aval, 10, 64)
+	default:
+		return gid, fmt.Errorf("unable to convert field into a uint64.")
+	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/encoding/wkb"
+	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -1194,13 +1198,16 @@ func importDataset(c *gin.Context) {
 			return
 		}
 		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
+		//clear
+		clear := fmt.Sprintf(`DELETE FROM %s;`, name)
+		db.Exec(clear)
 		result := db.Exec(sql)
 		if result.Error != nil {
 			log.Errorf("import %s error:%s", name, result.Error.Error())
 			res.FailStr(c, fmt.Sprintf("import %s error:%s", name, result.Error.Error()))
 			return
 		}
-		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lng || ' ' || lat || ')',4326)%s;`, name, search)
+		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
 		result = db.Exec(update)
 		if result.Error != nil {
 			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
@@ -1247,6 +1254,120 @@ func importDataset(c *gin.Context) {
 		}
 		res.Done(c, "")
 	}
+}
+
+func queryDataset(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+
+	var body struct {
+		GeoJSON string `form:"geojson" binding:"required"`
+		Filter  string `form:"filter"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+
+	var jg map[string]interface{}
+	err = json.Unmarshal([]byte(body.GeoJSON), &jg)
+	if err != nil || jg["geometry"] == nil {
+		res.FailStr(c, "param geojson format error")
+		return
+	}
+
+	qf, err := geojson.UnmarshalFeature([]byte(body.GeoJSON))
+	if err != nil {
+		log.Errorf("param geojson error: %v", err)
+		res.Fail(c, err)
+		return
+	}
+
+	var fields []string
+	for k := range qf.Properties {
+		fields = append(fields, k)
+	}
+	var fieldsStr string
+	fieldsStr = strings.Join(fields, ",")
+	selStr := "st_asbinary(geom) as geom "
+	if "" != fieldsStr {
+		selStr = selStr + "," + fieldsStr
+	}
+	whrStr := "geom && st_geomfromwkb($1)"
+	if "" != body.Filter {
+		whrStr = whrStr + " AND " + body.Filter
+	}
+	s := fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
+	log.Debugln(s)
+	var rows *sql.Rows
+	if qf.BBox.Valid() {
+		rows, err = db.Raw(s, wkb.Value(qf.BBox.Bound())).Rows() // (*sql.Rows, error)
+	} else {
+		rows, err = db.Raw(s, wkb.Value(qf.Geometry)).Rows() // (*sql.Rows, error)
+	}
+
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		f := geojson.NewFeature(orb.Point{0, 0})
+		f.Properties = qf.Properties.Clone()
+
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+			log.Debugf("%d,%v,%v", i, *t, *rb)
+
+			switch t.Name() {
+			case "geom":
+				s := wkb.Scanner(&f.Geometry)
+				err := s.Scan(*rb)
+				if err != nil {
+					log.Errorf("unable to convert geometry field (geom) into bytes.")
+				}
+			default:
+				switch vex := t.ScanType().(type) {
+				default:
+					log.Debug(vex)
+					f.Properties[t.Name()] = string(*rb)
+				}
+			}
+
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+	}
+	c.JSON(http.StatusOK, json.RawMessage(gj))
 }
 
 func listFonts(c *gin.Context) {
