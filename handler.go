@@ -1159,7 +1159,7 @@ func importDataset(c *gin.Context) {
 		res.FailStr(c, fmt.Sprintf(`importDataset, upload file: %s; file: %s`, err, name))
 		return
 	}
-	absDst, _ := filepath.Abs(dst)
+	// absDst, _ := filepath.Abs(dst)
 	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
 		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
@@ -1196,7 +1196,7 @@ func importDataset(c *gin.Context) {
 			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
 			return
 		}
-		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
+		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, dst)
 		//clear
 		clear := fmt.Sprintf(`DELETE FROM %s;`, name)
 		db.Exec(clear)
@@ -1244,7 +1244,7 @@ func importDataset(c *gin.Context) {
 			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
 			return
 		}
-		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
+		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, dst)
 		result := db.Exec(sql)
 		if result.Error != nil {
 			log.Errorf("import %s error:%s", name, result.Error.Error())
