@@ -1373,6 +1373,187 @@ func queryDataset(c *gin.Context) {
 	c.JSON(http.StatusOK, json.RawMessage(gj))
 }
 
+func queryDatasetGeojson(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+
+	var body struct {
+		GeoJSON string `form:"geojson" binding:"required"`
+		Filter  string `form:"filter"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+
+	type GeoJSON struct {
+		Type       string          `json:"type"`
+		BBox       []float64       `json:"bbox"`
+		Geometry   json.RawMessage `json:"geometry"`
+		Properties interface{}     `json:"properties"`
+	}
+
+	var props json.RawMessage
+	geoj := GeoJSON{
+		Properties: &props,
+	}
+	err = json.Unmarshal([]byte(body.GeoJSON), &geoj)
+
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+
+	var fields []string
+
+	switch geoj.Type {
+	case "Feature":
+		//props
+		var tags map[string]interface{}
+		if err := json.Unmarshal(props, &tags); err != nil {
+			res.Fail(c, err)
+			return
+		}
+
+		for k, v := range tags {
+			switch v.(type) {
+			case string:
+			case float64:
+			case bool:
+			default:
+				log.Errorf("now not support interface{} objects,deling as strings, key:%s,value:%v", k, v)
+			}
+			fields = append(fields, k)
+		}
+	default:
+		log.Errorf("geojson type is not : %q", geoj.Type)
+	}
+
+	var fieldsStr string
+	fieldsStr = strings.Join(fields, ",")
+	selStr := "st_asgeojson(geom) as geom "
+	if "" != fieldsStr {
+		selStr = selStr + "," + fieldsStr
+	}
+	var s string
+	if len(geoj.BBox) == 4 {
+		whrStr := fmt.Sprintf("geom && st_makeenvelope(%f,%f,%f,%f)", geoj.BBox[0], geoj.BBox[1], geoj.BBox[2], geoj.BBox[3])
+		if "" != body.Filter {
+			whrStr = whrStr + " AND " + body.Filter
+		}
+		s = fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
+	} else {
+		whrStr := fmt.Sprintf(`geom && st_geomfromgeojson('%s')`, geoj.Geometry)
+		if "" != body.Filter {
+			whrStr = whrStr + " AND " + body.Filter
+		}
+		s = fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
+	}
+	log.Debug(s)
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		var f *geojson.Feature
+
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+
+			switch t.Name() {
+			case "geom":
+				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
+				if err != nil {
+					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
+					continue
+				}
+				f = geojson.NewFeature(geom.Geometry())
+			default:
+				f.Properties[t.Name()] = string(*rb)
+			}
+
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+	}
+	c.JSON(http.StatusOK, json.RawMessage(gj))
+}
+
+func queryExec(c *gin.Context) {
+	res := NewRes()
+	s := c.Param("sql")
+	if "" == s {
+		res.FailStr(c, "sql can not be null")
+		return
+	}
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, err)
+		return
+	}
+	var t [][]string
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]sql.RawBytes, len(cols))
+		valsScer := make([]interface{}, len(vals))
+		for i := range vals {
+			valsScer[i] = &vals[i]
+		}
+		err = rows.Scan(valsScer...)
+		if err != nil {
+			log.Error(err)
+		}
+		var r []string
+		for _, col := range vals {
+			// skip nil values.
+			if col == nil {
+				continue
+			}
+			r = append(r, string(col))
+		}
+		t = append(t, r)
+	}
+	c.JSON(http.StatusOK, t)
+}
+
 func listFonts(c *gin.Context) {
 	c.JSON(http.StatusOK, pubSet.Fonts)
 }

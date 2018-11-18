@@ -208,7 +208,8 @@ func bindRoutes(r *gin.Engine) {
 		// > datasets
 		datasets.GET("/", listDatasets)
 		datasets.POST("/import/:name/", importDataset)
-		datasets.POST("/query/:name/", queryDataset)
+		datasets.POST("/query/:name/", queryDatasetGeojson)
+		datasets.POST("/cube/:sql/", queryExec)
 	}
 
 	//route not found
