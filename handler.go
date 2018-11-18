@@ -1146,7 +1146,8 @@ func importDataset(c *gin.Context) {
 		return
 	}
 
-	tilesets := cfgV.GetString("assets.datasets")
+	// tilesets := cfgV.GetString("assets.datasets")
+	tilesets := "/tmp/datasets/"
 	ext := filepath.Ext(file.Filename)
 	name = strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
