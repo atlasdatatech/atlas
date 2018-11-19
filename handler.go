@@ -1219,6 +1219,7 @@ func importDataset(c *gin.Context) {
 		}
 		fmt.Println(s)
 		s = strings.TrimSuffix(s, ",")
+		fmt.Println(s)
 		result := db.Exec(s)
 		if result.Error != nil {
 			log.Errorf("import %s error:%s", name, result.Error.Error())
