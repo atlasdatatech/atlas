@@ -35,7 +35,7 @@ func InitConf(v *viper.Viper) {
 		expiration = "-5m"
 
 	[db]
-		host     = "47.100.237.57"
+		host     = "127.0.0.1"
 		port     = "5432"
 		user     = "atlas"
 		password = "atlas"

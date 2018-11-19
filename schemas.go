@@ -53,6 +53,17 @@ type Attempt struct {
 	CreatedAt time.Time
 }
 
+//Map 登录记录表
+type Map struct {
+	ID        string `form:"id" json:"id" gorm:"primary_key"`
+	Title     string `form:"title" json:"title"`
+	Summary   string `form:"summary" json:"summary"`
+	User      string `form:"user" json:"user"`
+	Config    []byte `form:"config" json:"config"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // Bank 本行机构表
 type Bank struct {
 	ID      string         `json:"id" gorm:"unique;index"`

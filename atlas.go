@@ -54,7 +54,7 @@ func main() {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Asset{}, &AssetGroup{})
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Asset{}, &AssetGroup{}, &Map{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Basepoi{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{})
 		db = pg
@@ -73,7 +73,9 @@ func main() {
 	createPaths("pub")
 
 	r := gin.Default()
+
 	r.Use(cors.Default())
+
 	staticsHome := cfgV.GetString("assets.statics")
 	r.Static("/statics", staticsHome)
 	templatesPath := filepath.Join(staticsHome, "/templates/*")

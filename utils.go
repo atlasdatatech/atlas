@@ -16,111 +16,103 @@ import (
 )
 
 var codes = map[int]string{
-	100: "Continue",
-	101: "Switching Protocols",
-	102: "Processing",
-	200: "OK",
-	201: "Created",
-	202: "Accepted",
-	203: "Non-Authoritative Information",
-	204: "No Content",
-	205: "Reset Content",
-	206: "Partial Content",
-	207: "Multi-Status",
-	300: "Multiple Choices",
-	301: "Moved Permanently",
-	302: "Moved Temporarily",
-	303: "See Other",
-	304: "Not Modified",
-	305: "Use Proxy",
-	307: "Temporary Redirect",
-	400: "Bad Request",
-	401: "Unauthorized",
-	402: "Payment Required",
-	403: "Forbidden",
-	404: "Not Found",
-	405: "Method Not Allowed",
-	406: "Not Acceptable",
-	407: "Proxy Authentication Required",
-	408: "Request Time-out",
-	409: "Conflict",
-	410: "Gone",
-	411: "Length Required",
-	412: "Precondition Failed",
-	413: "Request Entity Too Large",
-	414: "Request-URI Too Large",
-	415: "Unsupported Media Type",
-	416: "Requested Range Not Satisfiable",
-	417: "Expectation Failed",
-	418: "I'm a teapot",
-	422: "Unprocessable Entity",
-	423: "Locked",
-	424: "Failed Dependency",
-	425: "Unordered Collection",
-	426: "Upgrade Required",
-	428: "Precondition Required",
-	429: "Too Many Requests",
-	431: "Request Header Fields Too Large",
-	451: "Unavailable For Legal Reasons",
-	500: "Internal Server Error",
-	501: "Not Implemented",
-	502: "Bad Gateway",
-	503: "Service Unavailable",
-	504: "Gateway Time-out",
-	505: "HTTP Version Not Supported",
-	506: "Variant Also Negotiates",
-	507: "Insufficient Storage",
-	509: "Bandwidth Limit Exceeded",
-	510: "Not Extended",
-	511: "Network Authentication Required",
+	0: "检查消息",
+
+	200: "成功",
+	201: "已创建",
+	202: "已接受",
+	204: "无内容",
+
+	300: "重定向",
+
+	400:  "请求无法解析",
+	4001: "必填参数为空",
+	4002: "达到最大尝试登录次数,稍后再试",
+
+	401:  "未授权",
+	4011: "检查用户名",
+	4012: "检查密码",
+	4013: "用户名已存在",
+	402:  "余额不足",
+	403:  "禁止访问",
+	404:  "找不到资源",
+	408:  "请求超时",
+
+	500:  "系统错误",
+	5001: "数据库错误",
+	5002: "意外错误",
+
+	501: "维护中",
+	503: "服务不可用",
 }
 
 //Res response schema
 type Res struct {
-	Code    int    `json:"code"`
-	Error   string `json:"error"`
-	Message string `json:"message"`
+	Code int         `json:"code"`
+	Msg  string      `json:"msg"`
+	Data interface{} `json:"data"`
 }
 
 //NewRes Create Res
 func NewRes() *Res {
 	return &Res{
-		Code:  http.StatusOK,
-		Error: codes[http.StatusOK],
+		Code: http.StatusOK,
+		Msg:  codes[http.StatusOK],
 	}
 }
 
 //Fail failed error
-func (res *Res) Fail(c *gin.Context, err error) {
-	res.Code = http.StatusOK
-	res.Error = err.Error()
+func (res *Res) Fail(c *gin.Context, code int) {
+	res.Code = code
+	res.Msg = codes[code]
 	c.JSON(http.StatusOK, res)
 }
 
-//FailStr failed string
-func (res *Res) FailStr(c *gin.Context, err string) {
-	res.Code = http.StatusOK
-	res.Error = err
+//FailErr failed string
+func (res *Res) FailErr(c *gin.Context, err error) {
+	res.Code = 0
+	if err != nil {
+		res.Msg = err.Error()
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+//FailMsg failed string
+func (res *Res) FailMsg(c *gin.Context, msg string) {
+	res.Code = 0
+	res.Msg = msg
 	c.JSON(http.StatusOK, res)
 }
 
 //Done done
 func (res *Res) Done(c *gin.Context, msg string) {
 	res.Code = http.StatusOK
-	res.Error = "none"
-	if msg == "" {
-		res.Message = "done"
-	} else {
-		res.Message = msg
+	res.Msg = codes[http.StatusOK]
+	if msg != "" {
+		res.Msg = msg
 	}
+	c.JSON(http.StatusOK, res)
+}
+
+//DoneCode done
+func (res *Res) DoneCode(c *gin.Context, code int) {
+	res.Code = code
+	res.Msg = codes[code]
+	c.JSON(http.StatusOK, res)
+}
+
+//DoneData done
+func (res *Res) DoneData(c *gin.Context, data interface{}) {
+	res.Code = http.StatusOK
+	res.Msg = codes[http.StatusOK]
+	res.Data = data
 	c.JSON(http.StatusOK, res)
 }
 
 //Reset reset to init
 func (res *Res) Reset() {
 	res.Code = http.StatusOK
-	res.Error = codes[http.StatusOK]
-	res.Message = ""
+	res.Msg = codes[http.StatusOK]
 }
 
 //MailConfig email config and data

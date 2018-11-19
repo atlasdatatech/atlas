@@ -49,14 +49,10 @@ func login(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.Fail(c, 4001)
 		return
 	}
-	// validate
-	if len(body.Name) == 0 || len(body.Password) == 0 {
-		res.FailStr(c, "name or password required")
-		return
-	}
+
 	body.Name = strings.ToLower(body.Name)
 	// abuseFilter
 	IPCountChan := make(chan int)
@@ -76,20 +72,20 @@ func login(c *gin.Context) {
 	IPCount := <-IPCountChan
 	IPUserCount := <-IPUserCountChan
 	if IPCount > cfgV.GetInt("attempts.ip") || IPUserCount > cfgV.GetInt("attempts.user") {
-		res.FailStr(c, "you've reached the maximum number of login attempts. please try again later")
+		res.Fail(c, 4002)
 		return
 	}
 	// attemptLogin
 	user := User{}
 	if db.Where("name = ?", body.Name).First(&user).RecordNotFound() {
-		res.FailStr(c, "check user name")
+		res.Fail(c, 4011)
 		return
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 	if err != nil {
 		attempt := Attempt{IP: clientIP, Name: body.Name}
 		db.Create(&attempt)
-		res.FailStr(c, "check password")
+		res.Fail(c, 4012)
 		return
 	}
 	//Cookie
@@ -105,11 +101,11 @@ func login(c *gin.Context) {
 			authMid.CookieHTTPOnly,
 		)
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"code":    http.StatusOK,
-		"token":   user.JWT,
-		"expire":  user.Expires.Format(time.RFC3339),
-		"message": "success",
+	res.DoneData(c, gin.H{
+		"token":  user.JWT,
+		"expire": user.Expires.Format(time.RFC3339),
+		"user":   body.Name,
+		"role":   casEnf.GetRolesForUser(body.Name),
 	})
 }
 
@@ -118,7 +114,7 @@ func renderAccount(c *gin.Context) {
 	id := c.GetString(identityKey)
 	user := &User{}
 	if err := db.Where("name = ?", id).First(&user).Error; err != nil {
-		res.FailStr(c, fmt.Sprintf("renderAccount, get user info: %s; user: %s", err, id))
+		res.FailMsg(c, fmt.Sprintf("renderAccount, get user info: %s; user: %s", err, id))
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Errorf("renderAccount, get user info: %s; user: %s", err, id)
 		}
@@ -133,7 +129,7 @@ func renderUpdateUser(c *gin.Context) {
 	id := c.GetString(identityKey)
 	user := &User{}
 	if err := db.Where("name = ?", id).First(&user).Error; err != nil {
-		res.FailStr(c, fmt.Sprintf("renderAccount, get user info: %s; user: %s", err, id))
+		res.FailMsg(c, fmt.Sprintf("renderAccount, get user info: %s; user: %s", err, id))
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Errorf("renderAccount, get user info: %s; user: %s", err, id)
 		}
@@ -159,27 +155,27 @@ func createUser(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 	// validate
 	if ok, err := validate(body.Name, body.Password); !ok {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	user := User{}
 	if err := db.Where("name = ?", body.Name).First(&user).Error; err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 		} else {
-			res.FailStr(c, "get user info error")
 			log.Errorf("createUser, get user info: %s; user: %s", err, body.Name)
+			res.Fail(c, 5001)
 			return
 		}
 	}
 	// duplicate UsernameCheck EmailCheck
 	if len(user.Name) != 0 {
 		if user.Name == body.Name {
-			res.FailStr(c, "name already taken")
+			res.Fail(c, 4013)
 			return
 		}
 	}
@@ -193,7 +189,7 @@ func createUser(c *gin.Context) {
 	//No verification required
 	user.JWT, user.Expires, err = authMid.TokenGenerator(&user)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	user.Activation = "yes"
@@ -201,18 +197,19 @@ func createUser(c *gin.Context) {
 	// insertUser
 	err = db.Create(&user).Error
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	//add to user_group
-	res.Done(c, "")
+	res.DoneCode(c, 201)
 }
 
 func listUsers(c *gin.Context) {
 	// 获取所有记录
+	res := NewRes()
 	var users []User
 	db.Find(&users)
-	c.JSON(http.StatusOK, users)
+	res.DoneData(c, users)
 }
 
 func readUser(c *gin.Context) {
@@ -223,13 +220,13 @@ func readUser(c *gin.Context) {
 	}
 	user := &User{}
 	if err := db.Where("name = ?", name).First(&user).Error; err != nil {
-		res.FailStr(c, fmt.Sprintf("readUser, get user info: %s; user: %s", err, name))
+		res.FailMsg(c, fmt.Sprintf("readUser, get user info: %s; user: %s", err, name))
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Errorf("readUser, get user info: %s; user: %s", err, name)
 		}
 		return
 	}
-	c.JSON(http.StatusOK, user)
+	res.DoneData(c, user)
 }
 
 func updateUser(c *gin.Context) {
@@ -244,7 +241,7 @@ func updateUser(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 	user := &User{}
@@ -259,7 +256,7 @@ func updateUser(c *gin.Context) {
 	err = db.Model(&User{}).Where("name = ?", name).Update(User{Phone: body.Phone, Department: body.Department, Search: search}).Error
 	if err != nil {
 		log.Errorf("updateUser, update user info: %s; user: %s", err, name)
-		res.Fail(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
@@ -270,14 +267,14 @@ func deleteUser(c *gin.Context) {
 	uid := c.Param("id")
 	self := c.GetString(identityKey)
 	if uid == self {
-		res.FailStr(c, "unable to delete yourself")
+		res.FailMsg(c, "unable to delete yourself")
 		return
 	}
 	casEnf.DeleteUser(uid)
 	err := db.Where("name = ?", uid).Delete(&User{}).Error
 	if err != nil {
 		log.Errorf("deleteUser, delete user : %s; user: %s", err, uid)
-		res.Fail(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 
@@ -293,12 +290,12 @@ func jwtRefresh(c *gin.Context) {
 	tokenString, expire, err := authMid.RefreshToken(c)
 	if err != nil {
 		log.Errorf("jwtRefresh, refresh token: %s; user: %s", err, id)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	if err := db.Model(&User{}).Where("name = ?", id).Update(User{JWT: tokenString, Expires: expire}).Error; err != nil {
 		log.Errorf("jwtRefresh, update jwt: %s; user: %s", err, id)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	_, err = c.Cookie("Token")
@@ -306,13 +303,10 @@ func jwtRefresh(c *gin.Context) {
 		log.Errorf("jwtRefresh, test cookie set: %s; user: %s", err, id)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"code":    http.StatusOK,
-		"token":   tokenString,
-		"expire":  expire.Format(time.RFC3339),
-		"message": "refresh successfully",
+	res.DoneData(c, gin.H{
+		"token":  tokenString,
+		"expire": expire.Format(time.RFC3339),
 	})
-
 }
 
 func changePassword(c *gin.Context) {
@@ -328,7 +322,7 @@ func changePassword(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 
@@ -337,16 +331,17 @@ func changePassword(c *gin.Context) {
 	err = db.Model(&User{}).Where("name = ?", id).Update(User{Password: string(hashedPassword)}).Error
 	if err != nil {
 		log.Errorf("changePassword, update password: %s; user: %s", err, id)
-		res.Fail(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
 }
 
 func getUserRoles(c *gin.Context) {
+	res := NewRes()
 	uid := c.Param("id")
 	roles := casEnf.GetRolesForUser(uid)
-	c.JSON(http.StatusOK, roles)
+	res.DoneData(c, roles)
 }
 
 func addUserRole(c *gin.Context) {
@@ -354,14 +349,14 @@ func addUserRole(c *gin.Context) {
 	uid := c.Param("id")
 	rid := c.Param("rid")
 	if rid == "" || uid == "" {
-		res.FailStr(c, "rid and uid must not null")
+		res.FailMsg(c, "rid and uid must not null")
 		return
 	}
 	if casEnf.AddRoleForUser(uid, rid) {
 		res.Done(c, "")
 		return
 	}
-	res.FailStr(c, fmt.Sprintf("the user->%s already has the role->%s", uid, rid))
+	res.FailMsg(c, fmt.Sprintf("the user->%s already has the role->%s", uid, rid))
 }
 
 func deleteUserRole(c *gin.Context) {
@@ -369,25 +364,25 @@ func deleteUserRole(c *gin.Context) {
 	uid := c.Param("id")
 	rid := c.Param("rid")
 	if rid == "" || uid == "" {
-		res.FailStr(c, "rid and uid must not null")
+		res.FailMsg(c, "rid and uid must not null")
 		return
 	}
 	if casEnf.DeleteRoleForUser(uid, rid) {
 		res.Done(c, "")
 		return
 	}
-	res.FailStr(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
+	res.FailMsg(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
 }
 
 func getPermissions(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
 	if id == "" {
-		res.FailStr(c, "id must not null")
+		res.FailMsg(c, "id must not null")
 		return
 	}
 	uperms := casEnf.GetPermissionsForUser(id)
-	c.JSON(http.StatusOK, uperms)
+	res.DoneData(c, uperms)
 }
 
 func addPolicy(c *gin.Context) {
@@ -399,14 +394,14 @@ func addPolicy(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	if !casEnf.AddPolicy(id, body.URL, body.Action) {
 		res.Done(c, "policy already exist")
 		return
 	}
-	res.Done(c, "")
+	res.DoneCode(c, 201)
 }
 
 func deletePermissions(c *gin.Context) {
@@ -415,7 +410,7 @@ func deletePermissions(c *gin.Context) {
 	aid := c.Param("aid")
 	action := c.Param("action")
 	if id == "" || aid == "" || action == "" {
-		res.FailStr(c, "asset id can not be nil")
+		res.FailMsg(c, "asset id can not be nil")
 		return
 	}
 
@@ -430,18 +425,19 @@ func getRoleUsers(c *gin.Context) {
 	res := NewRes()
 	rid := c.Param("id")
 	if rid == "" {
-		res.FailStr(c, "rid must not null")
+		res.FailMsg(c, "rid must not null")
 		return
 	}
 	users := casEnf.GetUsersForRole(rid)
-	c.JSON(http.StatusOK, users)
+	res.DoneData(c, users)
 }
 
 func listRoles(c *gin.Context) {
 	// 获取所有记录
+	res := NewRes()
 	var roles []Role
 	db.Find(&roles)
-	c.JSON(http.StatusOK, roles)
+	res.DoneData(c, roles)
 }
 
 func createRole(c *gin.Context) {
@@ -449,29 +445,29 @@ func createRole(c *gin.Context) {
 	role := &Role{}
 	err := c.Bind(role)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	err = db.Create(&role).Error
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
-	res.Done(c, "")
+	res.DoneCode(c, 201)
 }
 
 func deleteRole(c *gin.Context) {
 	res := NewRes()
 	rid := c.Param("id")
 	if rid == "" {
-		res.FailStr(c, "asset id can not be nil")
+		res.FailMsg(c, "asset id can not be nil")
 		return
 	}
 	casEnf.DeleteRole(rid)
 	err := db.Where("id = ?", rid).Delete(&Role{}).Error
 	if err != nil {
 		log.Errorf("deleteRole, delete role : %s; roleid: %s", err, rid)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	res.Done(c, "")
@@ -479,9 +475,10 @@ func deleteRole(c *gin.Context) {
 
 func listAssets(c *gin.Context) {
 	// 获取所有记录
+	res := NewRes()
 	var assets []Asset
 	db.Find(&assets)
-	c.JSON(http.StatusOK, assets)
+	res.DoneData(c, assets)
 }
 
 func createAsset(c *gin.Context) {
@@ -489,31 +486,31 @@ func createAsset(c *gin.Context) {
 	asset := &Asset{}
 	err := c.Bind(asset)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	asset.ID, _ = shortid.Generate()
 	// insertUser
 	err = db.Create(&asset).Error
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, asset)
+	res.DoneData(c, asset)
 }
 
 func deleteAsset(c *gin.Context) {
 	res := NewRes()
 	aid := c.Param("aid")
 	if aid == "" {
-		res.FailStr(c, "asset id can not be nil")
+		res.FailMsg(c, "asset id can not be nil")
 		return
 	}
 	asset := &Asset{}
 	err := db.Where("id = ?", aid).Find(asset).Error
 	if err != nil {
 		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	casEnf.RemoveFilteredPolicy(1, asset.URL)
@@ -522,7 +519,7 @@ func deleteAsset(c *gin.Context) {
 	err = db.Where("id = ?", aid).Delete(&Asset{}).Error
 	if err != nil {
 		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	res.Done(c, "")
@@ -530,9 +527,11 @@ func deleteAsset(c *gin.Context) {
 
 func listAssetGroups(c *gin.Context) {
 	// 获取所有记录
+	res := NewRes()
 	var ags []AssetGroup
 	db.Find(&ags)
 	c.JSON(http.StatusOK, ags)
+	res.DoneData(c, ags)
 }
 
 func createAssetGroup(c *gin.Context) {
@@ -540,29 +539,29 @@ func createAssetGroup(c *gin.Context) {
 	ag := &AssetGroup{}
 	err := c.Bind(ag)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	err = db.Create(&ag).Error
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
-	res.Done(c, "")
+	res.DoneCode(c, 201)
 }
 
 func deleteAssetGroup(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
 	if gid == "" {
-		res.FailStr(c, "asset id can not be nil")
+		res.FailMsg(c, "asset id can not be nil")
 		return
 	}
 	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 1, gid)
 	err := db.Where("id = ?", gid).Delete(&AssetGroup{}).Error
 	if err != nil {
 		log.Errorf("deleteAssetGroup, delete asset group : %s; groupid: %s", err, gid)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	res.Done(c, "")
@@ -572,7 +571,7 @@ func getGroupAssets(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
 	if gid == "" {
-		res.FailStr(c, "group id can not be nil")
+		res.FailMsg(c, "group id can not be nil")
 		return
 	}
 	p := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
@@ -582,7 +581,7 @@ func getGroupAssets(c *gin.Context) {
 			assets = append(assets, v[0])
 		}
 	}
-	c.JSON(http.StatusOK, assets)
+	res.DoneData(c, assets)
 }
 
 func addGroupAsset(c *gin.Context) {
@@ -590,7 +589,7 @@ func addGroupAsset(c *gin.Context) {
 	gid := c.Param("id")
 	aid := c.Param("aid")
 	if gid == "" || aid == "" {
-		res.FailStr(c, "group or asset id can not be nil")
+		res.FailMsg(c, "group or asset id can not be nil")
 		return
 	}
 	asset := &Asset{}
@@ -617,12 +616,12 @@ func deleteGroupAsset(c *gin.Context) {
 	gid := c.Param("id")
 	aid := c.Param("aid")
 	if gid == "" || aid == "" {
-		res.FailStr(c, "group or asset id can not be nil")
+		res.FailMsg(c, "group or asset id can not be nil")
 		return
 	}
 	asset := &Asset{}
 	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
-		res.FailStr(c, fmt.Sprintf("addGroupAsset, get asset url: %s; assetid: %s", err, aid))
+		res.FailMsg(c, fmt.Sprintf("addGroupAsset, get asset url: %s; assetid: %s", err, aid))
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Errorf("addGroupAsset, get asset info: %s; assetid: %s", err, aid)
 		}
@@ -700,7 +699,7 @@ func uploadStyle(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadStyle, get form: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`uploadStyle, get form: %s; user: %s`, err, id))
 		return
 	}
 
@@ -715,7 +714,7 @@ func uploadStyle(c *gin.Context) {
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadStyle, upload file: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadStyle, upload file: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`uploadStyle, upload file: %s; user: %s`, err, id))
 		return
 	}
 
@@ -735,14 +734,14 @@ func updateStyle(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("style id(%s) not exist in the service", sid)
-		res.FailStr(c, "style not exist in the service")
+		res.FailMsg(c, "style not exist in the service")
 		return
 	}
 
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
 		return
 	}
 	style.Style = body
@@ -761,7 +760,7 @@ func saveStyle(c *gin.Context) {
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
 		return
 	}
 	home := cfgV.GetString("users.home")
@@ -785,7 +784,7 @@ func getStyle(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
-		res.FailStr(c, "style not exist in the service")
+		res.FailMsg(c, "style not exist in the service")
 		return
 	}
 
@@ -838,7 +837,7 @@ func getSprite(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getSprite, style not exist in the service, sid: %s ^^", sid)
-		res.FailStr(c, "style not exist in the service")
+		res.FailMsg(c, "style not exist in the service")
 		return
 	}
 	sprite := c.Param("fmt")
@@ -846,7 +845,7 @@ func getSprite(c *gin.Context) {
 	spritePat := `^sprite(@[2]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Errorf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id)
-		res.FailStr(c, fmt.Sprintf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id))
+		res.FailMsg(c, fmt.Sprintf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id))
 		return
 	}
 
@@ -862,7 +861,7 @@ func getSprite(c *gin.Context) {
 	file, err := ioutil.ReadFile(spriteFile)
 	if err != nil {
 		log.Errorf(`getSprite, read sprite file: %v; user: %s ^^`, err, id)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	c.Writer.Write(file)
@@ -878,7 +877,7 @@ func uploadSprite(c *gin.Context) {
 	if err != nil {
 		log.Errorf(`uploadSprite, get form: %s; user: %s`, err, id)
 		c.String(http.StatusBadRequest, fmt.Sprintf("get form err: %s", err.Error()))
-		// res.FailStr(c, fmt.Sprintf(`uploadSprite, get form: %s; user: %s`, err, id))
+		// res.FailMsg(c, fmt.Sprintf(`uploadSprite, get form: %s; user: %s`, err, id))
 		return
 	}
 
@@ -889,7 +888,7 @@ func uploadSprite(c *gin.Context) {
 		dst := filepath.Join(styles, sid, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
 			log.Errorf(`uploadSprite, upload file: %s; user: %s`, err, id)
-			// res.FailStr(c, fmt.Sprintf(`uploadSprite, upload file: %s; user: %s`, err, id))
+			// res.FailMsg(c, fmt.Sprintf(`uploadSprite, upload file: %s; user: %s`, err, id))
 			c.String(http.StatusBadRequest, fmt.Sprintf("upload file err: %s", err.Error()))
 			return
 		}
@@ -905,7 +904,7 @@ func viewStyle(c *gin.Context) {
 	_, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)
-		res.FailStr(c, "style not exist in the service")
+		res.FailMsg(c, "style not exist in the service")
 		return
 	}
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
@@ -937,7 +936,7 @@ func uploadTileset(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadTileset, get form: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`uploadTileset, get form: %s; user: %s`, err, id))
 		return
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
@@ -949,7 +948,7 @@ func uploadTileset(c *gin.Context) {
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
-		res.FailStr(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
+		res.FailMsg(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
 		return
 	}
 
@@ -972,7 +971,7 @@ func getTilejson(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailStr(c, "tilesets not exist in the service")
+		res.FailMsg(c, "tilesets not exist in the service")
 		return
 	}
 	urlPath := c.Request.URL.Path
@@ -992,7 +991,7 @@ func getTilejson(c *gin.Context) {
 	metadata, err := tileset.GetInfo()
 	if err != nil {
 		log.Errorf("getTilejson, get metadata failed: %s; user: %s ^^", err, id)
-		res.FailStr(c, fmt.Sprintf("get metadata failed : %s", err.Error()))
+		res.FailMsg(c, fmt.Sprintf("get metadata failed : %s", err.Error()))
 		return
 	}
 	for k, v := range metadata {
@@ -1027,7 +1026,7 @@ func viewTile(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailStr(c, "tilesets not exist in the service")
+		res.FailMsg(c, "tilesets not exist in the service")
 		return
 	}
 
@@ -1046,14 +1045,14 @@ func getTile(c *gin.Context) {
 	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
 	size := len(pcs)
 	if size < 5 || pcs[4] == "" {
-		res.FailStr(c, "request path is too short")
+		res.FailMsg(c, "request path is too short")
 		return
 	}
 	tid := c.Param("tid")
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailStr(c, "tilesets not exist in the service")
+		res.FailMsg(c, "tilesets not exist in the service")
 		return
 	}
 
@@ -1062,7 +1061,7 @@ func getTile(c *gin.Context) {
 	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
 	tc, ext, err := tileCoordFromString(z, x, y)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	var data []byte
@@ -1085,7 +1084,7 @@ func getTile(c *gin.Context) {
 		}
 		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
 		log.Error(err)
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	if data == nil || len(data) <= 1 {
@@ -1142,37 +1141,94 @@ func importDataset(c *gin.Context) {
 	file, err := c.FormFile(name)
 	if err != nil {
 		log.Errorf(`importDataset, get form: %s; file: %s`, err, name)
-		res.FailStr(c, fmt.Sprintf(`importDataset, get form: %s; file: %s`, err, name))
+		res.FailMsg(c, fmt.Sprintf(`importDataset, get form: %s; file: %s`, err, name))
 		return
 	}
 
 	tilesets := cfgV.GetString("assets.datasets")
-	// tilesets := "/tmp/datasets/"
 	ext := filepath.Ext(file.Filename)
 	name = strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
 	id = name + "." + id
 	dst := filepath.Join(tilesets, id+ext)
-
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
-		res.FailStr(c, fmt.Sprintf(`importDataset, upload file: %s; file: %s`, err, name))
+		res.FailMsg(c, fmt.Sprintf(`importDataset, upload file: %s; file: %s`, err, name))
 		return
 	}
-	absDst, _ := filepath.Abs(dst)
 	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
 		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
-		res.FailStr(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		res.FailMsg(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
 		return
 	}
 	reader := csv.NewReader(bytes.NewReader(buf))
 	csvHeader, err := reader.Read()
 	if err != nil {
 		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
-		res.FailStr(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		res.FailMsg(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
 		return
 	}
+
+	row2values := func(row []string, cols []*sql.ColumnType) string {
+		var vals string
+		for i, col := range cols {
+			// fmt.Println(i, col.DatabaseTypeName(), col.Name())
+			switch col.DatabaseTypeName() {
+			case "INT", "INT4", "NUMERIC": //number
+				vals = vals + row[i] + ","
+			default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
+				vals = vals + "'" + row[i] + "',"
+			}
+		}
+		vals = strings.TrimSuffix(vals, ",")
+		return vals
+	}
+
+	insert := func(header string) error {
+		if len(strings.Split(header, ",")) != len(csvHeader) {
+			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
+			return fmt.Errorf("the cvs file format error, file:%s", name)
+		}
+
+		s := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", header, name)
+		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		cols, err := rows.ColumnTypes()
+		if err != nil {
+			return err
+		}
+		csvCtx, err := reader.ReadAll()
+		if err != nil {
+			return err
+		}
+		//clear
+		clear := fmt.Sprintf(`DELETE FROM %s;`, name)
+		db.Exec(clear)
+		tx := db.Begin()
+		if tx.Error != nil {
+			return tx.Error
+		}
+		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES `, name, header) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+		for _, row := range csvCtx {
+			vals := row2values(row, cols)
+			s = s + fmt.Sprintf(`(%s),`, vals)
+		}
+		s = strings.TrimSuffix(s, ",")
+		result := db.Exec(s)
+		if result.Error != nil {
+			log.Errorf("import %s error:%s", name, result.Error.Error())
+		}
+		result = tx.Commit()
+		if result.Error != nil {
+			return result.Error
+		}
+		return nil
+	}
+
 	//数据入库
 	var header, search string
 	switch name {
@@ -1190,27 +1246,17 @@ func importDataset(c *gin.Context) {
 			header = "name,class,type,hit,per,area,households,date,lat,lng"
 			search = ",search =ARRAY[name]"
 		}
-		// header != strings.Join(csvHeader, ",") {
-		if len(strings.Split(header, ",")) != len(csvHeader) {
-			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
-			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
-			return
-		}
-		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
-		//clear
-		clear := fmt.Sprintf(`DELETE FROM %s;`, name)
-		db.Exec(clear)
-		result := db.Exec(sql)
-		if result.Error != nil {
-			log.Errorf("import %s error:%s", name, result.Error.Error())
-			res.FailStr(c, fmt.Sprintf("import %s error:%s", name, result.Error.Error()))
+
+		err = insert(header)
+		if err != nil {
+			res.FailErr(c, err)
 			return
 		}
 		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
-		result = db.Exec(update)
+		result := db.Exec(update)
 		if result.Error != nil {
 			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
-			res.FailStr(c, fmt.Sprintf("update %s create geom error:%s", name, result.Error.Error()))
+			res.FailMsg(c, fmt.Sprintf("update %s create geom error:%s", name, result.Error.Error()))
 			return
 		}
 		//更新元数据
@@ -1219,7 +1265,7 @@ func importDataset(c *gin.Context) {
 		err = pubSet.AddDataset(dst, id)
 		if err != nil {
 			log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
-			res.FailStr(c, fmt.Sprintf(`importDataset, add %s to dataset service: %s ^^`, name, err))
+			res.FailMsg(c, fmt.Sprintf(`importDataset, add %s to dataset service: %s ^^`, name, err))
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
@@ -1238,17 +1284,10 @@ func importDataset(c *gin.Context) {
 		case "m4":
 			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
 		}
-		// header != strings.Join(csvHeader, ",") {
-		if len(strings.Split(header, ",")) != len(csvHeader) {
-			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
-			res.FailStr(c, fmt.Sprintf("the cvs file format error, file:%s", name))
-			return
-		}
-		sql := fmt.Sprintf(`COPY %s(%s) FROM '%s' DELIMITERS ',' CSV HEADER;`, name, header, absDst)
-		result := db.Exec(sql)
-		if result.Error != nil {
-			log.Errorf("import %s error:%s", name, result.Error.Error())
-			res.FailStr(c, fmt.Sprintf("import %s error:%s", name, result.Error.Error()))
+
+		err = insert(header)
+		if err != nil {
+			res.FailErr(c, err)
 			return
 		}
 		res.Done(c, "")
@@ -1272,7 +1311,7 @@ func importDataset(c *gin.Context) {
 // 	var jg map[string]interface{}
 // 	err = json.Unmarshal([]byte(body.GeoJSON), &jg)
 // 	if err != nil || jg["geometry"] == nil {
-// 		res.FailStr(c, "param geojson format error")
+// 		res.FailMsg(c, "param geojson format error")
 // 		return
 // 	}
 
@@ -1382,7 +1421,7 @@ func queryDatasetGeojson(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 
@@ -1400,7 +1439,7 @@ func queryDatasetGeojson(c *gin.Context) {
 	err = json.Unmarshal([]byte(body.GeoJSON), &geoj)
 
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 
@@ -1411,7 +1450,7 @@ func queryDatasetGeojson(c *gin.Context) {
 		//props
 		var tags map[string]interface{}
 		if err := json.Unmarshal(props, &tags); err != nil {
-			res.Fail(c, err)
+			res.FailErr(c, err)
 			return
 		}
 
@@ -1452,13 +1491,13 @@ func queryDatasetGeojson(c *gin.Context) {
 	log.Debug(s)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	fc := geojson.NewFeatureCollection()
@@ -1513,18 +1552,18 @@ func queryExec(c *gin.Context) {
 	res := NewRes()
 	s := c.Param("sql")
 	if "" == s {
-		res.FailStr(c, "sql can not be null")
+		res.FailMsg(c, "sql can not be null")
 		return
 	}
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		res.Fail(c, err)
+		res.FailErr(c, err)
 		return
 	}
 	var t [][]string
@@ -1567,7 +1606,7 @@ func getGlyphs(c *gin.Context) {
 	rgPBFPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
 		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, id)
-		res.FailStr(c, fmt.Sprintf("glyph range pattern error,range:%s", rgPBF))
+		res.FailMsg(c, fmt.Sprintf("glyph range pattern error,range:%s", rgPBF))
 		return
 	}
 	//should init first
