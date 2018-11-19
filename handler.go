@@ -1217,6 +1217,7 @@ func importDataset(c *gin.Context) {
 			vals := row2values(row, cols)
 			s = s + fmt.Sprintf(`(%s),`, vals)
 		}
+		fmt.Println(s)
 		s = strings.TrimSuffix(s, ",")
 		result := db.Exec(s)
 		if result.Error != nil {
