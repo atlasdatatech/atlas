@@ -14,7 +14,7 @@ type User struct {
 	ID         string         `json:"id" gorm:"primary_key"`
 	Name       string         `json:"name" gorm:"unique;not null;unique_index"`
 	Password   string         `json:"-"`
-	Role       pq.StringArray `json:"role" gorm:"type:varchar(64)[]"`
+	Role       pq.StringArray `json:"role" gorm:"type:varchar[]"`
 	Phone      string         `json:"phone"`
 	Department string         `json:"department"`
 
@@ -22,7 +22,7 @@ type User struct {
 	Expires time.Time `json:"expires"`
 
 	Activation string         `json:"activation"`
-	Search     pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
+	Search     pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
@@ -82,7 +82,7 @@ type Bank struct {
 	Lat     float32        `json:"lat"`
 	Lng     float32        `json:"lng"`
 	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search  pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
 // Saving 存款表
@@ -107,7 +107,7 @@ type Other struct {
 	Lat     float32        `json:"lat"`
 	Lng     float32        `json:"lng"`
 	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search  pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
 // Basepoi 基础需求点
@@ -134,7 +134,7 @@ type Poi struct {
 	Lat        float32        `json:"lat"`
 	Lng        float32        `json:"lng"`
 	Geom       orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search     pq.StringArray `json:"search" gorm:"type:varchar(64)[];index"`
+	Search     pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
 // M1 立地条件
