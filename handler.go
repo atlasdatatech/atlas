@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -1176,7 +1177,11 @@ func importDataset(c *gin.Context) {
 			// fmt.Println(i, col.DatabaseTypeName(), col.Name())
 			switch col.DatabaseTypeName() {
 			case "INT", "INT4", "NUMERIC": //number
-				vals = vals + row[i] + ","
+				if "" == row[i] {
+					vals = vals + "null,"
+				} else {
+					vals = vals + row[i] + ","
+				}
 			default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
 				vals = vals + "'" + row[i] + "',"
 			}
@@ -1185,6 +1190,10 @@ func importDataset(c *gin.Context) {
 		return vals
 	}
 
+	clear := func(name string) error {
+		s := fmt.Sprintf(`DELETE FROM %s;`, name)
+		return db.Exec(s).Error
+	}
 	insert := func(header string) error {
 		if len(strings.Split(header, ",")) != len(csvHeader) {
 			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
@@ -1201,34 +1210,20 @@ func importDataset(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		csvCtx, err := reader.ReadAll()
-		if err != nil {
-			return err
+		var vals []string
+		for {
+			row, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			rval := row2values(row, cols)
+			vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 		}
-		//clear
-		clear := fmt.Sprintf(`DELETE FROM %s;`, name)
-		db.Exec(clear)
-		tx := db.Begin()
-		if tx.Error != nil {
-			return tx.Error
-		}
-		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES `, name, header) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		for _, row := range csvCtx {
-			vals := row2values(row, cols)
-			s = s + fmt.Sprintf(`(%s),`, vals)
-		}
-		fmt.Println(s)
-		s = strings.TrimSuffix(s, ",")
-		fmt.Println(s)
-		result := db.Exec(s)
-		if result.Error != nil {
-			log.Errorf("import %s error:%s", name, result.Error.Error())
-		}
-		result = tx.Commit()
-		if result.Error != nil {
-			return result.Error
-		}
-		return nil
+		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+		return db.Exec(s).Error
 	}
 
 	//数据入库
@@ -1248,9 +1243,15 @@ func importDataset(c *gin.Context) {
 			header = "name,class,type,hit,per,area,households,date,lat,lng"
 			search = ",search =ARRAY[name]"
 		}
-
+		err = clear(name)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
 		err = insert(header)
 		if err != nil {
+			log.Errorf("import %s error:%s", name, err.Error())
 			res.FailErr(c, err)
 			return
 		}
@@ -1286,9 +1287,15 @@ func importDataset(c *gin.Context) {
 		case "m4":
 			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
 		}
-
+		err = clear(name)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
 		err = insert(header)
 		if err != nil {
+			log.Errorf("import %s error:%s", name, err.Error())
 			res.FailErr(c, err)
 			return
 		}
