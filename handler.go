@@ -79,14 +79,14 @@ func login(c *gin.Context) {
 	// attemptLogin
 	user := User{}
 	if db.Where("name = ?", body.Name).First(&user).RecordNotFound() {
-		res.Fail(c, 4011)
+		res.Fail(c, 4041)
 		return
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 	if err != nil {
 		attempt := Attempt{IP: clientIP, Name: body.Name}
 		db.Create(&attempt)
-		res.Fail(c, 4012)
+		res.Fail(c, 4011)
 		return
 	}
 	//Cookie
@@ -156,19 +156,21 @@ func createUser(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
+		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
 	// validate
-	if ok, err := validate(body.Name, body.Password); !ok {
-		res.FailErr(c, err)
+	if err := validate(body.Name, body.Password); err != nil {
+		log.Error(err)
+		res.Fail(c, 4012)
 		return
 	}
 	user := User{}
 	if err := db.Where("name = ?", body.Name).First(&user).Error; err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 		} else {
-			log.Errorf("createUser, get user info: %s; user: %s", err, body.Name)
+			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
@@ -176,7 +178,7 @@ func createUser(c *gin.Context) {
 	// duplicate UsernameCheck EmailCheck
 	if len(user.Name) != 0 {
 		if user.Name == body.Name {
-			res.Fail(c, 4013)
+			res.Fail(c, 4031)
 			return
 		}
 	}
@@ -190,15 +192,15 @@ func createUser(c *gin.Context) {
 	//No verification required
 	user.JWT, user.Expires, err = authMid.TokenGenerator(&user)
 	if err != nil {
-		res.FailErr(c, err)
-		return
+		log.Error(err)
 	}
 	user.Activation = "yes"
 	user.Search = []string{body.Name, body.Phone, body.Department}
-	// insertUser
+	// insertUserInfo
 	err = db.Create(&user).Error
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	//add to user_group
@@ -206,7 +208,6 @@ func createUser(c *gin.Context) {
 }
 
 func listUsers(c *gin.Context) {
-	// 获取所有记录
 	res := NewRes()
 	var users []User
 	db.Find(&users)
@@ -221,10 +222,11 @@ func readUser(c *gin.Context) {
 	}
 	user := &User{}
 	if err := db.Where("name = ?", name).First(&user).Error; err != nil {
-		res.FailMsg(c, fmt.Sprintf("readUser, get user info: %s; user: %s", err, name))
 		if !gorm.IsRecordNotFoundError(err) {
-			log.Errorf("readUser, get user info: %s; user: %s", err, name)
+			log.Error(err)
+			res.Fail(c, 5001)
 		}
+		res.Fail(c, 4041)
 		return
 	}
 	res.DoneData(c, user)
@@ -242,6 +244,7 @@ func updateUser(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
+		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
@@ -256,29 +259,10 @@ func updateUser(c *gin.Context) {
 	search := []string{name, body.Phone, body.Department} //更新搜索字段
 	err = db.Model(&User{}).Where("name = ?", name).Update(User{Phone: body.Phone, Department: body.Department, Search: search}).Error
 	if err != nil {
-		log.Errorf("updateUser, update user info: %s; user: %s", err, name)
+		log.Error(err)
 		res.Fail(c, 5001)
 		return
 	}
-	res.Done(c, "")
-}
-
-func deleteUser(c *gin.Context) {
-	res := NewRes()
-	uid := c.Param("id")
-	self := c.GetString(identityKey)
-	if uid == self {
-		res.FailMsg(c, "unable to delete yourself")
-		return
-	}
-	casEnf.DeleteUser(uid)
-	err := db.Where("name = ?", uid).Delete(&User{}).Error
-	if err != nil {
-		log.Errorf("deleteUser, delete user : %s; user: %s", err, uid)
-		res.Fail(c, 5001)
-		return
-	}
-
 	res.Done(c, "")
 }
 
@@ -290,13 +274,13 @@ func jwtRefresh(c *gin.Context) {
 	}
 	tokenString, expire, err := authMid.RefreshToken(c)
 	if err != nil {
-		log.Errorf("jwtRefresh, refresh token: %s; user: %s", err, id)
+		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
 	if err := db.Model(&User{}).Where("name = ?", id).Update(User{JWT: tokenString, Expires: expire}).Error; err != nil {
-		log.Errorf("jwtRefresh, update jwt: %s; user: %s", err, id)
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	_, err = c.Cookie("Token")
@@ -323,6 +307,7 @@ func changePassword(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
+		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
@@ -338,9 +323,36 @@ func changePassword(c *gin.Context) {
 	res.Done(c, "")
 }
 
+func deleteUser(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("id")
+	if uid == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	self := c.GetString(identityKey)
+	if uid == self {
+		res.FailMsg(c, "unable to delete yourself")
+		return
+	}
+	casEnf.DeleteUser(uid)
+	err := db.Where("name = ?", uid).Delete(&User{}).Error
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+
+	res.Done(c, "")
+}
+
 func getUserRoles(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
+	if code := checkUser(uid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
 	roles := casEnf.GetRolesForUser(uid)
 	res.DoneData(c, roles)
 }
@@ -349,41 +361,63 @@ func addUserRole(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
 	rid := c.Param("rid")
-	if rid == "" || uid == "" {
-		res.FailMsg(c, "rid and uid must not null")
+
+	if code := checkUser(uid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
+	if code := checkRole(rid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
 	if casEnf.AddRoleForUser(uid, rid) {
 		res.Done(c, "")
 		return
 	}
-	res.FailMsg(c, fmt.Sprintf("the user->%s already has the role->%s", uid, rid))
+	res.Done(c, fmt.Sprintf("%s already has %s role", uid, rid))
 }
 
 func deleteUserRole(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
 	rid := c.Param("rid")
-	if rid == "" || uid == "" {
-		res.FailMsg(c, "rid and uid must not null")
+
+	if code := checkUser(uid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
+	if code := checkRole(rid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
 	if casEnf.DeleteRoleForUser(uid, rid) {
 		res.Done(c, "")
 		return
 	}
-	res.FailMsg(c, fmt.Sprintf("the user->%s does not has the role->%s", uid, rid))
+	res.Done(c, fmt.Sprintf("%s does not has %s role", uid, rid))
 }
 
 func getPermissions(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	if id == "" {
-		res.FailMsg(c, "id must not null")
+	uc := checkUser(id)
+	rc := checkRole(id)
+	if uc == 200 || rc == 200 {
+		uperms := casEnf.GetPermissionsForUser(id)
+		res.DoneData(c, uperms)
 		return
+	} else {
+		if uc != 200 {
+			res.Fail(c, uc)
+			return
+		}
+		if rc != 200 {
+			res.Fail(c, rc)
+			return
+		}
 	}
-	uperms := casEnf.GetPermissionsForUser(id)
-	res.DoneData(c, uperms)
 }
 
 func addPolicy(c *gin.Context) {
@@ -395,14 +429,28 @@ func addPolicy(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.AddPolicy(id, body.URL, body.Action) {
-		res.Done(c, "policy already exist")
+
+	uc := checkUser(id)
+	rc := checkRole(id)
+	if uc == 200 || rc == 200 {
+		if !casEnf.AddPolicy(id, body.URL, body.Action) {
+			res.Done(c, "policy already exist")
+			return
+		}
+		res.Done(c, "")
 		return
 	}
-	res.DoneCode(c, 201)
+	if uc != 200 {
+		res.Fail(c, uc)
+		return
+	}
+	if rc != 200 {
+		res.Fail(c, rc)
+		return
+	}
 }
 
 func deletePermissions(c *gin.Context) {
@@ -411,7 +459,7 @@ func deletePermissions(c *gin.Context) {
 	aid := c.Param("aid")
 	action := c.Param("action")
 	if id == "" || aid == "" || action == "" {
-		res.FailMsg(c, "asset id can not be nil")
+		res.Fail(c, 4001)
 		return
 	}
 
@@ -420,17 +468,6 @@ func deletePermissions(c *gin.Context) {
 		return
 	}
 	res.Done(c, "")
-}
-
-func getRoleUsers(c *gin.Context) {
-	res := NewRes()
-	rid := c.Param("id")
-	if rid == "" {
-		res.FailMsg(c, "rid must not null")
-		return
-	}
-	users := casEnf.GetUsersForRole(rid)
-	res.DoneData(c, users)
 }
 
 func listRoles(c *gin.Context) {
@@ -446,12 +483,13 @@ func createRole(c *gin.Context) {
 	role := &Role{}
 	err := c.Bind(role)
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 	err = db.Create(&role).Error
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.DoneCode(c, 201)
@@ -461,17 +499,46 @@ func deleteRole(c *gin.Context) {
 	res := NewRes()
 	rid := c.Param("id")
 	if rid == "" {
-		res.FailMsg(c, "asset id can not be nil")
+		res.Fail(c, 4001)
+		return
+	}
+	role := &Role{}
+	if err := db.Where("id = ?", rid).First(&role).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			res.Fail(c, 5001)
+		}
+		res.Fail(c, 4042)
 		return
 	}
 	casEnf.DeleteRole(rid)
 	err := db.Where("id = ?", rid).Delete(&Role{}).Error
 	if err != nil {
 		log.Errorf("deleteRole, delete role : %s; roleid: %s", err, rid)
-		res.FailErr(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
+}
+
+func getRoleUsers(c *gin.Context) {
+	res := NewRes()
+	rid := c.Param("id")
+	if rid == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	role := &Role{}
+	if err := db.Where("id = ?", rid).First(&role).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			res.Fail(c, 5001)
+		}
+		res.Fail(c, 4042)
+		return
+	}
+	users := casEnf.GetUsersForRole(rid)
+	res.DoneData(c, users)
 }
 
 func listAssets(c *gin.Context) {

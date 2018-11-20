@@ -188,21 +188,21 @@ type M4 struct {
 	Loan       float32 `json:"loan"`
 }
 
-func validate(name string, password string) (bool, error) {
+func validate(name string, password string) error {
 	name = strings.ToLower(name)
 	if len(name) == 0 && len(name) < 64 {
-		return false, errors.New("name: required and 64 letters limit")
+		return errors.New("name: required and 64 letters limit")
 	}
 	if ok := rUsername.MatchString(name); !ok {
-		return false, errors.New(`name: only use letters, numbers, \'-\', \'_\'`)
+		return errors.New(`name: only use letters, numbers, \'-\', \'_\'`)
 	}
 
 	if len(password) == 0 {
-		return false, errors.New("password: required")
+		return errors.New("password: required")
 	}
 	if len(password) < 4 {
-		return false, errors.New(`password: too weak password, at least 4 necessary`)
+		return errors.New(`password: too weak password, at least 4 necessary`)
 	}
 
-	return true, nil
+	return nil
 }

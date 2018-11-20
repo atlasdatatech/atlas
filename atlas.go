@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/gin-contrib/cors"
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
@@ -13,7 +12,9 @@ import (
 	"github.com/casbin/gorm-adapter"
 
 	"github.com/casbin/casbin"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
 	"github.com/jinzhu/gorm"
 	"github.com/spf13/viper"
 )
@@ -97,6 +98,7 @@ func bindRoutes(r *gin.Engine) {
 	//admin
 	admin := r.Group("/authn")
 	admin.Use(authMid.MiddlewareFunc())
+	admin.Use(NewAuthorizer(casEnf))
 	{
 		//authn > users
 		admin.GET("/users/", listUsers)
@@ -147,22 +149,9 @@ func bindRoutes(r *gin.Engine) {
 		account.GET("/password/", renderChangePassword)
 		account.POST("/password/", changePassword)
 	}
-
-	// autoUser := func(c *gin.Context) {
-	// 	claims := jwt.ExtractClaims(c)
-	// 	user, ok := claims[identityKey]
-	// 	if !ok {
-	// 		log.Errorf("can't find %s", user)
-	// 		c.Redirect(http.StatusFound, "/login/")
-	// 	} else {
-	// 		c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
-	// 		r.HandleContext(c)
-	// 	}
-	// }
-
 	//studio
 	studio := r.Group("/studio")
-	// studio.Use(authMid.MiddlewareFunc())
+	studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -174,7 +163,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	styles := r.Group("/styles")
-	// styles.Use(authMid.MiddlewareFunc())
+	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -187,7 +176,7 @@ func bindRoutes(r *gin.Engine) {
 		styles.POST("/:sid/sprite/", uploadSprite) //style.json
 	}
 	fonts := r.Group("/fonts")
-	// fonts.Use(authMid.MiddlewareFunc())
+	fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
 		fonts.GET("/", listFonts)                  //get font
@@ -195,7 +184,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	tilesets := r.Group("/tilesets")
-	// tilesets.Use(authMid.MiddlewareFunc())
+	tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -205,7 +194,7 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
 	datasets := r.Group("/datasets")
-	// datasets.Use(authMid.MiddlewareFunc())
+	datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
@@ -221,9 +210,9 @@ func bindRoutes(r *gin.Engine) {
 func initSuperUser() {
 	name := "root"
 	password := "1234"
-	role := "super"
 	phone := "13579246810"
 	department := "system"
+	role := Role{ID: "super", Name: "超级管理员"}
 	user := User{}
 	db.Where("name = ?", name).First(&user)
 	if user.Name != "" {
@@ -235,7 +224,7 @@ func initSuperUser() {
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Role = []string{role}
+	user.Role = []string{role.ID}
 	user.Phone = phone
 	user.Department = department
 	//No verification required
@@ -247,5 +236,9 @@ func initSuperUser() {
 		log.Errorf("super user create error")
 		return
 	}
-	casEnf.AddGroupingPolicy(name, role)
+	if err := db.Create(&role).Error; err != nil {
+		log.Errorf("super role create error")
+		return
+	}
+	casEnf.AddGroupingPolicy(name, role.ID)
 }

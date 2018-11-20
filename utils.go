@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/gorm"
+	log "github.com/sirupsen/logrus"
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -26,17 +28,22 @@ var codes = map[int]string{
 	300: "重定向",
 
 	400:  "请求无法解析",
-	4001: "必填参数为空",
+	4001: "必填参数校验错误",
 	4002: "达到最大尝试登录次数,稍后再试",
 
 	401:  "未授权",
-	4011: "检查用户名",
-	4012: "检查密码",
-	4013: "用户名已存在",
-	402:  "余额不足",
+	4011: "用户名或密码错误",
+	4012: "用户名或密码非法",
+
 	403:  "禁止访问",
+	4031: "用户已存在",
+
 	404:  "找不到资源",
-	408:  "请求超时",
+	4041: "用户不存在",
+	4042: "角色不存在",
+	4043: "资源不存在",
+
+	408: "请求超时",
 
 	500:  "系统错误",
 	5001: "数据库错误",
@@ -195,4 +202,34 @@ func createPaths(name string) {
 	os.MkdirAll(tilesets, os.ModePerm)
 	os.MkdirAll(datasets, os.ModePerm)
 	os.MkdirAll(fonts, os.ModePerm)
+}
+
+func checkUser(uid string) int {
+	if uid == "" {
+		return 4001
+	}
+	user := &User{}
+	if err := db.Where("name = ?", uid).First(&user).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			return 5001
+		}
+		return 4041
+	}
+	return 200
+}
+
+func checkRole(rid string) int {
+	if rid == "" {
+		return 4001
+	}
+	role := &Role{}
+	if err := db.Where("id = ?", rid).First(&role).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			return 5001
+		}
+		return 4042
+	}
+	return 200
 }

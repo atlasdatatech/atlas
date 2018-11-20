@@ -261,6 +261,12 @@
 			"revisionTime": "2018-09-11T19:35:47Z"
 		},
 		{
+			"checksumSHA1": "xGKNc62C43gq/9HW16ZZ8IlhFi4=",
+			"path": "github.com/paulmach/orb/geojson",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
 			"checksumSHA1": "pHhe6Qo3thmdTZwaaJxZKXQtooI=",
 			"path": "github.com/pelletier/go-toml",
 			"revision": "78b76feda6f35b2c5c1d283513f6419e59086729",

@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
 	jwt "github.com/appleboy/gin-jwt"
+	"github.com/casbin/casbin"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 func payload(data interface{}) jwt.MapClaims {
@@ -27,9 +27,8 @@ func authenticator(c *gin.Context) (interface{}, error) {
 //定义一个回调函数，用来决断用户在认证成功的前提下，是否有权限对资源进行访问
 func authorizator(user interface{}, c *gin.Context) bool {
 	if id, ok := user.(string); ok {
-		//如果可以正常取出 user 的值，就使用 casbin 来验证一下是否具备资源的访问权限
-		log.Debug(id, c.Request.URL.String(), c.Request.Method)
-		return casEnf.Enforce(id, c.Request.URL.String(), c.Request.Method)
+		log.Infof("authorizator for %s -> true ^^", id)
+		return true
 	}
 	//默认策略是不允许
 	return false
@@ -38,38 +37,8 @@ func authorizator(user interface{}, c *gin.Context) bool {
 //定义一个函数用来处理，认证不成功的情况
 func unauthorized(c *gin.Context, code int, message string) {
 	c.JSON(code, gin.H{
-		"code":    code,
-		"message": message,
-	})
-}
-
-func loginResponse(c *gin.Context, code int, token string, t time.Time) {
-	cookie, err := c.Cookie("Token")
-	if err != nil {
-		log.Error(err)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    http.StatusOK,
-		"token":   token,
-		"expire":  t.Format(time.RFC3339),
-		"message": "login successfully",
-		"cookie":  cookie,
-	})
-}
-
-func refreshResponse(c *gin.Context, code int, token string, t time.Time) {
-	cookie, err := c.Cookie("Token")
-	if err != nil {
-		log.Error(err)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"code":    http.StatusOK,
-		"token":   token,
-		"expire":  t.Format(time.RFC3339),
-		"message": "refresh successfully",
-		"cookie":  cookie,
+		"code": code,
+		"msg":  message,
 	})
 }
 
@@ -124,8 +93,40 @@ func JWTMiddleware() *jwt.GinJWTMiddleware {
 		//这个指定了提供当前时间的函数，也可以自定义
 		TimeFunc: time.Now,
 		//设置Cookie
-		SendCookie:      true,
-		LoginResponse:   loginResponse,
-		RefreshResponse: refreshResponse,
+		SendCookie: true,
 	}
+}
+
+// NewAuthorizer returns the authorizer, uses a Casbin enforcer as input
+func NewAuthorizer(e *casbin.Enforcer) gin.HandlerFunc {
+	a := &BasicAuthorizer{enforcer: e}
+
+	return func(c *gin.Context) {
+		if !a.CheckPermission(c) {
+			a.RequirePermission(c)
+		}
+	}
+}
+
+// BasicAuthorizer stores the casbin handler
+type BasicAuthorizer struct {
+	enforcer *casbin.Enforcer
+}
+
+// CheckPermission checks the user/method/path combination from the request.
+// Returns true (permission granted) or false (permission forbidden)
+func (a *BasicAuthorizer) CheckPermission(c *gin.Context) bool {
+	user := c.GetString(identityKey)
+	method := c.Request.Method
+	path := c.Request.URL.Path
+	return a.enforcer.Enforce(user, path, method)
+}
+
+// RequirePermission returns the 403 Forbidden to the client
+func (a *BasicAuthorizer) RequirePermission(c *gin.Context) {
+	c.JSON(http.StatusForbidden, gin.H{
+		"code": 403,
+		"msg":  "you don't have permission to access this resource",
+	})
+	c.Abort()
 }
