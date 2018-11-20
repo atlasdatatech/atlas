@@ -408,16 +408,8 @@ func getPermissions(c *gin.Context) {
 		uperms := casEnf.GetPermissionsForUser(id)
 		res.DoneData(c, uperms)
 		return
-	} else {
-		if uc != 200 {
-			res.Fail(c, uc)
-			return
-		}
-		if rc != 200 {
-			res.Fail(c, rc)
-			return
-		}
 	}
+	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
 }
 
 func addPolicy(c *gin.Context) {
@@ -443,31 +435,32 @@ func addPolicy(c *gin.Context) {
 		res.Done(c, "")
 		return
 	}
-	if uc != 200 {
-		res.Fail(c, uc)
-		return
-	}
-	if rc != 200 {
-		res.Fail(c, rc)
-		return
-	}
+	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
 }
 
 func deletePermissions(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	aid := c.Param("aid")
-	action := c.Param("action")
-	if id == "" || aid == "" || action == "" {
-		res.Fail(c, 4001)
-		return
-	}
 
-	if !casEnf.RemovePolicy(id, aid, action) {
-		res.Done(c, "policy does not  exist")
+	uc := checkUser(id)
+	rc := checkRole(id)
+	if uc == 200 || rc == 200 {
+		aid := c.Param("aid")
+		urlcode := checkAssetURL(aid)
+		agc := checkAssetGroup(aid)
+		if urlcode == 200 || agc == 200 {
+			action := c.Param("action")
+			if !casEnf.RemovePolicy(id, aid, action) {
+				res.Done(c, "policy does not  exist")
+				return
+			}
+			res.Done(c, "")
+			return
+		}
+		res.FailMsg(c, fmt.Sprintf("%s is not a available resource", aid))
 		return
 	}
-	res.Done(c, "")
+	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
 }
 
 func listRoles(c *gin.Context) {
@@ -554,14 +547,15 @@ func createAsset(c *gin.Context) {
 	asset := &Asset{}
 	err := c.Bind(asset)
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 	asset.ID, _ = shortid.Generate()
 	// insertUser
 	err = db.Create(&asset).Error
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.DoneData(c, asset)
@@ -570,24 +564,17 @@ func createAsset(c *gin.Context) {
 func deleteAsset(c *gin.Context) {
 	res := NewRes()
 	aid := c.Param("aid")
-	if aid == "" {
-		res.FailMsg(c, "asset id can not be nil")
+	url, code := checkAsset(aid)
+	if code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	asset := &Asset{}
-	err := db.Where("id = ?", aid).Find(asset).Error
+	casEnf.RemoveFilteredPolicy(1, url)
+	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, url)
+	err := db.Where("id = ?", aid).Delete(&Asset{}).Error
 	if err != nil {
 		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
-		res.FailErr(c, err)
-		return
-	}
-	casEnf.RemoveFilteredPolicy(1, asset.URL)
-	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, asset.URL)
-
-	err = db.Where("id = ?", aid).Delete(&Asset{}).Error
-	if err != nil {
-		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
-		res.FailErr(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
@@ -598,7 +585,6 @@ func listAssetGroups(c *gin.Context) {
 	res := NewRes()
 	var ags []AssetGroup
 	db.Find(&ags)
-	c.JSON(http.StatusOK, ags)
 	res.DoneData(c, ags)
 }
 
@@ -607,12 +593,13 @@ func createAssetGroup(c *gin.Context) {
 	ag := &AssetGroup{}
 	err := c.Bind(ag)
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 	err = db.Create(&ag).Error
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.DoneCode(c, 201)
@@ -621,15 +608,15 @@ func createAssetGroup(c *gin.Context) {
 func deleteAssetGroup(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
-	if gid == "" {
-		res.FailMsg(c, "asset id can not be nil")
+	if code := checkAssetGroup(gid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
 	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 1, gid)
 	err := db.Where("id = ?", gid).Delete(&AssetGroup{}).Error
 	if err != nil {
 		log.Errorf("deleteAssetGroup, delete asset group : %s; groupid: %s", err, gid)
-		res.FailErr(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
@@ -638,8 +625,8 @@ func deleteAssetGroup(c *gin.Context) {
 func getGroupAssets(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
-	if gid == "" {
-		res.FailMsg(c, "group id can not be nil")
+	if code := checkAssetGroup(gid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
 	p := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
@@ -655,23 +642,18 @@ func getGroupAssets(c *gin.Context) {
 func addGroupAsset(c *gin.Context) {
 	res := NewRes()
 	gid := c.Param("id")
-	aid := c.Param("aid")
-	if gid == "" || aid == "" {
-		res.FailMsg(c, "group or asset id can not be nil")
+	if code := checkAssetGroup(gid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	asset := &Asset{}
-	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-			if !casEnf.AddNamedGroupingPolicy("g2", aid, gid) {
-				res.Done(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
-				return
-			}
-		}
+	aid := c.Param("aid")
+	url, code := checkAsset(aid)
+	if code != 200 {
+		res.Fail(c, code)
 		return
 	}
 
-	if !casEnf.AddNamedGroupingPolicy("g2", asset.URL, gid) {
+	if !casEnf.AddNamedGroupingPolicy("g2", url, gid) {
 		res.Done(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
 		return
 	}
@@ -682,21 +664,18 @@ func deleteGroupAsset(c *gin.Context) {
 	// c.JSON(http.StatusOK, "deving")
 	res := NewRes()
 	gid := c.Param("id")
-	aid := c.Param("aid")
-	if gid == "" || aid == "" {
-		res.FailMsg(c, "group or asset id can not be nil")
+	if code := checkAssetGroup(gid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	asset := &Asset{}
-	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
-		res.FailMsg(c, fmt.Sprintf("addGroupAsset, get asset url: %s; assetid: %s", err, aid))
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Errorf("addGroupAsset, get asset info: %s; assetid: %s", err, aid)
-		}
+	aid := c.Param("aid")
+	url, code := checkAsset(aid)
+	if code != 200 {
+		res.Fail(c, code)
 		return
 	}
 
-	if !casEnf.RemoveNamedGroupingPolicy("g2", asset.URL, gid) {
+	if !casEnf.RemoveNamedGroupingPolicy("g2", url, gid) {
 		res.Done(c, fmt.Sprintf("asset %s does not in group %s", aid, gid))
 		return
 	}
@@ -742,8 +721,8 @@ func studioEditer(c *gin.Context) {
 
 //listStyles list user style
 func listStyles(c *gin.Context) {
-	// id := c.GetString(identityKey)
-	c.JSON(http.StatusOK, pubSet.Styles)
+	res := NewRes()
+	res.DoneData(c, pubSet.Styles)
 }
 
 func renderStyleUpload(c *gin.Context) {
@@ -767,7 +746,7 @@ func uploadStyle(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`uploadStyle, get form: %s; user: %s`, err, id))
+		res.Fail(c, 4045)
 		return
 	}
 
@@ -778,17 +757,14 @@ func uploadStyle(c *gin.Context) {
 	dst := filepath.Join(styles, sid)
 	os.MkdirAll(dst, os.ModePerm)
 	dst = filepath.Join(dst, "style.json")
-	fmt.Println(dst)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadStyle, upload file: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`uploadStyle, upload file: %s; user: %s`, err, id))
+		res.Fail(c, 5002)
 		return
 	}
-
 	//更新服务
 	pubSet.AddStyle(dst, sid)
-
 	res.Done(c, "")
 }
 
@@ -796,53 +772,52 @@ func uploadStyle(c *gin.Context) {
 func updateStyle(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	log.Debug("updateStyle---------", id)
-
 	sid := c.Param("sid")
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("style id(%s) not exist in the service", sid)
-		res.FailMsg(c, "style not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		res.Fail(c, 5003)
 		return
 	}
 	style.Style = body
-	var out map[string]interface{}
-	json.Unmarshal(style.Style, &out)
-	c.JSON(http.StatusOK, &out)
+	res.Done(c, "")
 }
 
 //saveStyle create a style
 func saveStyle(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	log.Debug("saveStyle---------", id)
 	user := c.Param("user")
 	sid := c.Param("sid")
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`updateStyle, get form: %s; user: %s`, err, id))
+		res.Fail(c, 5003)
 		return
 	}
 	home := cfgV.GetString("users.home")
 	styles := cfgV.GetString("users.styles")
 	dst := filepath.Join(home, user, styles, sid, "style.json")
-	fmt.Println(dst)
 	out := make(map[string]interface{})
 	json.Unmarshal(body, &out)
 	out["id"] = sid
 	out["modified"] = time.Now().Format("2006-01-02 03:04:05 PM")
 	out["owner"] = id
-	file, err := json.Marshal(out)
-	ioutil.WriteFile(dst, file, os.ModePerm)
-	c.JSON(http.StatusOK, &out)
+	file, _ := json.Marshal(out)
+	err = ioutil.WriteFile(dst, file, os.ModePerm)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5002)
+		return
+	}
+	res.Done(c, "")
 }
 
 //getStyle get user style by id
@@ -852,7 +827,7 @@ func getStyle(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
-		res.FailMsg(c, "style not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 
@@ -905,7 +880,7 @@ func getSprite(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getSprite, style not exist in the service, sid: %s ^^", sid)
-		res.FailMsg(c, "style not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 	sprite := c.Param("fmt")
@@ -913,7 +888,7 @@ func getSprite(c *gin.Context) {
 	spritePat := `^sprite(@[2]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Errorf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id)
-		res.FailMsg(c, fmt.Sprintf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, id))
+		res.Fail(c, 4004)
 		return
 	}
 
@@ -929,7 +904,7 @@ func getSprite(c *gin.Context) {
 	file, err := ioutil.ReadFile(spriteFile)
 	if err != nil {
 		log.Errorf(`getSprite, read sprite file: %v; user: %s ^^`, err, id)
-		res.FailErr(c, err)
+		res.Fail(c, 5002)
 		return
 	}
 	c.Writer.Write(file)
@@ -944,8 +919,7 @@ func uploadSprite(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
 		log.Errorf(`uploadSprite, get form: %s; user: %s`, err, id)
-		c.String(http.StatusBadRequest, fmt.Sprintf("get form err: %s", err.Error()))
-		// res.FailMsg(c, fmt.Sprintf(`uploadSprite, get form: %s; user: %s`, err, id))
+		res.Fail(c, 400)
 		return
 	}
 
@@ -956,8 +930,7 @@ func uploadSprite(c *gin.Context) {
 		dst := filepath.Join(styles, sid, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
 			log.Errorf(`uploadSprite, upload file: %s; user: %s`, err, id)
-			// res.FailMsg(c, fmt.Sprintf(`uploadSprite, upload file: %s; user: %s`, err, id))
-			c.String(http.StatusBadRequest, fmt.Sprintf("upload file err: %s", err.Error()))
+			res.Fail(c, 5002)
 			return
 		}
 	}
@@ -972,7 +945,7 @@ func viewStyle(c *gin.Context) {
 	_, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)
-		res.FailMsg(c, "style not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
@@ -984,8 +957,8 @@ func viewStyle(c *gin.Context) {
 
 //listTilesets list user's tilesets
 func listTilesets(c *gin.Context) {
-	// id := c.GetString(identityKey)
-	c.JSON(http.StatusOK, pubSet.Tilesets)
+	res := NewRes()
+	res.DoneData(c, pubSet.Tilesets)
 }
 
 func renderTilesetsUpload(c *gin.Context) {
@@ -1004,7 +977,7 @@ func uploadTileset(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`uploadTileset, get form: %s; user: %s`, err, id))
+		res.Fail(c, 4045)
 		return
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
@@ -1016,7 +989,7 @@ func uploadTileset(c *gin.Context) {
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
-		res.FailMsg(c, fmt.Sprintf(`uploadTileset, upload file: %s; user: %s`, err, id))
+		res.Fail(c, 5002)
 		return
 	}
 
@@ -1026,7 +999,7 @@ func uploadTileset(c *gin.Context) {
 		log.Errorf(`uploadTileset, add mbtiles: %s ^^`, err)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	res.DoneData(c, gin.H{
 		"tid": tid,
 	})
 }
@@ -1039,12 +1012,10 @@ func getTilejson(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailMsg(c, "tilesets not exist in the service")
+		res.Fail(c, 4047)
 		return
 	}
 	urlPath := c.Request.URL.Path
-	// ext := filepath.Ext(urlPath)
-	// path := strings.TrimSuffix(urlPath, ext)
 	url := fmt.Sprintf("%s%s", pubSet.rootURL(c.Request), urlPath) //need use user own service set
 	tileset := tileService.Mbtiles
 	imgFormat := tileset.TileFormatString()
@@ -1059,7 +1030,7 @@ func getTilejson(c *gin.Context) {
 	metadata, err := tileset.GetInfo()
 	if err != nil {
 		log.Errorf("getTilejson, get metadata failed: %s; user: %s ^^", err, id)
-		res.FailMsg(c, fmt.Sprintf("get metadata failed : %s", err.Error()))
+		res.Fail(c, 5004)
 		return
 	}
 	for k, v := range metadata {
@@ -1094,7 +1065,7 @@ func viewTile(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailMsg(c, "tilesets not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 
@@ -1113,14 +1084,14 @@ func getTile(c *gin.Context) {
 	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
 	size := len(pcs)
 	if size < 5 || pcs[4] == "" {
-		res.FailMsg(c, "request path is too short")
+		res.Fail(c, 4003)
 		return
 	}
 	tid := c.Param("tid")
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.FailMsg(c, "tilesets not exist in the service")
+		res.Fail(c, 4046)
 		return
 	}
 
@@ -1129,7 +1100,8 @@ func getTile(c *gin.Context) {
 	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
 	tc, ext, err := tileCoordFromString(z, x, y)
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 4003)
 		return
 	}
 	var data []byte
@@ -1152,7 +1124,7 @@ func getTile(c *gin.Context) {
 		}
 		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
 		log.Error(err)
-		res.FailErr(c, err)
+		res.Fail(c, 5004)
 		return
 	}
 	if data == nil || len(data) <= 1 {
@@ -1199,7 +1171,8 @@ func renderDatasetsUpload(c *gin.Context) {
 }
 
 func listDatasets(c *gin.Context) {
-	c.JSON(http.StatusOK, pubSet.Datasets)
+	res := NewRes()
+	res.DoneData(c, pubSet.Datasets)
 }
 
 func importDataset(c *gin.Context) {
@@ -1209,7 +1182,7 @@ func importDataset(c *gin.Context) {
 	file, err := c.FormFile(name)
 	if err != nil {
 		log.Errorf(`importDataset, get form: %s; file: %s`, err, name)
-		res.FailMsg(c, fmt.Sprintf(`importDataset, get form: %s; file: %s`, err, name))
+		res.Fail(c, 4045)
 		return
 	}
 
@@ -1221,20 +1194,20 @@ func importDataset(c *gin.Context) {
 	dst := filepath.Join(tilesets, id+ext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
-		res.FailMsg(c, fmt.Sprintf(`importDataset, upload file: %s; file: %s`, err, name))
+		res.Fail(c, 5002)
 		return
 	}
 	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
 		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
-		res.FailMsg(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		res.Fail(c, 5003)
 		return
 	}
 	reader := csv.NewReader(bytes.NewReader(buf))
 	csvHeader, err := reader.Read()
 	if err != nil {
 		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
-		res.FailMsg(c, fmt.Sprintf(`importDataset, csv reader failed: %s; file: %s`, err, name))
+		res.Fail(c, 5003)
 		return
 	}
 
@@ -1313,20 +1286,20 @@ func importDataset(c *gin.Context) {
 		err = clear(name)
 		if err != nil {
 			log.Error(err)
-			res.FailErr(c, err)
+			res.Fail(c, 5001)
 			return
 		}
 		err = insert(header)
 		if err != nil {
 			log.Errorf("import %s error:%s", name, err.Error())
-			res.FailErr(c, err)
+			res.Fail(c, 5001)
 			return
 		}
 		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
 		result := db.Exec(update)
 		if result.Error != nil {
 			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
-			res.FailMsg(c, fmt.Sprintf("update %s create geom error:%s", name, result.Error.Error()))
+			res.Fail(c, 5001)
 			return
 		}
 		//更新元数据
@@ -1335,10 +1308,8 @@ func importDataset(c *gin.Context) {
 		err = pubSet.AddDataset(dst, id)
 		if err != nil {
 			log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
-			res.FailMsg(c, fmt.Sprintf(`importDataset, add %s to dataset service: %s ^^`, name, err))
-			return
 		}
-		c.JSON(http.StatusOK, gin.H{
+		res.DoneData(c, gin.H{
 			"id": id,
 		})
 	case "savings", "m1", "m2", "m3", "m4":
@@ -1357,13 +1328,13 @@ func importDataset(c *gin.Context) {
 		err = clear(name)
 		if err != nil {
 			log.Error(err)
-			res.FailErr(c, err)
+			res.Fail(c, 5001)
 			return
 		}
 		err = insert(header)
 		if err != nil {
 			log.Errorf("import %s error:%s", name, err.Error())
-			res.FailErr(c, err)
+			res.Fail(c, 5001)
 			return
 		}
 		res.Done(c, "")
@@ -1497,7 +1468,7 @@ func queryDatasetGeojson(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 4001)
 		return
 	}
 
@@ -1515,7 +1486,8 @@ func queryDatasetGeojson(c *gin.Context) {
 	err = json.Unmarshal([]byte(body.GeoJSON), &geoj)
 
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 4001)
 		return
 	}
 
@@ -1526,7 +1498,7 @@ func queryDatasetGeojson(c *gin.Context) {
 		//props
 		var tags map[string]interface{}
 		if err := json.Unmarshal(props, &tags); err != nil {
-			res.FailErr(c, err)
+			res.Fail(c, 4001)
 			return
 		}
 
@@ -1564,16 +1536,16 @@ func queryDatasetGeojson(c *gin.Context) {
 		}
 		s = fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
 	}
-	log.Debug(s)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		res.FailErr(c, err)
+		res.Fail(c, 5001)
 		return
 	}
 	fc := geojson.NewFeatureCollection()
@@ -1620,26 +1592,30 @@ func queryDatasetGeojson(c *gin.Context) {
 	gj, err := fc.MarshalJSON()
 	if err != nil {
 		log.Errorf("unable to MarshalJSON of featureclection.")
+		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
 	}
-	c.JSON(http.StatusOK, json.RawMessage(gj))
+	res.DoneData(c, json.RawMessage(gj))
 }
 
 func queryExec(c *gin.Context) {
 	res := NewRes()
 	s := c.Param("sql")
 	if "" == s {
-		res.FailMsg(c, "sql can not be null")
+		res.Fail(c, 4001)
 		return
 	}
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		res.FailErr(c, err)
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	var t [][]string
@@ -1665,11 +1641,12 @@ func queryExec(c *gin.Context) {
 		}
 		t = append(t, r)
 	}
-	c.JSON(http.StatusOK, t)
+	res.DoneData(c, t)
 }
 
 func listFonts(c *gin.Context) {
-	c.JSON(http.StatusOK, pubSet.Fonts)
+	res := NewRes()
+	res.DoneData(c, pubSet.Fonts)
 }
 
 //getGlyphs get glyph pbf
@@ -1682,7 +1659,7 @@ func getGlyphs(c *gin.Context) {
 	rgPBFPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
 		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, id)
-		res.FailMsg(c, fmt.Sprintf("glyph range pattern error,range:%s", rgPBF))
+		res.Fail(c, 4005)
 		return
 	}
 	//should init first
