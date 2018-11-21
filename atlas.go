@@ -149,7 +149,6 @@ func bindRoutes(r *gin.Engine) {
 	//maproute
 	maproute := r.Group("/maps")
 	maproute.Use(authMid.MiddlewareFunc())
-	role.Use(NewAuthorizer(casEnf))
 	{
 		// > map op
 		maproute.GET("/", listMaps)

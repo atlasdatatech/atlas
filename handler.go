@@ -1239,8 +1239,19 @@ func renderDatasetsUpload(c *gin.Context) {
 }
 
 func listDatasets(c *gin.Context) {
-	res := NewRes()
-	res.DoneData(c, pubSet.Datasets)
+	// res := NewRes()
+	// res.DoneData(c, pubSet.Datasets)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code": 200,
+		"msg":  codes[200],
+		"data": gin.H{
+			"zhuantitu": []string{"banks", "others", "pois"},
+			"relitu":    []string{"banks", "others", "pois"},
+			"fushequan": []string{"banks"},
+			"moxing":    []string{"savings", "m1", "m2", "m3", "m4"},
+		},
+	})
 }
 
 func importDataset(c *gin.Context) {
