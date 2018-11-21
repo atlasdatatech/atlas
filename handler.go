@@ -600,50 +600,22 @@ func getRoleUsers(c *gin.Context) {
 func listMaps(c *gin.Context) {
 
 	res := NewRes()
+	id := c.GetString(identityKey)
 	var maps []Map
-	var body struct {
-		ID string `form:"id" json:"id"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, 4001)
-		return
-	}
-	if body.ID == "" {
+	if id == "root" || casEnf.HasRoleForUser(id, "super") {
 		db.Find(&maps)
 		res.DoneData(c, maps)
 		return
 	}
-	if code := checkRole(body.ID); code != 200 {
-		if code := checkUser(body.ID); code != 200 {
-			res.Fail(c, code)
-			return
-		}
-		uperms := casEnf.GetPermissionsForUser(body.ID)
-		roles := casEnf.GetRolesForUser(body.ID)
-		for _, role := range roles {
-			rperms := casEnf.GetPermissionsForUser(role)
-			uperms = append(uperms, rperms...)
-		}
-		mapids := make(map[string]bool)
-		for _, p := range uperms {
-			if len(p) == 3 {
-				mapids[p[1]] = true
-			}
-		}
-		var ids []string
-		for k := range mapids {
-			ids = append(ids, k)
-		}
-		db.Where("id in (?)", ids).Find(&maps)
-		res.DoneData(c, maps)
-		return
+
+	uperms := casEnf.GetPermissionsForUser(id)
+	roles := casEnf.GetRolesForUser(id)
+	for _, role := range roles {
+		rperms := casEnf.GetPermissionsForUser(role)
+		uperms = append(uperms, rperms...)
 	}
-
-	rperms := casEnf.GetPermissionsForUser(body.ID)
-
 	mapids := make(map[string]bool)
-	for _, p := range rperms {
+	for _, p := range uperms {
 		if len(p) == 3 {
 			mapids[p[1]] = true
 		}
@@ -659,9 +631,14 @@ func listMaps(c *gin.Context) {
 
 func getMap(c *gin.Context) {
 	res := NewRes()
+	id := c.GetString(identityKey)
 	mid := c.Param("id")
 	if mid == "" {
 		res.Fail(c, 4001)
+		return
+	}
+	if !casEnf.Enforce(id, mid, "GET") {
+		res.Fail(c, 403)
 		return
 	}
 	m := &Map{}
@@ -678,41 +655,50 @@ func getMap(c *gin.Context) {
 
 func createMap(c *gin.Context) {
 	res := NewRes()
-	m := &Map{}
-	err := c.Bind(m)
-	if err != nil {
-		res.Fail(c, 4001)
+	id := c.GetString(identityKey)
+	if id == "root" || casEnf.HasRoleForUser(id, "super") {
+		m := &Map{}
+		err := c.Bind(m)
+		if err != nil {
+			res.Fail(c, 4001)
+			return
+		}
+		m.ID, _ = shortid.Generate()
+		// insertUser
+		err = db.Create(&m).Error
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+		res.DoneData(c, gin.H{
+			"id": m.ID,
+		})
 		return
 	}
-	m.ID, _ = shortid.Generate()
-	// insertUser
-	err = db.Create(&m).Error
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-	res.DoneData(c, gin.H{
-		"id": m.ID,
-	})
+	res.Fail(c, 403)
+	return
 }
 
 func saveMap(c *gin.Context) {
 	res := NewRes()
+	id := c.GetString(identityKey)
 	mid := c.Param("id")
+	if mid == "" {
+		res.Fail(c, 4001)
+		return
+	}
 	m := &Map{}
 	err := c.Bind(m)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	if mid == "" && m.ID == "" {
-		res.Fail(c, 4001)
+	if !casEnf.Enforce(id, mid, "POST") {
+		res.Fail(c, 403)
 		return
 	}
-	if mid != "" {
-		m.ID = mid
-	}
+	m.ID = mid
 	// insertUser
 	err = db.Create(&m).Error
 	if err != nil {
@@ -725,9 +711,14 @@ func saveMap(c *gin.Context) {
 
 func updateMap(c *gin.Context) {
 	res := NewRes()
+	id := c.GetString(identityKey)
 	mid := c.Param("id")
 	if mid == "" {
 		res.Fail(c, 4001)
+		return
+	}
+	if !casEnf.Enforce(id, mid, "PUT") {
+		res.Fail(c, 403)
 		return
 	}
 	m := &Map{}
@@ -749,7 +740,16 @@ func updateMap(c *gin.Context) {
 
 func deleteMap(c *gin.Context) {
 	res := NewRes()
+	id := c.GetString(identityKey)
 	mid := c.Param("id")
+	if mid == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	if !casEnf.Enforce(id, mid, "DELETE") {
+		res.Fail(c, 403)
+		return
+	}
 	if code := checkMap(mid); code != 200 {
 		res.Fail(c, code)
 		return
@@ -1668,12 +1668,15 @@ func queryDatasetGeojson(c *gin.Context) {
 
 func queryExec(c *gin.Context) {
 	res := NewRes()
-	s := c.Param("sql")
-	if "" == s {
+	var body struct {
+		SQL string `form:"sql" json:"sql" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	rows, err := db.Raw(body.SQL).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 5001)
