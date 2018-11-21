@@ -55,7 +55,7 @@ func main() {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Asset{}, &AssetGroup{}, &Map{})
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Basepoi{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{})
 		db = pg
@@ -95,53 +95,50 @@ func bindRoutes(r *gin.Engine) {
 	r.GET("/login/", renderLogin)
 	r.POST("/login/", login)
 
-	//admin
-	admin := r.Group("/authn")
-	admin.Use(authMid.MiddlewareFunc())
-	admin.Use(NewAuthorizer(casEnf))
+	//users
+	user := r.Group("/users")
+	user.Use(authMid.MiddlewareFunc())
+	user.Use(NewAuthorizer(casEnf))
 	{
 		//authn > users
-		admin.GET("/users/", listUsers)
-		admin.POST("/users/", createUser)
-		admin.GET("/users/:id/", readUser)
-		admin.PUT("/users/:id/", updateUser)
-		admin.DELETE("/users/:id/", deleteUser)
-		admin.GET("/users/:id/refresh/", jwtRefresh)
-		admin.PUT("/users/:id/password/", changePassword)
+		user.GET("/", listUsers)
+		user.POST("/", createUser)
+		user.GET("/:id/", getUser)
+		user.PUT("/:id/", updateUser)
+		user.DELETE("/:id/", deleteUser)
+		user.GET("/:id/refresh/", jwtRefresh)
+		user.PUT("/:id/password/", changePassword)
 
-		admin.GET("/users/:id/roles/", getUserRoles)           //该用户拥有哪些角色
-		admin.POST("/users/:id/roles/:rid/", addUserRole)      //添加用户角色
-		admin.DELETE("/users/:id/roles/:rid/", deleteUserRole) //删除用户角色
+		user.GET("/:id/roles/", getUserRoles)           //该用户拥有哪些角色
+		user.POST("/:id/roles/:rid/", addUserRole)      //添加用户角色
+		user.DELETE("/:id/roles/:rid/", deleteUserRole) //删除用户角色
 
+		user.GET("/:id/maps/", getUserMaps) //该用户拥有哪些权限（含资源与操作）
+		user.POST("/:id/maps/:mid/:action/", addUserMap)
+		user.DELETE("/:id/maps/:mid/:action/", deleteUserMap)
+	}
+	//roles
+	role := r.Group("/roles")
+	role.Use(authMid.MiddlewareFunc())
+	role.Use(NewAuthorizer(casEnf))
+	{
 		//authn > roles
-		admin.GET("/roles/", listRoles)
-		admin.POST("/roles/", createRole)
-		admin.GET("/roles/:id/", getRoleUsers) //该角色包含哪些用户
-		admin.DELETE("/roles/:id/", deleteRole)
+		role.GET("/", listRoles)
+		role.POST("/", createRole)
+		role.DELETE("/:id/", deleteRole)
+		role.GET("/:id/users/", getRoleUsers) //该角色包含哪些用户
 
-		admin.GET("/perms/:id/", getPermissions) //该用户拥有哪些权限（含资源与操作）
-		admin.POST("/perms/:id/", addPolicy)
-		admin.DELETE("/perms/:id/:aid/:action/", deletePermissions)
+		role.GET("/:id/maps/", getRoleMaps) //该用户拥有哪些权限（含资源与操作）
+		role.POST("/:id/maps/:mid/:action/", addRoleMap)
+		role.DELETE("/:id/maps/:mid/:action/", deleteRoleMap)
 		//authn > assets
-		admin.GET("/assets/", listAssets)
-		admin.POST("/assets/", createAsset)
-		admin.DELETE("/assets/:aid/", deleteAsset)
-		//authn > assetsgroup
-		admin.GET("/assetgroups/", listAssetGroups)
-		admin.POST("/assetgroups/", createAssetGroup)
-		admin.DELETE("/assetgroups/:id/", deleteAssetGroup)
-		//delete an asset from all groups in delete asset
-		admin.GET("/assetgroups/:id/assets/", getGroupAssets)           //该域包含哪些资源
-		admin.POST("/assetgroups/:id/assets/:aid/", addGroupAsset)      //添加资源to该域
-		admin.DELETE("/assetgroups/:id/assets/:aid/", deleteGroupAsset) //删除资源from该域
 	}
 	//account
 	account := r.Group("/account")
 	account.Use(authMid.MiddlewareFunc())
 	{
-
 		account.GET("/index/", renderAccount)
-		account.GET("/", readUser)
+		account.GET("/", getUser)
 		account.GET("/logout/", logout)
 		account.GET("/update/", renderUpdateUser)
 		account.PUT("/update/", updateUser)
@@ -149,6 +146,20 @@ func bindRoutes(r *gin.Engine) {
 		account.GET("/password/", renderChangePassword)
 		account.POST("/password/", changePassword)
 	}
+	//maproute
+	maproute := r.Group("/maps")
+	maproute.Use(authMid.MiddlewareFunc())
+	role.Use(NewAuthorizer(casEnf))
+	{
+		// > map op
+		maproute.GET("/", listMaps)
+		maproute.GET("/:id/", getMap)
+		maproute.POST("/", createMap)
+		maproute.POST("/:id/", saveMap)
+		maproute.PUT("/:id/", updateMap)
+		maproute.DELETE("/:id/", deleteMap)
+	}
+
 	//studio
 	studio := r.Group("/studio")
 	studio.Use(authMid.MiddlewareFunc())

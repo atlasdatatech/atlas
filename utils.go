@@ -44,12 +44,9 @@ var codes = map[int]string{
 	404:  "找不到资源",
 	4041: "用户不存在",
 	4042: "角色不存在",
-	4043: "资源不存在",
-	4044: "资源组不存在",
+	4043: "地图不存在",
+	4044: "服务不存在",
 	4045: "找不到上传文件",
-	4046: "找不到样式服务",
-	4047: "找不到底图服务",
-	4048: "找不到数据服务",
 
 	408: "请求超时",
 
@@ -244,45 +241,17 @@ func checkRole(rid string) int {
 	return 200
 }
 
-func checkAsset(aid string) (url string, code int) {
-	if aid == "" {
-		return "", 4001
-	}
-	asset := &Asset{}
-	if err := db.Where("id = ?", aid).First(&asset).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			return "", 5001
-		}
-		return "", 4043
-	}
-	return asset.URL, 200
-}
-func checkAssetURL(url string) int {
-	if url == "" {
+func checkMap(mid string) int {
+	if mid == "" {
 		return 4001
 	}
-	asset := &Asset{}
-	if err := db.Where("url = ?", url).First(&asset).Error; err != nil {
+	m := &Map{}
+	if err := db.Where("id = ?", mid).First(&m).Error; err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Error(err)
 			return 5001
 		}
 		return 4043
-	}
-	return 200
-}
-func checkAssetGroup(gid string) int {
-	if gid == "" {
-		return 4001
-	}
-	ag := &AssetGroup{}
-	if err := db.Where("id = ?", gid).First(&ag).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			return 5001
-		}
-		return 4044
 	}
 	return 200
 }

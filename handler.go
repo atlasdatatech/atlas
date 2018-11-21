@@ -110,6 +110,20 @@ func login(c *gin.Context) {
 	})
 }
 
+func logout(c *gin.Context) {
+	res := NewRes()
+	c.SetCookie(
+		"Token",
+		"",
+		0,
+		"/",
+		authMid.CookieDomain,
+		authMid.SecureCookie,
+		authMid.CookieHTTPOnly,
+	)
+	res.Done(c, "")
+}
+
 func renderAccount(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
@@ -214,7 +228,7 @@ func listUsers(c *gin.Context) {
 	res.DoneData(c, users)
 }
 
-func readUser(c *gin.Context) {
+func getUser(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("id")
 	if name == "" {
@@ -357,6 +371,74 @@ func getUserRoles(c *gin.Context) {
 	res.DoneData(c, roles)
 }
 
+func getUserMaps(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if code := checkUser(id); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	uperms := casEnf.GetPermissionsForUser(id)
+
+	roles := casEnf.GetRolesForUser(id)
+	for _, role := range roles {
+		rperms := casEnf.GetPermissionsForUser(role)
+		uperms = append(uperms, rperms...)
+	}
+	res.DoneData(c, uperms)
+}
+
+func addUserMap(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if code := checkUser(id); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	mid := c.Param("mid")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	action := c.Param("action")
+	if action == "" {
+		res.Fail(c, 4001)
+		return
+	}
+
+	if !casEnf.AddPolicy(id, mid, action) {
+		res.Done(c, "policy already exist")
+		return
+	}
+	res.Done(c, "")
+	return
+}
+
+func deleteUserMap(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if code := checkUser(id); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	mid := c.Param("mid")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	action := c.Param("action")
+	if action == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	if !casEnf.RemovePolicy(id, mid, action) {
+		res.Done(c, "policy does not  exist")
+		return
+	}
+	res.Done(c, "")
+	return
+}
+
 func addUserRole(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
@@ -399,68 +481,66 @@ func deleteUserRole(c *gin.Context) {
 	res.Done(c, fmt.Sprintf("%s does not has %s role", uid, rid))
 }
 
-func getPermissions(c *gin.Context) {
+func getRoleMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	uc := checkUser(id)
-	rc := checkRole(id)
-	if uc == 200 || rc == 200 {
-		uperms := casEnf.GetPermissionsForUser(id)
-		res.DoneData(c, uperms)
+	if code := checkRole(id); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
+	uperms := casEnf.GetPermissionsForUser(id)
+	res.DoneData(c, uperms)
 }
 
-func addPolicy(c *gin.Context) {
+func addRoleMap(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-	var body struct {
-		URL    string `form:"url" json:"url" binding:"required"`
-		Action string `form:"action" json:"action" binding:"required"`
+	if code := checkRole(id); code != 200 {
+		res.Fail(c, code)
+		return
 	}
-	err := c.Bind(&body)
-	if err != nil {
+	mid := c.Param("mid")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	action := c.Param("action")
+	if action == "" {
 		res.Fail(c, 4001)
 		return
 	}
 
-	uc := checkUser(id)
-	rc := checkRole(id)
-	if uc == 200 || rc == 200 {
-		if !casEnf.AddPolicy(id, body.URL, body.Action) {
-			res.Done(c, "policy already exist")
-			return
-		}
-		res.Done(c, "")
+	if !casEnf.AddPolicy(id, mid, action) {
+		res.Done(c, "policy already exist")
 		return
 	}
-	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
+	res.Done(c, "")
+	return
 }
 
-func deletePermissions(c *gin.Context) {
+func deleteRoleMap(c *gin.Context) {
 	res := NewRes()
 	id := c.Param("id")
-
-	uc := checkUser(id)
-	rc := checkRole(id)
-	if uc == 200 || rc == 200 {
-		aid := c.Param("aid")
-		urlcode := checkAssetURL(aid)
-		agc := checkAssetGroup(aid)
-		if urlcode == 200 || agc == 200 {
-			action := c.Param("action")
-			if !casEnf.RemovePolicy(id, aid, action) {
-				res.Done(c, "policy does not  exist")
-				return
-			}
-			res.Done(c, "")
-			return
-		}
-		res.FailMsg(c, fmt.Sprintf("%s is not a available resource", aid))
+	if code := checkRole(id); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	res.FailMsg(c, fmt.Sprintf("%s is not a available user or role", id))
+	mid := c.Param("mid")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	action := c.Param("action")
+	if action == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	if !casEnf.RemovePolicy(id, mid, action) {
+		res.Done(c, "policy does not  exist")
+		return
+	}
+	res.Done(c, "")
+	return
 }
 
 func listRoles(c *gin.Context) {
@@ -491,19 +571,11 @@ func createRole(c *gin.Context) {
 func deleteRole(c *gin.Context) {
 	res := NewRes()
 	rid := c.Param("id")
-	if rid == "" {
-		res.Fail(c, 4001)
+	if code := checkRole(rid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	role := &Role{}
-	if err := db.Where("id = ?", rid).First(&role).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			res.Fail(c, 5001)
-		}
-		res.Fail(c, 4042)
-		return
-	}
+
 	casEnf.DeleteRole(rid)
 	err := db.Where("id = ?", rid).Delete(&Role{}).Error
 	if err != nil {
@@ -517,182 +589,178 @@ func deleteRole(c *gin.Context) {
 func getRoleUsers(c *gin.Context) {
 	res := NewRes()
 	rid := c.Param("id")
-	if rid == "" {
-		res.Fail(c, 4001)
-		return
-	}
-	role := &Role{}
-	if err := db.Where("id = ?", rid).First(&role).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			res.Fail(c, 5001)
-		}
-		res.Fail(c, 4042)
+	if code := checkRole(rid); code != 200 {
+		res.Fail(c, code)
 		return
 	}
 	users := casEnf.GetUsersForRole(rid)
 	res.DoneData(c, users)
 }
 
-func listAssets(c *gin.Context) {
-	// 获取所有记录
-	res := NewRes()
-	var assets []Asset
-	db.Find(&assets)
-	res.DoneData(c, assets)
-}
+func listMaps(c *gin.Context) {
 
-func createAsset(c *gin.Context) {
 	res := NewRes()
-	asset := &Asset{}
-	err := c.Bind(asset)
+	var maps []Map
+	var body struct {
+		ID string `form:"id" json:"id"`
+	}
+	err := c.Bind(&body)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	asset.ID, _ = shortid.Generate()
-	// insertUser
-	err = db.Create(&asset).Error
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
+	if body.ID == "" {
+		db.Find(&maps)
+		res.DoneData(c, maps)
 		return
 	}
-	res.DoneData(c, asset)
-}
+	if code := checkRole(body.ID); code != 200 {
+		if code := checkUser(body.ID); code != 200 {
+			res.Fail(c, code)
+			return
+		}
+		uperms := casEnf.GetPermissionsForUser(body.ID)
+		roles := casEnf.GetRolesForUser(body.ID)
+		for _, role := range roles {
+			rperms := casEnf.GetPermissionsForUser(role)
+			uperms = append(uperms, rperms...)
+		}
+		mapids := make(map[string]bool)
+		for _, p := range uperms {
+			if len(p) == 3 {
+				mapids[p[1]] = true
+			}
+		}
+		var ids []string
+		for k := range mapids {
+			ids = append(ids, k)
+		}
+		db.Where("id in (?)", ids).Find(&maps)
+		res.DoneData(c, maps)
+		return
+	}
 
-func deleteAsset(c *gin.Context) {
-	res := NewRes()
-	aid := c.Param("aid")
-	url, code := checkAsset(aid)
-	if code != 200 {
-		res.Fail(c, code)
-		return
-	}
-	casEnf.RemoveFilteredPolicy(1, url)
-	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 0, url)
-	err := db.Where("id = ?", aid).Delete(&Asset{}).Error
-	if err != nil {
-		log.Errorf("deleteAsset, delete asset : %s; assetid: %s", err, aid)
-		res.Fail(c, 5001)
-		return
-	}
-	res.Done(c, "")
-}
+	rperms := casEnf.GetPermissionsForUser(body.ID)
 
-func listAssetGroups(c *gin.Context) {
-	// 获取所有记录
-	res := NewRes()
-	var ags []AssetGroup
-	db.Find(&ags)
-	res.DoneData(c, ags)
-}
-
-func createAssetGroup(c *gin.Context) {
-	res := NewRes()
-	ag := &AssetGroup{}
-	err := c.Bind(ag)
-	if err != nil {
-		res.Fail(c, 4001)
-		return
-	}
-	err = db.Create(&ag).Error
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-	res.DoneCode(c, 201)
-}
-
-func deleteAssetGroup(c *gin.Context) {
-	res := NewRes()
-	gid := c.Param("id")
-	if code := checkAssetGroup(gid); code != 200 {
-		res.Fail(c, code)
-		return
-	}
-	casEnf.RemoveFilteredNamedGroupingPolicy("g2", 1, gid)
-	err := db.Where("id = ?", gid).Delete(&AssetGroup{}).Error
-	if err != nil {
-		log.Errorf("deleteAssetGroup, delete asset group : %s; groupid: %s", err, gid)
-		res.Fail(c, 5001)
-		return
-	}
-	res.Done(c, "")
-}
-
-func getGroupAssets(c *gin.Context) {
-	res := NewRes()
-	gid := c.Param("id")
-	if code := checkAssetGroup(gid); code != 200 {
-		res.Fail(c, code)
-		return
-	}
-	p := casEnf.GetFilteredNamedGroupingPolicy("g2", 1, gid)
-	var assets []string
-	for _, v := range p {
-		if len(v) > 0 {
-			assets = append(assets, v[0])
+	mapids := make(map[string]bool)
+	for _, p := range rperms {
+		if len(p) == 3 {
+			mapids[p[1]] = true
 		}
 	}
-	res.DoneData(c, assets)
+	var ids []string
+	for k := range mapids {
+		ids = append(ids, k)
+	}
+	db.Where("id in (?)", ids).Find(&maps)
+	res.DoneData(c, maps)
+	return
 }
 
-func addGroupAsset(c *gin.Context) {
+func getMap(c *gin.Context) {
 	res := NewRes()
-	gid := c.Param("id")
-	if code := checkAssetGroup(gid); code != 200 {
-		res.Fail(c, code)
+	mid := c.Param("id")
+	if mid == "" {
+		res.Fail(c, 4001)
 		return
 	}
-	aid := c.Param("aid")
-	url, code := checkAsset(aid)
-	if code != 200 {
-		res.Fail(c, code)
+	m := &Map{}
+	if err := db.Where("id = ?", mid).First(&m).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			res.Fail(c, 5001)
+		}
+		res.Fail(c, 4043)
 		return
 	}
+	res.DoneData(c, m)
+}
 
-	if !casEnf.AddNamedGroupingPolicy("g2", url, gid) {
-		res.Done(c, fmt.Sprintf("asset %s already in group %s", aid, gid))
+func createMap(c *gin.Context) {
+	res := NewRes()
+	m := &Map{}
+	err := c.Bind(m)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	m.ID, _ = shortid.Generate()
+	// insertUser
+	err = db.Create(&m).Error
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"id": m.ID,
+	})
+}
+
+func saveMap(c *gin.Context) {
+	res := NewRes()
+	mid := c.Param("id")
+	m := &Map{}
+	err := c.Bind(m)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	if mid == "" && m.ID == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	if mid != "" {
+		m.ID = mid
+	}
+	// insertUser
+	err = db.Create(&m).Error
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
 }
 
-func deleteGroupAsset(c *gin.Context) {
-	// c.JSON(http.StatusOK, "deving")
+func updateMap(c *gin.Context) {
 	res := NewRes()
-	gid := c.Param("id")
-	if code := checkAssetGroup(gid); code != 200 {
-		res.Fail(c, code)
+	mid := c.Param("id")
+	if mid == "" {
+		res.Fail(c, 4001)
 		return
 	}
-	aid := c.Param("aid")
-	url, code := checkAsset(aid)
-	if code != 200 {
-		res.Fail(c, code)
+	m := &Map{}
+	err := c.Bind(&m)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
 		return
 	}
 
-	if !casEnf.RemoveNamedGroupingPolicy("g2", url, gid) {
-		res.Done(c, fmt.Sprintf("asset %s does not in group %s", aid, gid))
+	err = db.Model(&Map{}).Where("id = ?", mid).Update(m).Error
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.Done(c, "")
 }
 
-func logout(c *gin.Context) {
+func deleteMap(c *gin.Context) {
 	res := NewRes()
-	c.SetCookie(
-		"Token",
-		"",
-		0,
-		"/",
-		authMid.CookieDomain,
-		authMid.SecureCookie,
-		authMid.CookieHTTPOnly,
-	)
+	mid := c.Param("id")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	casEnf.RemoveFilteredPolicy(1, mid)
+	err := db.Where("id = ?", mid).Delete(&Map{}).Error
+	if err != nil {
+		log.Errorf("deleteMap, delete map : %s; mapid: %s", err, mid)
+		res.Fail(c, 5001)
+		return
+	}
 	res.Done(c, "")
 }
 
@@ -776,7 +844,7 @@ func updateStyle(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("style id(%s) not exist in the service", sid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 
@@ -827,7 +895,7 @@ func getStyle(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 
@@ -880,7 +948,7 @@ func getSprite(c *gin.Context) {
 	style, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("getSprite, style not exist in the service, sid: %s ^^", sid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 	sprite := c.Param("fmt")
@@ -945,7 +1013,7 @@ func viewStyle(c *gin.Context) {
 	_, ok := pubSet.Styles[sid]
 	if !ok {
 		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
@@ -1012,7 +1080,7 @@ func getTilejson(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4047)
+		res.Fail(c, 4044)
 		return
 	}
 	urlPath := c.Request.URL.Path
@@ -1065,7 +1133,7 @@ func viewTile(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 
@@ -1091,7 +1159,7 @@ func getTile(c *gin.Context) {
 	tileService, ok := pubSet.Tilesets[tid]
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4044)
 		return
 	}
 

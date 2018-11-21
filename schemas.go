@@ -33,18 +33,6 @@ type Role struct {
 	Name string `form:"name" json:"name" gorm:"unique" binding:"required"`
 }
 
-//Asset 资源表
-type Asset struct {
-	ID  string `form:"id" json:"id" gorm:"unique;index"`
-	URL string `form:"url" json:"url" gorm:"unique;column:url" binding:"required"`
-}
-
-//AssetGroup 资源组表
-type AssetGroup struct {
-	ID   string `form:"id" json:"id" gorm:"unique;index" binding:"required"`
-	Name string `form:"name" json:"name" gorm:"unique" binding:"required"`
-}
-
 //Attempt 登录记录表
 type Attempt struct {
 	ID        string `gorm:"primary_key"`
@@ -59,6 +47,7 @@ type Map struct {
 	Title     string `form:"title" json:"title"`
 	Summary   string `form:"summary" json:"summary"`
 	User      string `form:"user" json:"user"`
+	Thumbnail []byte `form:"thumbnail" json:"thumbnail"`
 	Config    []byte `form:"config" json:"config"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
