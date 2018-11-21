@@ -162,7 +162,7 @@ func bindRoutes(r *gin.Engine) {
 
 	//studio
 	studio := r.Group("/studio")
-	studio.Use(authMid.MiddlewareFunc())
+	// studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -174,7 +174,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	styles := r.Group("/styles")
-	styles.Use(authMid.MiddlewareFunc())
+	// styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -187,7 +187,7 @@ func bindRoutes(r *gin.Engine) {
 		styles.POST("/:sid/sprite/", uploadSprite) //style.json
 	}
 	fonts := r.Group("/fonts")
-	fonts.Use(authMid.MiddlewareFunc())
+	// fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
 		fonts.GET("/", listFonts)                  //get font
@@ -195,7 +195,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 
 	tilesets := r.Group("/tilesets")
-	tilesets.Use(authMid.MiddlewareFunc())
+	// tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -205,7 +205,7 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
 	datasets := r.Group("/datasets")
-	datasets.Use(authMid.MiddlewareFunc())
+	// datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
