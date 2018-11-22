@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/encoding/wkb"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 
@@ -1239,19 +1241,13 @@ func renderDatasetsUpload(c *gin.Context) {
 }
 
 func listDatasets(c *gin.Context) {
-	// res := NewRes()
-	// res.DoneData(c, pubSet.Datasets)
+	res := NewRes()
 
-	c.JSON(http.StatusOK, gin.H{
-		"code": 200,
-		"msg":  codes[200],
-		"data": gin.H{
-			"zhuantitu": []string{"banks", "others", "pois"},
-			"relitu":    []string{"banks", "others", "pois"},
-			"fushequan": []string{"banks"},
-			"moxing":    []string{"savings", "m1", "m2", "m3", "m4"},
-		},
-	})
+	var dss []*Dataset
+	for _, ds := range pubSet.Datasets {
+		dss = append(dss, ds.Dataset)
+	}
+	res.DoneData(c, dss)
 }
 
 func importDataset(c *gin.Context) {
@@ -1265,12 +1261,12 @@ func importDataset(c *gin.Context) {
 		return
 	}
 
-	tilesets := cfgV.GetString("assets.datasets")
+	dir := cfgV.GetString("assets.datasets")
 	ext := filepath.Ext(file.Filename)
 	name = strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
 	id = name + "." + id
-	dst := filepath.Join(tilesets, id+ext)
+	dst := filepath.Join(dir, id+ext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
 		res.Fail(c, 5002)
@@ -1311,8 +1307,14 @@ func importDataset(c *gin.Context) {
 
 	clear := func(name string) error {
 		s := fmt.Sprintf(`DELETE FROM %s;`, name)
+		err := db.Exec(s).Error
+		if err != nil {
+			return err
+		}
+		s = fmt.Sprintf(`DELETE FROM datasets WHERE name=%s;`, name)
 		return db.Exec(s).Error
 	}
+
 	insert := func(header string) error {
 		if len(strings.Split(header, ",")) != len(csvHeader) {
 			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
@@ -1345,8 +1347,58 @@ func importDataset(c *gin.Context) {
 		return db.Exec(s).Error
 	}
 
+	getFields := func(name string) ([]byte, error) {
+		s := fmt.Sprintf(`SELECT * FROM %s LIMIT 0;`, name)
+		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		cols, err := rows.ColumnTypes()
+		if err != nil {
+			return nil, err
+		}
+		var fields []Field
+		for _, col := range cols {
+			var t string
+			log.Debug(col.DatabaseTypeName())
+			switch col.DatabaseTypeName() {
+			case "INT", "INT4":
+				t = TypeInteger
+			case "NUMERIC": //number
+				t = TypeReal
+			case "BOOL":
+				t = TypeBool
+			case "TIMESTAMPTZ":
+				t = TypeDate
+			case "_VARCHAR":
+				t = TypeStringArray
+			case "TEXT", "VARCHAR":
+				t = TypeString
+			default:
+				t = TypeUnkown
+			}
+			field := Field{
+				Name:   col.Name(),
+				Type:   t,
+				Format: "",
+			}
+			fields = append(fields, field)
+		}
+
+		// return fields, nil
+		jfields, err := json.Marshal(fields)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("json fields Info: %s", string(jfields))
+		return jfields, nil
+	}
+
 	//数据入库
 	var header, search string
+	updateGeom := false
+	datasetType := TypeAttribute
 	switch name {
 	case "banks", "others", "basepois", "pois":
 		switch name {
@@ -1362,35 +1414,8 @@ func importDataset(c *gin.Context) {
 			header = "name,class,type,hit,per,area,households,date,lat,lng"
 			search = ",search =ARRAY[name]"
 		}
-		err = clear(name)
-		if err != nil {
-			log.Error(err)
-			res.Fail(c, 5001)
-			return
-		}
-		err = insert(header)
-		if err != nil {
-			log.Errorf("import %s error:%s", name, err.Error())
-			res.Fail(c, 5001)
-			return
-		}
-		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
-		result := db.Exec(update)
-		if result.Error != nil {
-			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
-			res.Fail(c, 5001)
-			return
-		}
-		//更新元数据
-		pubSet.updateMeta(name, id)
-		//更新服务
-		err = pubSet.AddDataset(dst, id)
-		if err != nil {
-			log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
-		}
-		res.DoneData(c, gin.H{
-			"id": id,
-		})
+		updateGeom = true
+		datasetType = TypePoint
 	case "savings", "m1", "m2", "m3", "m4":
 		switch name {
 		case "savings":
@@ -1404,138 +1429,177 @@ func importDataset(c *gin.Context) {
 		case "m4":
 			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
 		}
-		err = clear(name)
-		if err != nil {
-			log.Error(err)
-			res.Fail(c, 5001)
-			return
-		}
-		err = insert(header)
-		if err != nil {
-			log.Errorf("import %s error:%s", name, err.Error())
-			res.Fail(c, 5001)
-			return
-		}
-		res.Done(c, "")
 	}
+
+	clear(name)
+	// if err != nil {
+	// 	log.Error(err)
+	// 	res.Fail(c, 5001)
+	// 	return
+	// }
+	err = insert(header)
+	if err != nil {
+		log.Errorf("import %s error:%s", name, err.Error())
+		res.Fail(c, 5001)
+		return
+	}
+
+	if updateGeom {
+		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
+		result := db.Exec(update)
+		if result.Error != nil {
+			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+			res.Fail(c, 5001)
+			return
+		}
+	}
+
+	jfs, err := getFields(name)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+
+	ds := &Dataset{
+		ID:     id,
+		Name:   name,
+		Label:  file.Filename,
+		Type:   datasetType,
+		Fields: jfs,
+	}
+	//更新元数据
+	err = pubSet.updateInsertDataset(ds)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	//更新服务
+	err = pubSet.AddDatasetService(ds)
+	if err != nil {
+		log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
+	}
+	res.DoneData(c, gin.H{
+		"id": id,
+	})
 }
 
-// func queryDataset(c *gin.Context) {
-// 	res := NewRes()
-// 	name := c.Param("name")
+func queryDataset(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
 
-// 	var body struct {
-// 		GeoJSON string `form:"geojson" binding:"required"`
-// 		Filter  string `form:"filter"`
-// 	}
-// 	err := c.Bind(&body)
-// 	if err != nil {
-// 		res.Fail(c, err)
-// 		return
-// 	}
+	var body struct {
+		GeoJSON string `form:"geojson" binding:"required"`
+		Filter  string `form:"filter"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
 
-// 	var jg map[string]interface{}
-// 	err = json.Unmarshal([]byte(body.GeoJSON), &jg)
-// 	if err != nil || jg["geometry"] == nil {
-// 		res.FailMsg(c, "param geojson format error")
-// 		return
-// 	}
+	var jg map[string]interface{}
+	err = json.Unmarshal([]byte(body.GeoJSON), &jg)
+	if err != nil || jg["geometry"] == nil {
+		res.FailMsg(c, "param geojson format error")
+		return
+	}
 
-// 	qf, err := geojson.UnmarshalFeature([]byte(body.GeoJSON))
-// 	if err != nil {
-// 		log.Errorf("param geojson error: %v", err)
-// 		res.Fail(c, err)
-// 		return
-// 	}
+	qf, err := geojson.UnmarshalFeature([]byte(body.GeoJSON))
+	if err != nil {
+		log.Errorf("param geojson error: %v", err)
+		res.Fail(c, 4001)
+		return
+	}
 
-// 	var fields []string
-// 	for k := range qf.Properties {
-// 		fields = append(fields, k)
-// 	}
-// 	var fieldsStr string
-// 	fieldsStr = strings.Join(fields, ",")
-// 	selStr := "st_asbinary(geom) as geom "
-// 	if "" != fieldsStr {
-// 		selStr = selStr + "," + fieldsStr
-// 	}
-// 	whrStr := "geom && st_geomfromwkb($1)"
-// 	if "" != body.Filter {
-// 		whrStr = whrStr + " AND " + body.Filter
-// 	}
-// 	s := fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
-// 	log.Debugln(s)
-// 	var rows *sql.Rows
-// 	if qf.BBox.Valid() {
-// 		rows, err = db.Raw(s, wkb.Value(qf.BBox.Bound())).Rows() // (*sql.Rows, error)
-// 	} else {
-// 		rows, err = db.Raw(s, wkb.Value(qf.Geometry)).Rows() // (*sql.Rows, error)
-// 	}
+	var fields []string
+	for k := range qf.Properties {
+		fields = append(fields, k)
+	}
+	var fieldsStr string
+	fieldsStr = strings.Join(fields, ",")
+	selStr := "st_asbinary(geom) as geom "
+	if "" != fieldsStr {
+		selStr = selStr + "," + fieldsStr
+	}
+	whrStr := "geom && st_geomfromwkb($1)"
+	if "" != body.Filter {
+		whrStr = whrStr + " AND " + body.Filter
+	}
+	s := fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
+	log.Debugln(s)
+	var rows *sql.Rows
+	if qf.BBox.Valid() {
+		rows, err = db.Raw(s, wkb.Value(qf.BBox.Bound())).Rows() // (*sql.Rows, error)
+	} else {
+		rows, err = db.Raw(s, wkb.Value(qf.Geometry)).Rows() // (*sql.Rows, error)
+	}
 
-// 	if err != nil {
-// 		res.Fail(c, err)
-// 		return
-// 	}
-// 	defer rows.Close()
-// 	cols, err := rows.ColumnTypes()
-// 	if err != nil {
-// 		res.Fail(c, err)
-// 		return
-// 	}
-// 	fc := geojson.NewFeatureCollection()
-// 	for rows.Next() {
-// 		// Scan needs an array of pointers to the values it is setting
-// 		// This creates the object and sets the values correctly
-// 		vals := make([]interface{}, len(cols))
-// 		for i := range cols {
-// 			vals[i] = new(sql.RawBytes)
-// 		}
-// 		err = rows.Scan(vals...)
-// 		if err != nil {
-// 			log.Error(err)
-// 		}
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
 
-// 		f := geojson.NewFeature(orb.Point{0, 0})
-// 		f.Properties = qf.Properties.Clone()
+		f := geojson.NewFeature(orb.Point{0, 0})
+		f.Properties = qf.Properties.Clone()
 
-// 		for i, t := range cols {
-// 			// skip nil values.
-// 			if vals[i] == nil {
-// 				continue
-// 			}
-// 			rb, ok := vals[i].(*sql.RawBytes)
-// 			if !ok {
-// 				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
-// 				continue
-// 			}
-// 			log.Debugf("%d,%v,%v", i, *t, *rb)
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+			log.Debugf("%d,%v,%v", i, *t, *rb)
 
-// 			switch t.Name() {
-// 			case "geom":
-// 				pt := orb.Point{0, 0}
-// 				s := wkb.Scanner(&pt)
-// 				err := s.Scan([]byte(*rb))
-// 				if err != nil {
-// 					log.Errorf("unable to convert geometry field (geom) into bytes.")
-// 					log.Error(err)
-// 				}
-// 				f.Geometry = pt
-// 			default:
-// 				switch vex := t.ScanType().(type) {
-// 				default:
-// 					log.Debug(vex)
-// 					f.Properties[t.Name()] = string(*rb)
-// 				}
-// 			}
+			switch t.Name() {
+			case "geom":
+				pt := orb.Point{0, 0}
+				s := wkb.Scanner(&pt)
+				err := s.Scan([]byte(*rb))
+				if err != nil {
+					log.Errorf("unable to convert geometry field (geom) into bytes.")
+					log.Error(err)
+				}
+				f.Geometry = pt
+			default:
+				switch vex := t.ScanType().(type) {
+				default:
+					log.Debug(vex)
+					f.Properties[t.Name()] = string(*rb)
+				}
+			}
 
-// 		}
-// 		fc.Append(f)
-// 	}
-// 	gj, err := fc.MarshalJSON()
-// 	if err != nil {
-// 		log.Errorf("unable to MarshalJSON of featureclection.")
-// 	}
-// 	c.JSON(http.StatusOK, json.RawMessage(gj))
-// }
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+	}
+	c.JSON(http.StatusOK, json.RawMessage(gj))
+}
 
 func queryDatasetGeojson(c *gin.Context) {
 	res := NewRes()

@@ -48,9 +48,25 @@ type Map struct {
 	Summary   string `form:"summary" json:"summary"`
 	User      string `form:"user" json:"user"`
 	Thumbnail []byte `form:"thumbnail" json:"thumbnail"`
-	Config    []byte `form:"config" json:"config"`
+	Config    []byte `form:"config" json:"config" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// Field represents an mbtiles file connection.
+type Field struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Format string `json:"format"`
+}
+
+// Dataset represents an mbtiles file connection.
+type Dataset struct {
+	ID     string `json:"id"`                      //字段列表
+	Name   string `json:"name"`                    //字段列表// 数据集名称,现用于更方便的ID
+	Label  string `json:"label"`                   //字段列表// 显示标签
+	Type   string `json:"type"`                    //字段列表
+	Fields []byte `json:"fields" gorm:"type:json"` //字段列表
 }
 
 // Bank 本行机构表

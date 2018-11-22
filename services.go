@@ -32,13 +32,12 @@ func LoadServiceSet() (*ServiceSet, error) {
 		Datasets: make(map[string]*DataService),
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
-	datasets := cfgV.GetString("assets.datasets")
 	styles := cfgV.GetString("assets.styles")
 	fonts := cfgV.GetString("assets.fonts")
 	s.ServeMBTiles(tilesets)
-	s.ServeDatasets(datasets)
 	s.ServeStyles(styles)
 	s.ServeFonts(fonts)
+	s.LoadDatasetServices()
 	log.Infof("Load ServiceSet all successful")
 	return s, nil
 }

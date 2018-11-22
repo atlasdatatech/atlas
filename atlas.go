@@ -42,12 +42,7 @@ func main() {
 	cfgV = viper.New()
 	InitConf(cfgV)
 	identityKey = cfgV.GetString("jwt.identityKey")
-	if ss, err := LoadServiceSet(); err != nil {
-		log.Errorf("loading public service set error: %s", err.Error())
-	} else {
-		pubSet = ss
-		log.Infof("load public service set successed!")
-	}
+
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
@@ -55,12 +50,13 @@ func main() {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{}, &Dataset{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Basepoi{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{})
 		db = pg
 	}
 	defer pg.Close()
+
 	//Init casbin
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
@@ -72,6 +68,13 @@ func main() {
 
 	initSuperUser()
 	createPaths("pub")
+
+	if ss, err := LoadServiceSet(); err != nil {
+		log.Errorf("loading public service set error: %s", err.Error())
+	} else {
+		pubSet = ss
+		log.Infof("load public service set successed!")
+	}
 
 	r := gin.Default()
 
