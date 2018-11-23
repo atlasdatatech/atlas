@@ -66,7 +66,10 @@ func main() {
 		log.Fatal("JWT Error:" + err.Error())
 	}
 
-	initSuperUser()
+	initUserRole("root", Role{ID: "super_group", Name: "超级管理员"})
+	initUserRole("admin", Role{ID: "admin_group", Name: "管理员"})
+	initUserRole("user", Role{ID: "user_group", Name: "普通用户"})
+
 	createPaths("pub")
 
 	if ss, err := LoadServiceSet(); err != nil {
@@ -111,18 +114,18 @@ func bindRoutes(r *gin.Engine) {
 		user.GET("/", listUsers)
 		user.POST("/", createUser)
 		user.GET("/:id/", getUser)
-		user.PUT("/:id/", updateUser)
-		user.DELETE("/:id/", deleteUser)
+		user.POST("/:id/", updateUser)
+		user.POST("/:id/del/", deleteUser)
 		user.GET("/:id/refresh/", jwtRefresh)
-		user.PUT("/:id/password/", changePassword)
+		user.POST("/:id/password/", changePassword)
 
-		user.GET("/:id/roles/", getUserRoles)           //该用户拥有哪些角色
-		user.POST("/:id/roles/:rid/", addUserRole)      //添加用户角色
-		user.DELETE("/:id/roles/:rid/", deleteUserRole) //删除用户角色
+		user.GET("/:id/roles/", getUserRoles)        //该用户拥有哪些角色
+		user.POST("/:id/roles/", addUserRole)        //添加用户角色
+		user.POST("/:id/roles/del/", deleteUserRole) //删除用户角色
 
 		user.GET("/:id/maps/", getUserMaps) //该用户拥有哪些权限（含资源与操作）
-		user.POST("/:id/maps/:mid/:action/", addUserMap)
-		user.DELETE("/:id/maps/:mid/:action/", deleteUserMap)
+		user.POST("/:id/maps/", addUserMap)
+		user.POST("/:id/maps/del/", deleteUserMap)
 	}
 	//roles
 	role := r.Group("/roles")
@@ -132,12 +135,12 @@ func bindRoutes(r *gin.Engine) {
 		//authn > roles
 		role.GET("/", listRoles)
 		role.POST("/", createRole)
-		role.DELETE("/:id/", deleteRole)
+		role.POST("/:id/del/", deleteRole)
 		role.GET("/:id/users/", getRoleUsers) //该角色包含哪些用户
 
 		role.GET("/:id/maps/", getRoleMaps) //该用户拥有哪些权限（含资源与操作）
-		role.POST("/:id/maps/:mid/:action/", addRoleMap)
-		role.DELETE("/:id/maps/:mid/:action/", deleteRoleMap)
+		role.POST("/:id/maps/", addRoleMap)
+		role.POST("/:id/maps/del/", deleteRoleMap)
 		//authn > assets
 	}
 	//account
@@ -148,7 +151,7 @@ func bindRoutes(r *gin.Engine) {
 		account.GET("/", getUser)
 		account.GET("/logout/", logout)
 		account.GET("/update/", renderUpdateUser)
-		account.PUT("/update/", updateUser)
+		account.POST("/update/", updateUser)
 		account.GET("/refresh/", jwtRefresh)
 		account.GET("/password/", renderChangePassword)
 		account.POST("/password/", changePassword)
@@ -161,9 +164,8 @@ func bindRoutes(r *gin.Engine) {
 		maproute.GET("/", listMaps)
 		maproute.GET("/:id/", getMap)
 		maproute.POST("/", createMap)
-		maproute.POST("/:id/", saveMap)
-		maproute.PUT("/:id/", updateMap)
-		maproute.DELETE("/:id/", deleteMap)
+		maproute.POST("/:id/", updInsetMap)
+		maproute.POST("/:id/del/", deleteMap)
 	}
 
 	//studio
@@ -187,8 +189,7 @@ func bindRoutes(r *gin.Engine) {
 		styles.POST("/", uploadStyle)
 		styles.GET("/:sid", getStyle)              //style.json
 		styles.GET("/:sid/", viewStyle)            //view map style
-		styles.PUT("/:sid/", updateStyle)          //updateStyle
-		styles.POST("/:sid/", saveStyle)           //updateStyle
+		styles.POST("/:sid/", upSaveStyle)         //updateStyle
 		styles.GET("/:sid/sprite:fmt", getSprite)  //style.json
 		styles.POST("/:sid/sprite/", uploadSprite) //style.json
 	}
@@ -225,12 +226,10 @@ func bindRoutes(r *gin.Engine) {
 	// router.NoRoute(renderStatus404)
 }
 
-func initSuperUser() {
-	name := "root"
+func initUserRole(name string, role Role) {
 	password := "1234"
 	phone := "13579246810"
 	department := "system"
-	role := Role{ID: "super", Name: "超级管理员"}
 	user := User{}
 	db.Where("name = ?", name).First(&user)
 	if user.Name != "" {

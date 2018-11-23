@@ -100,8 +100,7 @@ type Bank struct {
 
 // Saving 存款表
 type Saving struct {
-	No        uint    `json:"no" gorm:"primary_key"`
-	ID        string  `json:"id" gorm:"index"`
+	BankID    string  `json:"bank_id" gorm:"index"`
 	Year      string  `json:"year"`
 	Total     float32 `json:"total"`
 	Corporate float32 `json:"corporate"`
@@ -112,7 +111,6 @@ type Saving struct {
 
 // Other 他行机构表
 type Other struct {
-	No      uint           `json:"no" gorm:"primary_key"`
 	ID      string         `json:"id" gorm:"index"`
 	Name    string         `json:"name" gorm:"index"`
 	Class   string         `json:"class"`
@@ -152,8 +150,7 @@ type Poi struct {
 
 // M1 立地条件
 type M1 struct {
-	No     uint    `json:"no" gorm:"primary_key"`
-	ID     string  `json:"id" gorm:"index"`
+	BankID string  `json:"bank_id" gorm:"index"`
 	C1     float32 `json:"c1"`
 	C2     float32 `json:"c2"`
 	C3     float32 `json:"c3"`
@@ -175,17 +172,20 @@ type M1 struct {
 
 //M2 竞争力
 type M2 struct {
-	No     uint    `json:"no" gorm:"primary_key"`
-	ID     string  `json:"id" gorm:"index"`
-	Count  float32 `json:"count"`
-	Number float32 `json:"number"`
+	BankID string  `json:"bank_id" gorm:"index"`
+	B1     float32 `json:"b1"`
+	B2     float32 `json:"b2"`
+	B3     float32 `json:"b3"`
+	B4     float32 `json:"b4"`
+	B5     float32 `json:"b5"`
+	B6     float32 `json:"b6"`
 	Result float32 `json:"result"`
 }
 
-//M3 竞争度
+//M3 竞争力
 type M3 struct {
-	Name   string  `json:"name"`
-	Weight float32 `json:"weight"`
+	BankID string  `json:"bank_id" gorm:"index"`
+	Result float32 `json:"result"`
 }
 
 //M4 宏观战略

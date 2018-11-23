@@ -397,18 +397,21 @@ func addUserMap(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	mid := c.Param("mid")
-	if code := checkMap(mid); code != 200 {
-		res.Fail(c, code)
-		return
+	var body struct {
+		MID    string `form:"mid" json:"mid" binding:"required"`
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	action := c.Param("action")
-	if action == "" {
+	err := c.Bind(&body)
+	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
+	if code := checkMap(body.MID); code != 200 {
+		res.Fail(c, code)
+		return
+	}
 
-	if !casEnf.AddPolicy(id, mid, action) {
+	if !casEnf.AddPolicy(id, body.MID, body.Action) {
 		res.Done(c, "policy already exist")
 		return
 	}
@@ -423,17 +426,20 @@ func deleteUserMap(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	mid := c.Param("mid")
-	if code := checkMap(mid); code != 200 {
-		res.Fail(c, code)
-		return
+	var body struct {
+		MID    string `form:"mid" json:"mid" binding:"required"`
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	action := c.Param("action")
-	if action == "" {
+	err := c.Bind(&body)
+	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.RemovePolicy(id, mid, action) {
+	if code := checkMap(body.MID); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	if !casEnf.RemovePolicy(id, body.MID, body.Action) {
 		res.Done(c, "policy does not  exist")
 		return
 	}
@@ -444,43 +450,56 @@ func deleteUserMap(c *gin.Context) {
 func addUserRole(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
-	rid := c.Param("rid")
-
 	if code := checkUser(uid); code != 200 {
 		res.Fail(c, code)
 		return
 	}
-	if code := checkRole(rid); code != 200 {
+	var body struct {
+		RID string `form:"rid" json:"rid" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	if code := checkRole(body.RID); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 
-	if casEnf.AddRoleForUser(uid, rid) {
+	if casEnf.AddRoleForUser(uid, body.RID) {
 		res.Done(c, "")
 		return
 	}
-	res.Done(c, fmt.Sprintf("%s already has %s role", uid, rid))
+	res.Done(c, fmt.Sprintf("%s already has %s role", uid, body.RID))
 }
 
 func deleteUserRole(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
-	rid := c.Param("rid")
 
 	if code := checkUser(uid); code != 200 {
 		res.Fail(c, code)
 		return
 	}
-	if code := checkRole(rid); code != 200 {
+	var body struct {
+		RID string `form:"rid" json:"rid" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	if code := checkRole(body.RID); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 
-	if casEnf.DeleteRoleForUser(uid, rid) {
+	if casEnf.DeleteRoleForUser(uid, body.RID) {
 		res.Done(c, "")
 		return
 	}
-	res.Done(c, fmt.Sprintf("%s does not has %s role", uid, rid))
+	res.Done(c, fmt.Sprintf("%s does not has %s role", uid, body.RID))
 }
 
 func getRoleMaps(c *gin.Context) {
@@ -501,18 +520,21 @@ func addRoleMap(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	mid := c.Param("mid")
-	if code := checkMap(mid); code != 200 {
-		res.Fail(c, code)
-		return
+	var body struct {
+		MID    string `form:"mid" json:"mid" binding:"required"`
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	action := c.Param("action")
-	if action == "" {
+	err := c.Bind(&body)
+	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
+	if code := checkMap(body.MID); code != 200 {
+		res.Fail(c, code)
+		return
+	}
 
-	if !casEnf.AddPolicy(id, mid, action) {
+	if !casEnf.AddPolicy(id, body.MID, body.Action) {
 		res.Done(c, "policy already exist")
 		return
 	}
@@ -527,17 +549,21 @@ func deleteRoleMap(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	mid := c.Param("mid")
-	if code := checkMap(mid); code != 200 {
-		res.Fail(c, code)
-		return
+	var body struct {
+		MID    string `form:"mid" json:"mid" binding:"required"`
+		Action string `form:"action" json:"action" binding:"required"`
 	}
-	action := c.Param("action")
-	if action == "" {
+	err := c.Bind(&body)
+	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.RemovePolicy(id, mid, action) {
+	if code := checkMap(body.MID); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	if !casEnf.RemovePolicy(id, body.MID, body.Action) {
 		res.Done(c, "policy does not  exist")
 		return
 	}
@@ -662,6 +688,13 @@ func createMap(c *gin.Context) {
 		m := &Map{}
 		err := c.Bind(m)
 		if err != nil {
+			log.Error(err)
+			res.Fail(c, 4001)
+			return
+		}
+		m.Config, err = json.Marshal(m.Config)
+		if err != nil {
+			log.Error(err)
 			res.Fail(c, 4001)
 			return
 		}
@@ -682,44 +715,15 @@ func createMap(c *gin.Context) {
 	return
 }
 
-func saveMap(c *gin.Context) {
+func updInsetMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	mid := c.Param("id")
 	if mid == "" {
-		res.Fail(c, 4001)
-		return
-	}
-	m := &Map{}
-	err := c.Bind(m)
-	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
 	if !casEnf.Enforce(id, mid, "POST") {
-		res.Fail(c, 403)
-		return
-	}
-	m.ID = mid
-	// insertUser
-	err = db.Create(&m).Error
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-	res.Done(c, "")
-}
-
-func updateMap(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	mid := c.Param("id")
-	if mid == "" {
-		res.Fail(c, 4001)
-		return
-	}
-	if !casEnf.Enforce(id, mid, "PUT") {
 		res.Fail(c, 403)
 		return
 	}
@@ -733,6 +737,17 @@ func updateMap(c *gin.Context) {
 
 	err = db.Model(&Map{}).Where("id = ?", mid).Update(m).Error
 	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			m.ID = mid
+			err = db.Create(&m).Error
+			if err != nil {
+				log.Error(err)
+				res.Fail(c, 5001)
+				return
+			}
+			res.Done(c, "")
+			return
+		}
 		log.Error(err)
 		res.Fail(c, 5001)
 		return
@@ -748,7 +763,7 @@ func deleteMap(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.Enforce(id, mid, "DELETE") {
+	if !casEnf.Enforce(id, mid, "POST") {
 		res.Fail(c, 403)
 		return
 	}
@@ -838,30 +853,8 @@ func uploadStyle(c *gin.Context) {
 	res.Done(c, "")
 }
 
-//updateStyle create a style
-func updateStyle(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	sid := c.Param("sid")
-	style, ok := pubSet.Styles[sid]
-	if !ok {
-		log.Errorf("style id(%s) not exist in the service", sid)
-		res.Fail(c, 4044)
-		return
-	}
-
-	body, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Errorf(`updateStyle, get form: %s; user: %s`, err, id)
-		res.Fail(c, 5003)
-		return
-	}
-	style.Style = body
-	res.Done(c, "")
-}
-
 //saveStyle create a style
-func saveStyle(c *gin.Context) {
+func upSaveStyle(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	user := c.Param("user")
@@ -887,6 +880,13 @@ func saveStyle(c *gin.Context) {
 		res.Fail(c, 5002)
 		return
 	}
+	style, ok := pubSet.Styles[sid]
+	if !ok {
+		log.Errorf("style saved, but id(%s) not exist in the service", sid)
+		res.Fail(c, 4044)
+		return
+	}
+	style.Style = body
 	res.Done(c, "")
 }
 
@@ -1343,7 +1343,7 @@ func importDataset(c *gin.Context) {
 			rval := row2values(row, cols)
 			vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 		}
-		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 		return db.Exec(s).Error
 	}
 
@@ -1391,7 +1391,6 @@ func importDataset(c *gin.Context) {
 		if err != nil {
 			return nil, err
 		}
-		log.Printf("json fields Info: %s", string(jfields))
 		return jfields, nil
 	}
 
@@ -1416,16 +1415,14 @@ func importDataset(c *gin.Context) {
 		}
 		updateGeom = true
 		datasetType = TypePoint
-	case "savings", "m1", "m2", "m3", "m4":
+	case "savings", "m1", "m2", "m4":
 		switch name {
 		case "savings":
-			header = "id,year,total,corporate,personal,margin,other"
+			header = "bank_id,year,total,corporate,personal,margin,other"
 		case "m1":
-			header = "id,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,result"
+			header = "bank_id,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,result"
 		case "m2":
-			header = "id,count,number,result"
-		case "m3":
-			header = "name,weight"
+			header = "bank_id,b1,b2,b3,b4,b5,b6"
 		case "m4":
 			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
 		}
