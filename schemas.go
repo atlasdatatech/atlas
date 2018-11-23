@@ -60,6 +60,14 @@ type Field struct {
 	Format string `json:"format"`
 }
 
+// FieldValues represents an mbtiles file connection.
+type FieldValues struct {
+	Source string   `json:"source"` //数据集名称
+	Name   string   `json:"name"`
+	Type   string   `json:"type"`
+	Values []string `json:"values"` //唯一值数组
+}
+
 // Dataset represents an mbtiles file connection.
 type Dataset struct {
 	ID     string `json:"id"`                      //字段列表

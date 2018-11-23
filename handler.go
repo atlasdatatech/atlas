@@ -816,7 +816,7 @@ func uploadStyle(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, id)
-		res.Fail(c, 4045)
+		res.Fail(c, 4046)
 		return
 	}
 
@@ -1047,7 +1047,7 @@ func uploadTileset(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, id)
-		res.Fail(c, 4045)
+		res.Fail(c, 4046)
 		return
 	}
 	tilesets := cfgV.GetString("assets.tilesets")
@@ -1257,7 +1257,7 @@ func importDataset(c *gin.Context) {
 	file, err := c.FormFile(name)
 	if err != nil {
 		log.Errorf(`importDataset, get form: %s; file: %s`, err, name)
-		res.Fail(c, 4045)
+		res.Fail(c, 4046)
 		return
 	}
 
@@ -1488,53 +1488,18 @@ func queryDataset(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
 
-	var body struct {
-		GeoJSON string `form:"geojson" binding:"required"`
-		Filter  string `form:"filter"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, 4001)
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
 		return
 	}
 
-	var jg map[string]interface{}
-	err = json.Unmarshal([]byte(body.GeoJSON), &jg)
-	if err != nil || jg["geometry"] == nil {
-		res.FailMsg(c, "param geojson format error")
-		return
-	}
-
-	qf, err := geojson.UnmarshalFeature([]byte(body.GeoJSON))
-	if err != nil {
-		log.Errorf("param geojson error: %v", err)
-		res.Fail(c, 4001)
-		return
-	}
-
-	var fields []string
-	for k := range qf.Properties {
-		fields = append(fields, k)
-	}
-	var fieldsStr string
-	fieldsStr = strings.Join(fields, ",")
+	fieldsStr := "id,name"
 	selStr := "st_asbinary(geom) as geom "
 	if "" != fieldsStr {
 		selStr = selStr + "," + fieldsStr
 	}
-	whrStr := "geom && st_geomfromwkb($1)"
-	if "" != body.Filter {
-		whrStr = whrStr + " AND " + body.Filter
-	}
-	s := fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
-	log.Debugln(s)
-	var rows *sql.Rows
-	if qf.BBox.Valid() {
-		rows, err = db.Raw(s, wkb.Value(qf.BBox.Bound())).Rows() // (*sql.Rows, error)
-	} else {
-		rows, err = db.Raw(s, wkb.Value(qf.Geometry)).Rows() // (*sql.Rows, error)
-	}
-
+	s := fmt.Sprintf(`SELECT %s FROM %s;`, selStr, name)
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		res.Fail(c, 5001)
 		return
@@ -1559,8 +1524,6 @@ func queryDataset(c *gin.Context) {
 		}
 
 		f := geojson.NewFeature(orb.Point{0, 0})
-		f.Properties = qf.Properties.Clone()
-
 		for i, t := range cols {
 			// skip nil values.
 			if vals[i] == nil {
@@ -1579,8 +1542,7 @@ func queryDataset(c *gin.Context) {
 				s := wkb.Scanner(&pt)
 				err := s.Scan([]byte(*rb))
 				if err != nil {
-					log.Errorf("unable to convert geometry field (geom) into bytes.")
-					log.Error(err)
+					log.Errorf("unable to convert geometry field (geom) into bytes.%s", err)
 				}
 				f.Geometry = pt
 			default:

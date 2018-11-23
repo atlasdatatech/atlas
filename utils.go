@@ -46,7 +46,8 @@ var codes = map[int]string{
 	4042: "角色不存在",
 	4043: "地图不存在",
 	4044: "服务不存在",
-	4045: "找不到上传文件",
+	4045: "找不到数据集",
+	4046: "找不到上传文件",
 
 	408: "请求超时",
 
@@ -252,6 +253,21 @@ func checkMap(mid string) int {
 			return 5001
 		}
 		return 4043
+	}
+	return 200
+}
+
+func checkDataset(did string) int {
+	if did == "" {
+		return 4001
+	}
+	ds := &Dataset{}
+	if err := db.Where("name = ?", did).First(&ds).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			return 5001
+		}
+		return 4045
 	}
 	return 200
 }

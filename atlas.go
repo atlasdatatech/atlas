@@ -78,7 +78,11 @@ func main() {
 
 	r := gin.Default()
 
-	r.Use(cors.Default())
+	// same as
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	config.AllowCredentials = true
+	r.Use(cors.New(config))
 
 	staticsHome := cfgV.GetString("assets.statics")
 	r.Static("/statics", staticsHome)
@@ -212,6 +216,7 @@ func bindRoutes(r *gin.Engine) {
 		// > datasets
 		datasets.GET("/", listDatasets)
 		datasets.POST("/import/:name/", importDataset)
+		datasets.GET("/geojson/:name/", queryDataset)
 		datasets.POST("/query/:name/", queryDatasetGeojson)
 		datasets.POST("/cube/", queryExec)
 	}
