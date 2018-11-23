@@ -88,9 +88,9 @@ type Bank struct {
 	Manager string         `json:"manager"`
 	House   string         `json:"house"`
 	Area    float32        `json:"area"`
-	Term    string         `json:"term"`
-	Date    string         `json:"date"`
-	Staff   string         `json:"staff"`
+	Term    time.Time      `json:"term"`
+	Date    time.Time      `json:"date"`
+	Staff   int            `json:"staff"`
 	Class   string         `json:"class"`
 	Lat     float32        `json:"lat"`
 	Lng     float32        `json:"lng"`

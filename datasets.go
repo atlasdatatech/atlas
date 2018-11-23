@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/jinzhu/gorm"
+
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
 )
@@ -31,7 +33,7 @@ func (s *ServiceSet) AddDatasetService(dataset *Dataset) error {
 		State:   true,
 		Dataset: dataset,
 	}
-	s.Datasets[dataset.ID] = out
+	s.Datasets[dataset.Name] = out
 	return nil
 }
 
@@ -39,7 +41,18 @@ func (s *ServiceSet) updateInsertDataset(dataset *Dataset) error {
 	if dataset == nil {
 		return fmt.Errorf("dataset may not be nil")
 	}
-	err := db.Create(dataset).Error
+	ds := &Dataset{}
+	err := db.Where("id = ?", dataset.ID).First(ds).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = db.Create(dataset).Error
+			if err != nil {
+				return err
+			}
+		}
+		return err
+	}
+	err = db.Model(&Dataset{}).Update(dataset).Error
 	if err != nil {
 		return err
 	}

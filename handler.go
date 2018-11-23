@@ -692,12 +692,7 @@ func createMap(c *gin.Context) {
 			res.Fail(c, 4001)
 			return
 		}
-		m.Config, err = json.Marshal(m.Config)
-		if err != nil {
-			log.Error(err)
-			res.Fail(c, 4001)
-			return
-		}
+		m.Config = []byte(m.Config)
 		m.ID, _ = shortid.Generate()
 		// insertUser
 		err = db.Create(&m).Error
@@ -1250,6 +1245,61 @@ func listDatasets(c *gin.Context) {
 	res.DoneData(c, dss)
 }
 
+func getDatasetInfo(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	ds, ok := pubSet.Datasets[name]
+	if !ok {
+		res.Fail(c, 4045)
+		return
+	}
+	res.DoneData(c, ds.Dataset)
+}
+
+func getDistinctValues(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	var body struct {
+		Field string `form:"field" json:"field" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
+		return
+	}
+	s := fmt.Sprintf(`SELECT distinct(%s) as val,count(*) as cnt FROM "%s" GROUP BY %s;`, body.Field, name, body.Field)
+	fmt.Println(s)
+	rows, err := db.Raw(s).Rows()
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	type ValCnt struct {
+		Val string
+		Cnt int
+	}
+	var valCnts []ValCnt
+	for rows.Next() {
+		var vc ValCnt
+		// ScanRows scan a row into user
+		db.ScanRows(rows, &vc)
+		valCnts = append(valCnts, vc)
+		// do something
+	}
+	res.DoneData(c, valCnts)
+}
+
 func importDataset(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
@@ -1297,6 +1347,12 @@ func importDataset(c *gin.Context) {
 				} else {
 					vals = vals + row[i] + ","
 				}
+			case "TIMESTAMPTZ":
+				if "" == row[i] {
+					vals = vals + "null,"
+				} else {
+					vals = vals + "'" + row[i] + "',"
+				}
 			default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
 				vals = vals + "'" + row[i] + "',"
 			}
@@ -1341,6 +1397,7 @@ func importDataset(c *gin.Context) {
 				return err
 			}
 			rval := row2values(row, cols)
+			log.Debug(rval)
 			vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 		}
 		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
@@ -1426,6 +1483,8 @@ func importDataset(c *gin.Context) {
 		case "m4":
 			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
 		}
+	default:
+		return
 	}
 
 	clear(name)
@@ -1459,7 +1518,7 @@ func importDataset(c *gin.Context) {
 	}
 
 	ds := &Dataset{
-		ID:     id,
+		ID:     name,
 		Name:   name,
 		Label:  file.Filename,
 		Type:   datasetType,
@@ -1685,6 +1744,12 @@ func queryDatasetGeojson(c *gin.Context) {
 				}
 				f = geojson.NewFeature(geom.Geometry())
 			default:
+				// switch v := vals[i].(type) {
+				// case string:
+				// case int:
+				// default:
+				// 	fmt.Printf("%v", v)
+				// }
 				f.Properties[t.Name()] = string(*rb)
 			}
 

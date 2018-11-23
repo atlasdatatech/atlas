@@ -107,8 +107,8 @@ func bindRoutes(r *gin.Engine) {
 
 	//users
 	user := r.Group("/users")
-	user.Use(authMid.MiddlewareFunc())
-	user.Use(NewAuthorizer(casEnf))
+	// user.Use(authMid.MiddlewareFunc())
+	// user.Use(NewAuthorizer(casEnf))
 	{
 		//authn > users
 		user.GET("/", listUsers)
@@ -129,8 +129,8 @@ func bindRoutes(r *gin.Engine) {
 	}
 	//roles
 	role := r.Group("/roles")
-	role.Use(authMid.MiddlewareFunc())
-	role.Use(NewAuthorizer(casEnf))
+	// role.Use(authMid.MiddlewareFunc())
+	// role.Use(NewAuthorizer(casEnf))
 	{
 		//authn > roles
 		role.GET("/", listRoles)
@@ -145,7 +145,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 	//account
 	account := r.Group("/account")
-	account.Use(authMid.MiddlewareFunc())
+	// account.Use(authMid.MiddlewareFunc())
 	{
 		account.GET("/index/", renderAccount)
 		account.GET("/", getUser)
@@ -158,7 +158,7 @@ func bindRoutes(r *gin.Engine) {
 	}
 	//maproute
 	maproute := r.Group("/maps")
-	maproute.Use(authMid.MiddlewareFunc())
+	// maproute.Use(authMid.MiddlewareFunc())
 	{
 		// > map op
 		maproute.GET("/", listMaps)
@@ -167,7 +167,6 @@ func bindRoutes(r *gin.Engine) {
 		maproute.POST("/:id/", updInsetMap)
 		maproute.POST("/:id/del/", deleteMap)
 	}
-
 	//studio
 	studio := r.Group("/studio")
 	// studio.Use(authMid.MiddlewareFunc())
@@ -216,10 +215,12 @@ func bindRoutes(r *gin.Engine) {
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
-		datasets.POST("/import/:name/", importDataset)
-		datasets.GET("/geojson/:name/", queryDataset)
-		datasets.POST("/query/:name/", queryDatasetGeojson)
-		datasets.POST("/cube/", queryExec)
+		datasets.GET("/:name/", getDatasetInfo)
+		datasets.POST("/:name/distinct/", getDistinctValues)
+		datasets.GET("/:name/geojson/", queryDataset)
+		datasets.POST("/:name/import/", importDataset)
+		datasets.POST("/:name/query/", queryDatasetGeojson)
+		datasets.POST("/:name/cube/", queryExec)
 	}
 
 	//route not found
