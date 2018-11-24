@@ -221,10 +221,11 @@ func bindRoutes(r *gin.Engine) {
 		datasets.GET("/", listDatasets)
 		datasets.GET("/:name/", getDatasetInfo)
 		datasets.POST("/:name/distinct/", getDistinctValues)
-		datasets.GET("/:name/geojson/", queryDataset)
+		datasets.GET("/:name/geojson/", getGeojson)
 		datasets.POST("/:name/import/", importDataset)
-		datasets.POST("/:name/query/", queryDatasetGeojson)
-		datasets.POST("/:name/cube/", queryExec)
+		datasets.POST("/:name/query/", queryGeojson)
+		datasets.POST("/:name/cube/", cubeQuery)
+		datasets.POST("/:name/kvs/", queryExec)
 	}
 
 	//route not found

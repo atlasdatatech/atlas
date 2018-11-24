@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1559,7 +1560,7 @@ func importDataset(c *gin.Context) {
 	})
 }
 
-func queryDataset(c *gin.Context) {
+func getGeojson(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
 
@@ -1609,8 +1610,6 @@ func queryDataset(c *gin.Context) {
 				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
 				continue
 			}
-			log.Debugf("%d,%v,%v", i, *t, *rb)
-
 			switch t.Name() {
 			case "geom":
 				pt := orb.Point{0, 0}
@@ -1621,10 +1620,18 @@ func queryDataset(c *gin.Context) {
 				}
 				f.Geometry = pt
 			default:
-				switch vex := t.ScanType().(type) {
+				v := string(*rb)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					f.Properties[t.Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
 				default:
-					log.Debug(vex)
-					f.Properties[t.Name()] = string(*rb)
+					f.Properties[t.Name()] = v
 				}
 			}
 
@@ -1638,7 +1645,7 @@ func queryDataset(c *gin.Context) {
 	c.JSON(http.StatusOK, json.RawMessage(gj))
 }
 
-func queryDatasetGeojson(c *gin.Context) {
+func queryGeojson(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
 
@@ -1763,13 +1770,19 @@ func queryDatasetGeojson(c *gin.Context) {
 				}
 				f = geojson.NewFeature(geom.Geometry())
 			default:
-				// switch v := vals[i].(type) {
-				// case string:
-				// case int:
-				// default:
-				// 	fmt.Printf("%v", v)
-				// }
-				f.Properties[t.Name()] = string(*rb)
+				v := string(*rb)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					f.Properties[t.Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					f.Properties[t.Name()] = v
+				}
 			}
 
 		}
@@ -1784,7 +1797,7 @@ func queryDatasetGeojson(c *gin.Context) {
 	res.DoneData(c, json.RawMessage(gj))
 }
 
-func queryExec(c *gin.Context) {
+func cubeQuery(c *gin.Context) {
 	res := NewRes()
 	var body struct {
 		SQL string `form:"sql" json:"sql" binding:"required"`
@@ -1821,16 +1834,81 @@ func queryExec(c *gin.Context) {
 			log.Error(err)
 		}
 		var r []string
-		for _, col := range vals {
+		for _, v := range vals {
 			// skip nil values.
-			if col == nil {
+			if v == nil {
 				continue
 			}
-			r = append(r, string(col))
+			r = append(r, string(v))
 		}
 		t = append(t, r)
 	}
 	res.DoneData(c, t)
+}
+
+func queryExec(c *gin.Context) {
+
+	res := NewRes()
+	var body struct {
+		SQL string `form:"sql" json:"sql" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	rows, err := db.Raw(body.SQL).Rows() // (*sql.Rows, error)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+
+	cols, _ := rows.ColumnTypes()
+	var ams []map[string]interface{}
+	for rows.Next() {
+		// Create a slice of interface{}'s to represent each column,
+		// and a second slice to contain pointers to each item in the columns slice.
+		columns := make([]sql.RawBytes, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		// Scan the result into the column pointers...
+		if err := rows.Scan(columnPointers...); err != nil {
+			log.Error(err)
+			continue
+		}
+
+		// Create our map, and retrieve the value for each column from the pointers slice,
+		// storing it in the map with the name of the column as the key.
+		m := make(map[string]interface{})
+		for i, col := range columns {
+			if col == nil {
+				continue
+			}
+			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
+			v := string(col)
+			switch cols[i].DatabaseTypeName() {
+			case "INT", "INT4":
+				m[cols[i].Name()], _ = strconv.Atoi(v)
+			case "NUMERIC", "DECIMAL": //number
+				m[cols[i].Name()], _ = strconv.ParseFloat(v, 64)
+			// case "BOOL":
+			// case "TIMESTAMPTZ":
+			// case "_VARCHAR":
+			// case "TEXT", "VARCHAR", "BIGINT":
+			default:
+				m[cols[i].Name()] = v
+			}
+		}
+		// fmt.Print(m)
+		ams = append(ams, m)
+	}
+	res.DoneData(c, ams)
+
 }
 
 func listFonts(c *gin.Context) {
