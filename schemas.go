@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -43,14 +44,48 @@ type Attempt struct {
 
 //Map 登录记录表
 type Map struct {
-	ID        string `form:"id" json:"id" gorm:"primary_key"`
-	Title     string `form:"title" json:"title"`
-	Summary   string `form:"summary" json:"summary"`
-	User      string `form:"user" json:"user"`
-	Thumbnail []byte `form:"thumbnail" json:"thumbnail"`
-	Config    []byte `form:"config" json:"config" gorm:"type:json"`
+	ID        string `json:"id" gorm:"primary_key"`
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	User      string `json:"user"`
+	Thumbnail []byte `json:"thumbnail"`
+	Config    []byte `json:"config" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+//MapBind 登录记录表
+type MapBind struct {
+	ID        string      `form:"id" json:"id"`
+	Title     string      `form:"title" json:"title"`
+	Summary   string      `form:"summary" json:"summary"`
+	User      string      `form:"user" json:"user"`
+	Thumbnail []byte      `form:"thumbnail" json:"thumbnail"`
+	Config    interface{} `form:"config" json:"config"`
+}
+
+func (m *Map) toBind() *MapBind {
+	out := &MapBind{
+		ID:        m.ID,
+		Title:     m.Title,
+		Summary:   m.Summary,
+		User:      m.User,
+		Thumbnail: m.Thumbnail,
+	}
+	json.Unmarshal(m.Config, &out.Config)
+	return out
+}
+
+func (b *MapBind) toMap() *Map {
+	out := &Map{
+		ID:        b.ID,
+		Title:     b.Title,
+		Summary:   b.Summary,
+		User:      b.User,
+		Thumbnail: b.Thumbnail,
+	}
+	out.Config, _ = json.Marshal(b.Config)
+	return out
 }
 
 // Field represents an mbtiles file connection.
@@ -60,14 +95,6 @@ type Field struct {
 	Format string `json:"format"`
 }
 
-// FieldValues represents an mbtiles file connection.
-type FieldValues struct {
-	Source string   `json:"source"` //数据集名称
-	Name   string   `json:"name"`
-	Type   string   `json:"type"`
-	Values []string `json:"values"` //唯一值数组
-}
-
 // Dataset represents an mbtiles file connection.
 type Dataset struct {
 	ID     string `json:"id"`                      //字段列表
@@ -75,6 +102,37 @@ type Dataset struct {
 	Label  string `json:"label"`                   //字段列表// 显示标签
 	Type   string `json:"type"`                    //字段列表
 	Fields []byte `json:"fields" gorm:"type:json"` //字段列表
+}
+
+// DatasetBind represents an mbtiles file connection.
+type DatasetBind struct {
+	ID     string      `form:"id" json:"id"`         //字段列表
+	Name   string      `form:"name" json:"name"`     //字段列表// 数据集名称,现用于更方便的ID
+	Label  string      `form:"label" json:"label"`   //字段列表// 显示标签
+	Type   string      `form:"type" json:"type"`     //字段列表
+	Fields interface{} `form:"fields" json:"fields"` //字段列表
+}
+
+func (d *Dataset) toBind() *DatasetBind {
+	out := &DatasetBind{
+		ID:    d.ID,
+		Name:  d.Name,
+		Label: d.Label,
+		Type:  d.Type,
+	}
+	json.Unmarshal(d.Fields, &out.Fields)
+	return out
+}
+
+func (b *DatasetBind) toDataset() *Dataset {
+	out := &Dataset{
+		ID:    b.ID,
+		Name:  b.Name,
+		Label: b.Label,
+		Type:  b.Type,
+	}
+	out.Fields, _ = json.Marshal(b.Fields)
+	return out
 }
 
 // Bank 本行机构表

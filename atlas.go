@@ -102,6 +102,8 @@ func main() {
 func bindRoutes(r *gin.Engine) {
 
 	//tmp
+	r.POST("/test/", test)
+
 	r.GET("/", index)
 	r.GET("/login/", renderLogin)
 	r.POST("/login/", login)

@@ -14,8 +14,8 @@ type DataService struct {
 	ID      string
 	URL     string // geojson service
 	Hash    string
-	State   bool     // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
-	Dataset *Dataset // database connection for mbtiles file
+	State   bool         // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	Dataset *DatasetBind // database connection for mbtiles file
 }
 
 // AddDatasetService interprets filename as mbtiles file which is opened and which will be
@@ -31,7 +31,7 @@ func (s *ServiceSet) AddDatasetService(dataset *Dataset) error {
 		URL:     dataset.Name, //should not add / at the end
 		Hash:    "#",          //should not add / at the end
 		State:   true,
-		Dataset: dataset,
+		Dataset: dataset.toBind(),
 	}
 	s.Datasets[dataset.Name] = out
 	return nil

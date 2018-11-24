@@ -631,7 +631,7 @@ func listMaps(c *gin.Context) {
 	id := c.GetString(identityKey)
 	var maps []Map
 	if id == "root" || casEnf.HasRoleForUser(id, "super") {
-		db.Find(&maps)
+		db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Find(&maps)
 		res.DoneData(c, maps)
 		return
 	}
@@ -652,7 +652,7 @@ func listMaps(c *gin.Context) {
 	for k := range mapids {
 		ids = append(ids, k)
 	}
-	db.Where("id in (?)", ids).Find(&maps)
+	db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Where("id in (?)", ids).Find(&maps)
 	res.DoneData(c, maps)
 	return
 }
@@ -678,21 +678,40 @@ func getMap(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	res.DoneData(c, m)
+	res.DoneData(c, m.toBind())
+}
+
+func test(c *gin.Context) {
 }
 
 func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	if id == "root" || casEnf.HasRoleForUser(id, "super") {
-		m := &Map{}
-		err := c.Bind(m)
+		var body struct {
+			ID        string      `form:"id" json:"id" gorm:"primary_key"`
+			Title     string      `form:"title" json:"title"`
+			Summary   string      `form:"summary" json:"summary"`
+			User      string      `form:"user" json:"user"`
+			Thumbnail []byte      `form:"thumbnail" json:"thumbnail"`
+			Config    interface{} `form:"config" json:"config" gorm:"type:json"`
+		}
+
+		err := c.Bind(&body)
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 4001)
 			return
 		}
-		m.Config = []byte(m.Config)
+		m := &Map{
+			ID:        body.ID,
+			Title:     body.Title,
+			Summary:   body.Summary,
+			User:      body.User,
+			Thumbnail: body.Thumbnail,
+		}
+
+		m.Config, _ = json.Marshal(body.Config)
 		m.ID, _ = shortid.Generate()
 		// insertUser
 		err = db.Create(&m).Error
@@ -1238,7 +1257,7 @@ func renderDatasetsUpload(c *gin.Context) {
 func listDatasets(c *gin.Context) {
 	res := NewRes()
 
-	var dss []*Dataset
+	var dss []*DatasetBind
 	for _, ds := range pubSet.Datasets {
 		dss = append(dss, ds.Dataset)
 	}
