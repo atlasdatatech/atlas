@@ -325,12 +325,12 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
 	err = db.Exec(`CREATE TABLE tmp_lines AS
-	SELECT 机构号,名称,geom FROM 
-	(SELECT a.机构号,a.名称,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
+	SELECT 机构号,geom FROM 
+	(SELECT a.机构号,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
 	buffers as a, 
 	block_lines as b 
 	WHERE st_intersects(a.geom,b.geom) 
-	GROUP BY a.机构号,a.名称,a.geom) as lines;`).Error
+	GROUP BY a.机构号,a.geom) as lines;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -356,7 +356,7 @@ func buffering(name string, r float64) int {
 	}
 	err = db.Exec(`INSERT INTO buffers_block (机构号,名称,geom)
 	SELECT b.机构号,b.名称,b.geom FROM buffers as b
-	WHERE NOT EXISTS (SELECT 机构号 FROM buffers_b WHERE 机构号=b.机构号 );`).Error
+	WHERE NOT EXISTS (SELECT 机构号 FROM buffers_block WHERE 机构号=b.机构号 );`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
