@@ -2016,3 +2016,104 @@ func queryBuffers(c *gin.Context) {
 	}
 	res.DoneData(c, json.RawMessage(gj))
 }
+
+func getBuffers(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+	rs := c.Query("radius")
+	r, _ := strconv.ParseFloat(rs, 64)
+	t := c.Param("type")
+
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+	//判断数据过多
+	if r != 0 {
+		if code := buffering(name, r); code != 200 {
+			res.Fail(c, code)
+			return
+		}
+	}
+	//查询数据
+	bName := "buffers"
+	if t == "" && name == "banks" {
+		bName = "buffers_block"
+	}
+
+	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
+
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		// f := newFeatrue(t)
+		f := geojson.NewFeature(nil)
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+
+			switch t.Name() {
+			case "geom":
+				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
+				if err != nil {
+					log.Error(err)
+					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
+					continue
+				}
+				f.Geometry = geom.Geometry()
+			default:
+				v := string(*rb)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					f.Properties[t.Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					f.Properties[t.Name()] = v
+				}
+			}
+
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
+	}
+	res.DoneData(c, json.RawMessage(gj))
+}
