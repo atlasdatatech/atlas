@@ -48,7 +48,7 @@ type Map struct {
 	Title     string `json:"title"`
 	Summary   string `json:"summary"`
 	User      string `json:"user"`
-	Thumbnail []byte `json:"thumbnail"`
+	Thumbnail string `json:"thumbnail"`
 	Config    []byte `json:"config" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -60,7 +60,7 @@ type MapBind struct {
 	Title     string      `form:"title" json:"title"`
 	Summary   string      `form:"summary" json:"summary"`
 	User      string      `form:"user" json:"user"`
-	Thumbnail []byte      `form:"thumbnail" json:"thumbnail"`
+	Thumbnail string      `form:"thumbnail" json:"thumbnail"`
 	Config    interface{} `form:"config" json:"config"`
 }
 
