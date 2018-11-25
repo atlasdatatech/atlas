@@ -42,8 +42,8 @@ func InitConf(v *viper.Viper) {
 		name   = "lzyh"
 		
 	[buffer]
-		field="type"
-		values = ["旗舰店","综合型","社区支行","小微支行"]
+		field="网点类型"
+		values = ["旗舰型","综合型","社区支行","小微支行"]
 		scales = [1.5,1.0,0.6,0.6]
 
 	[business]

@@ -282,7 +282,7 @@ func buffering(name string, r float64) int {
 	db.Exec(`DROP TABLE if EXISTS buffers;`)
 	if "banks" != name {
 		err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-		SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom 
+		SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom 
 		FROM %s;`, r, name)).Error
 		if err != nil {
 			log.Error(err)
@@ -292,7 +292,7 @@ func buffering(name string, r float64) int {
 	}
 
 	err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-						SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom 
+						SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom 
 						FROM %s LIMIT 0;`, r, name)).Error
 	if err != nil {
 		log.Error(err)
@@ -313,7 +313,7 @@ func buffering(name string, r float64) int {
 		r = r * scale
 
 		s := fmt.Sprintf(`INSERT INTO buffers 
-						SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom FROM %s
+						SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom FROM %s
 						WHERE %s='%s';`, r, name, field, v)
 
 		err = db.Exec(s).Error
@@ -325,12 +325,12 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
 	err = db.Exec(`CREATE TABLE tmp_lines AS
-	SELECT id,name,geom FROM 
-	(SELECT a.id,a.name,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
+	SELECT 机构号,名称,geom FROM 
+	(SELECT a.机构号,a.名称,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
 	buffers as a, 
 	block_lines as b 
 	WHERE st_intersects(a.geom,b.geom) 
-	GROUP BY a.id,a.name,a.geom) as lines;`).Error
+	GROUP BY a.机构号,a.名称,a.geom) as lines;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -338,25 +338,25 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS tmp_polys;`)
 	err = db.Exec(`CREATE TABLE tmp_polys AS
-	SELECT polys.id, (st_dump(polys.geom)).geom FROM
-	(SELECT id,st_polygonize(geom) as geom FROM tmp_lines
-	GROUP BY id) as polys
-	GROUP BY polys.id,polys.geom;`).Error
+	SELECT polys.机构号, (st_dump(polys.geom)).geom FROM
+	(SELECT 机构号,st_polygonize(geom) as geom FROM tmp_lines
+	GROUP BY 机构号) as polys
+	GROUP BY polys.机构号,polys.geom;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
 	db.Exec(`DROP TABLE if EXISTS buffers_block;`)
 	err = db.Exec(`CREATE TABLE buffers_block AS
-	SELECT a.id,a.name,st_union(b.geom) as geom FROM banks a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.id=b.id
-	GROUP BY a.id,a.name;`).Error
+	SELECT a.机构号,a.名称,st_union(b.geom) as geom FROM banks a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.机构号=b.机构号
+	GROUP BY a.机构号,a.名称;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
-	err = db.Exec(`INSERT INTO buffers_block (id,name,geom)
-	SELECT b.id,b.name,b.geom FROM buffers as b
-	WHERE NOT EXISTS (SELECT id FROM buffers_b WHERE id=b.id );`).Error
+	err = db.Exec(`INSERT INTO buffers_block (机构号,名称,geom)
+	SELECT b.机构号,b.名称,b.geom FROM buffers as b
+	WHERE NOT EXISTS (SELECT 机构号 FROM buffers_b WHERE 机构号=b.机构号 );`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001

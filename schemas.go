@@ -138,7 +138,7 @@ func (b *DatasetBind) toDataset() *Dataset {
 // Bank 本行机构表
 type Bank struct {
 	ID      string         `gorm:"column:机构号;unique;index"`
-	Name    string         `gorm:"column:网点名称;index"`
+	Name    string         `gorm:"column:名称;index"`
 	State   string         `gorm:"column:营业状态"`
 	Region  string         `gorm:"column:行政区"`
 	Type    string         `gorm:"column:网点类型"`

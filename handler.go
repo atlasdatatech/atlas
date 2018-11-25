@@ -1500,7 +1500,7 @@ func importDataset(c *gin.Context) {
 	case "banks", "others", "pois":
 		switch name {
 		case "banks":
-			header = "机构号,网点名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
+			header = "机构号,名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
 			search = ",search =ARRAY[机构号,网点名称,行政区,管理行]"
 		case "others":
 			header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
@@ -1940,7 +1940,7 @@ func queryBuffers(c *gin.Context) {
 		bName = "buffers_block"
 	}
 
-	s := fmt.Sprintf(`SELECT id,name,st_asgeojson(geom) as geom  FROM %s;`, bName)
+	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
 
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
