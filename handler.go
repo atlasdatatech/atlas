@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paulmach/orb"
-	"github.com/paulmach/orb/encoding/wkb"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 
@@ -1245,6 +1243,39 @@ func renderDatasetsUpload(c *gin.Context) {
 	})
 }
 
+func listFonts(c *gin.Context) {
+	res := NewRes()
+	res.DoneData(c, pubSet.Fonts)
+}
+
+//getGlyphs get glyph pbf
+func getGlyphs(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	fonts := c.Param("fontstack")
+	rgPBF := c.Param("range")
+	rgPBF = strings.ToLower(rgPBF)
+	rgPBFPat := `[\d]+-[\d]+.pbf$`
+	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
+		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, id)
+		res.Fail(c, 4005)
+		return
+	}
+	//should init first
+	var fontsPath string
+	var callbacks []string
+	for k, v := range pubSet.Fonts {
+		callbacks = append(callbacks, k)
+		fontsPath = v.URL
+	}
+	fontsPath = filepath.Dir(fontsPath)
+	pbfFile := getFontsPBF(fontsPath, fonts, rgPBF, callbacks)
+	lastModified := time.Now().UTC().Format("2006-01-02 03:04:05 PM")
+	c.Writer.Header().Set("Content-Type", "application/x-protobuf")
+	c.Writer.Header().Set("Last-Modified", lastModified)
+	c.Writer.Write(pbfFile)
+}
+
 func listDatasets(c *gin.Context) {
 	res := NewRes()
 
@@ -1323,9 +1354,9 @@ func importDataset(c *gin.Context) {
 
 	dir := cfgV.GetString("assets.datasets")
 	ext := filepath.Ext(file.Filename)
-	name = strings.TrimSuffix(file.Filename, ext)
+	filename := strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
-	id = name + "." + id
+	id = filename + "." + id
 	dst := filepath.Join(dir, id+ext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
@@ -1334,14 +1365,14 @@ func importDataset(c *gin.Context) {
 	}
 	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
-		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
+		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, file.Filename)
 		res.Fail(c, 5003)
 		return
 	}
 	reader := csv.NewReader(bytes.NewReader(buf))
 	csvHeader, err := reader.Read()
 	if err != nil {
-		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, name)
+		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, file.Filename)
 		res.Fail(c, 5003)
 		return
 	}
@@ -1466,32 +1497,30 @@ func importDataset(c *gin.Context) {
 	updateGeom := false
 	datasetType := TypeAttribute
 	switch name {
-	case "banks", "others", "basepois", "pois":
+	case "banks", "others", "pois":
 		switch name {
 		case "banks":
-			header = "id,name,state,region,type,admin,manager,house,area,term,date,staff,class,lat,lng"
-			search = ",search =ARRAY[id,name,region,manager]"
+			header = "机构号,网点名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
+			search = ",search =ARRAY[机构号,网点名称,行政区,管理行]"
 		case "others":
-			header = "id,name,class,address,lat,lng"
-			search = ",search =ARRAY[id,name,class,address]"
-		case "basepois":
-			header = "name,class,lat,lng"
+			header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
+			search = ",search =ARRAY[机构号,名称,银行类别,地址]"
 		case "pois":
-			header = "name,class,type,hit,per,area,households,date,lat,lng"
-			search = ",search =ARRAY[name]"
+			header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y"
+			search = ",search =ARRAY[名称,备注]"
 		}
 		updateGeom = true
 		datasetType = TypePoint
-	case "savings", "m1", "m2", "m4":
+	case "savings", "m1", "m2", "m5":
 		switch name {
 		case "savings":
-			header = "bank_id,year,total,corporate,personal,margin,other"
+			header = "机构号,名称,年份,总存款日均,单位存款日均,个人存款日均,保证金存款日均,其他存款日均"
 		case "m1":
-			header = "bank_id,c1,c2,c3,c4,c5,c6,c7,c8,c9,c10,c11,c12,c13,c14,c15,c16,result"
+			header = "机构号,商业规模,商业人流,道路特征,快速路,位置特征,转角位置,街巷,斜坡,公共交通类型,距离,停车位,收费,建筑形象,营业厅面积,装修水准,网点类型,总得分"
 		case "m2":
-			header = "bank_id,b1,b2,b3,b4,b5,b6"
-		case "m4":
-			header = "region,gdp,population,area,price,cusume,industrial,saving,loan"
+			header = "机构号,营业面积,人数,个人增长,个人存量,公司存量"
+		case "m5":
+			header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
 		}
 	default:
 		return
@@ -1511,7 +1540,7 @@ func importDataset(c *gin.Context) {
 	}
 
 	if updateGeom {
-		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || lat || ' ' || lng || ')',4326)%s;`, name, search)
+		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326)%s;`, name, search)
 		result := db.Exec(update)
 		if result.Error != nil {
 			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
@@ -1553,20 +1582,27 @@ func importDataset(c *gin.Context) {
 func getGeojson(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
+	fields := c.Query("fields")
+	filter := c.Query("filter")
 
 	if code := checkDataset(name); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 
-	fieldsStr := "id,name"
-	selStr := "st_asbinary(geom) as geom "
-	if "" != fieldsStr {
-		selStr = selStr + "," + fieldsStr
+	selStr := "st_asgeojson(geom) as geom "
+	if "" != fields {
+		selStr = selStr + "," + fields
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s;`, selStr, name)
+	var whr string
+	if "" != filter {
+		whr = " WHERE " + filter
+	}
+	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, name, whr)
+
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
+		log.Error(err)
 		res.Fail(c, 5001)
 		return
 	}
@@ -1588,8 +1624,9 @@ func getGeojson(c *gin.Context) {
 		if err != nil {
 			log.Error(err)
 		}
-		var f *geojson.Feature
-		f = geojson.NewFeature(orb.Point{0, 0})
+
+		f := geojson.NewFeature(nil)
+
 		for i, t := range cols {
 			// skip nil values.
 			if vals[i] == nil {
@@ -1600,15 +1637,15 @@ func getGeojson(c *gin.Context) {
 				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
 				continue
 			}
+
 			switch t.Name() {
 			case "geom":
-				pt := orb.Point{0, 0}
-				s := wkb.Scanner(&pt)
-				err := s.Scan([]byte(*rb))
+				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
 				if err != nil {
-					log.Errorf("unable to convert geometry field (geom) into bytes.%s", err)
+					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
+					continue
 				}
-				f.Geometry = pt
+				f.Geometry = geom.Geometry()
 			default:
 				v := string(*rb)
 				switch cols[i].DatabaseTypeName() {
@@ -1631,6 +1668,8 @@ func getGeojson(c *gin.Context) {
 	gj, err := fc.MarshalJSON()
 	if err != nil {
 		log.Errorf("unable to MarshalJSON of featureclection.")
+		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
 	}
 	c.JSON(http.StatusOK, json.RawMessage(gj))
 }
@@ -1640,8 +1679,9 @@ func queryGeojson(c *gin.Context) {
 	name := c.Param("name")
 
 	var body struct {
-		GeoJSON string `form:"geojson" binding:"required"`
-		Filter  string `form:"filter"`
+		Geom   string `form:"geom" json:"geom"`
+		Fields string `form:"fields" json:"fields"`
+		Filter string `form:"filter" json:"filter"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -1649,70 +1689,23 @@ func queryGeojson(c *gin.Context) {
 		return
 	}
 
-	type GeoJSON struct {
-		Type       string          `json:"type"`
-		BBox       []float64       `json:"bbox"`
-		Geometry   json.RawMessage `json:"geometry"`
-		Properties interface{}     `json:"properties"`
-	}
-
-	var props json.RawMessage
-	geoj := GeoJSON{
-		Properties: &props,
-	}
-	err = json.Unmarshal([]byte(body.GeoJSON), &geoj)
-
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 4001)
-		return
-	}
-
-	var fields []string
-
-	switch geoj.Type {
-	case "Feature":
-		//props
-		var tags map[string]interface{}
-		if err := json.Unmarshal(props, &tags); err != nil {
-			res.Fail(c, 4001)
-			return
-		}
-
-		for k, v := range tags {
-			switch v.(type) {
-			case string:
-			case float64:
-			case bool:
-			default:
-				log.Errorf("now not support interface{} objects,deling as strings, key:%s,value:%v", k, v)
-			}
-			fields = append(fields, k)
-		}
-	default:
-		log.Errorf("geojson type is not : %q", geoj.Type)
-	}
-
-	var fieldsStr string
-	fieldsStr = strings.Join(fields, ",")
 	selStr := "st_asgeojson(geom) as geom "
-	if "" != fieldsStr {
-		selStr = selStr + "," + fieldsStr
+	if "" != body.Fields {
+		selStr = selStr + "," + body.Fields
 	}
-	var s string
-	if len(geoj.BBox) == 4 {
-		whrStr := fmt.Sprintf("geom && st_makeenvelope(%f,%f,%f,%f)", geoj.BBox[0], geoj.BBox[1], geoj.BBox[2], geoj.BBox[3])
+	var whrStr string
+	if body.Geom != "" {
+		whrStr = fmt.Sprintf(` WHERE geom && st_geomfromgeojson('%s')`, body.Geom)
 		if "" != body.Filter {
 			whrStr = whrStr + " AND " + body.Filter
 		}
-		s = fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
 	} else {
-		whrStr := fmt.Sprintf(`geom && st_geomfromgeojson('%s')`, geoj.Geometry)
 		if "" != body.Filter {
-			whrStr = whrStr + " AND " + body.Filter
+			whrStr = " WHERE " + body.Filter
 		}
-		s = fmt.Sprintf(`SELECT %s FROM %s WHERE %s;`, selStr, name, whrStr)
 	}
+
+	s := fmt.Sprintf(`SELECT %s FROM %s  %s;`, selStr, name, whrStr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -1738,7 +1731,7 @@ func queryGeojson(c *gin.Context) {
 			log.Error(err)
 		}
 
-		var f *geojson.Feature
+		f := geojson.NewFeature(nil)
 
 		for i, t := range cols {
 			// skip nil values.
@@ -1758,7 +1751,7 @@ func queryGeojson(c *gin.Context) {
 					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
 					continue
 				}
-				f = geojson.NewFeature(geom.Geometry())
+				f.Geometry = geom.Geometry()
 			default:
 				v := string(*rb)
 				switch cols[i].DatabaseTypeName() {
@@ -1898,7 +1891,6 @@ func queryExec(c *gin.Context) {
 		ams = append(ams, m)
 	}
 	res.DoneData(c, ams)
-
 }
 
 func queryBusiness(c *gin.Context) {
@@ -1917,35 +1909,110 @@ func queryBusiness(c *gin.Context) {
 	})
 }
 
-func listFonts(c *gin.Context) {
+func queryBuffers(c *gin.Context) {
 	res := NewRes()
-	res.DoneData(c, pubSet.Fonts)
-}
+	name := c.Param("name")
 
-//getGlyphs get glyph pbf
-func getGlyphs(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	fonts := c.Param("fontstack")
-	rgPBF := c.Param("range")
-	rgPBF = strings.ToLower(rgPBF)
-	rgPBFPat := `[\d]+-[\d]+.pbf$`
-	if ok, _ := regexp.MatchString(rgPBFPat, rgPBF); !ok {
-		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", rgPBF, id)
-		res.Fail(c, 4005)
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
 		return
 	}
-	//should init first
-	var fontsPath string
-	var callbacks []string
-	for k, v := range pubSet.Fonts {
-		callbacks = append(callbacks, k)
-		fontsPath = v.URL
+	//判断数据过多
+	var body struct {
+		Radius float64 `form:"radius" json:"radius" binding:"exists"`
+		Type   string  `form:"type" json:"type"`
 	}
-	fontsPath = filepath.Dir(fontsPath)
-	pbfFile := getFontsPBF(fontsPath, fonts, rgPBF, callbacks)
-	lastModified := time.Now().UTC().Format("2006-01-02 03:04:05 PM")
-	c.Writer.Header().Set("Content-Type", "application/x-protobuf")
-	c.Writer.Header().Set("Last-Modified", lastModified)
-	c.Writer.Write(pbfFile)
+	err := c.Bind(&body)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
+		return
+	}
+	if body.Radius != 0 {
+		if code := buffering(name, body.Radius); code != 200 {
+			res.Fail(c, code)
+			return
+		}
+	}
+	//查询数据
+	bName := "buffers"
+	if body.Type == "" && name == "banks" {
+		bName = "buffers_block"
+	}
+
+	s := fmt.Sprintf(`SELECT id,name,st_asgeojson(geom) as geom  FROM %s;`, bName)
+
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		// f := newFeatrue(t)
+		f := geojson.NewFeature(nil)
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+
+			switch t.Name() {
+			case "geom":
+				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
+				if err != nil {
+					log.Error(err)
+					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
+					continue
+				}
+				f.Geometry = geom.Geometry()
+			default:
+				v := string(*rb)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					f.Properties[t.Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					f.Properties[t.Name()] = v
+				}
+			}
+
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
+	}
+	res.DoneData(c, json.RawMessage(gj))
 }

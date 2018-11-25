@@ -3,16 +3,20 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	gomail "gopkg.in/gomail.v2"
 )
@@ -56,6 +60,7 @@ var codes = map[int]string{
 	5002: "文件读写错误",
 	5003: "IO读写错误",
 	5004: "MBTiles读写错误",
+	5005: "系统配置错误",
 
 	501: "维护中",
 	503: "服务不可用",
@@ -270,4 +275,130 @@ func checkDataset(did string) int {
 		return 4045
 	}
 	return 200
+}
+
+func buffering(name string, r float64) int {
+
+	db.Exec(`DROP TABLE if EXISTS buffers;`)
+	if "banks" != name {
+		err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
+		SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom 
+		FROM %s;`, r, name)).Error
+		if err != nil {
+			log.Error(err)
+			return 5001
+		}
+		return 200
+	}
+
+	err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
+						SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom 
+						FROM %s LIMIT 0;`, r, name)).Error
+	if err != nil {
+		log.Error(err)
+		return 5001
+	}
+	field := cfgV.GetString("buffer.field")
+	values := cfgV.GetStringSlice("buffer.values")
+	scales := cfgV.GetStringSlice("buffer.scales")
+	if len(scales) < len(values) {
+		return 5005
+	}
+	for i, v := range values {
+		scale, _ := strconv.ParseFloat(strings.TrimSpace(scales[i]), 32)
+		if err != nil {
+			log.Error(fmt.Errorf("could not parse %q to floats: %v", scales[i], err))
+			return 5005
+		}
+		r = r * scale
+
+		s := fmt.Sprintf(`INSERT INTO buffers 
+						SELECT id,name,st_buffer(geom::geography,%f)::geometry as geom FROM %s
+						WHERE %s='%s';`, r, name, field, v)
+
+		err = db.Exec(s).Error
+		if err != nil {
+			log.Error(err)
+			return 5001
+		}
+	}
+
+	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
+	err = db.Exec(`CREATE TABLE tmp_lines AS
+	SELECT id,name,geom FROM 
+	(SELECT a.id,a.name,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
+	buffers as a, 
+	block_lines as b 
+	WHERE st_intersects(a.geom,b.geom) 
+	GROUP BY a.id,a.name,a.geom) as lines;`).Error
+	if err != nil {
+		log.Error(err)
+		return 5001
+	}
+
+	db.Exec(`DROP TABLE if EXISTS tmp_polys;`)
+	err = db.Exec(`CREATE TABLE tmp_polys AS
+	SELECT polys.id, (st_dump(polys.geom)).geom FROM
+	(SELECT id,st_polygonize(geom) as geom FROM tmp_lines
+	GROUP BY id) as polys
+	GROUP BY polys.id,polys.geom;`).Error
+	if err != nil {
+		log.Error(err)
+		return 5001
+	}
+	db.Exec(`DROP TABLE if EXISTS buffers_block;`)
+	err = db.Exec(`CREATE TABLE buffers_block AS
+	SELECT a.id,a.name,st_union(b.geom) as geom FROM banks a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.id=b.id
+	GROUP BY a.id,a.name;`).Error
+	if err != nil {
+		log.Error(err)
+		return 5001
+	}
+	err = db.Exec(`INSERT INTO buffers_block (id,name,geom)
+	SELECT b.id,b.name,b.geom FROM buffers as b
+	WHERE NOT EXISTS (SELECT id FROM buffers_b WHERE id=b.id );`).Error
+	if err != nil {
+		log.Error(err)
+		return 5001
+	}
+	return 200
+}
+
+func newFeatrue(geoType string) *geojson.Feature {
+	var geometry orb.Geometry
+	switch geoType {
+	case "POINT":
+		geometry = orb.Point{}
+	case "MULTIPOINT":
+		geometry = orb.MultiPoint{}
+	case "LINESTRING":
+		geometry = orb.LineString{}
+	case "MULTILINESTRING":
+		geometry = orb.MultiLineString{}
+	case "POLYGON":
+		geometry = orb.Polygon{}
+	case "MULTIPOLYGON":
+		geometry = orb.MultiPolygon{}
+	default:
+		return nil
+	}
+	return &geojson.Feature{
+		Type:       "Feature",
+		Geometry:   geometry,
+		Properties: make(map[string]interface{}),
+	}
+	//test
+	// var t string
+	// s := fmt.Sprintf(`SELECT geometrytype(geom) FROM %s LIMIT 1;`, name)
+	// err = db.Raw(s).Row().Scan(&t)
+	// if err != nil {
+	// 	log.Error(err)
+	// 	res.Fail(c, 5001)
+	// 	return
+	// }
+	// if newFeatrue(t) == nil {
+	// 	log.Error("postgis 'geometrytype(geom)' return error")
+	// 	res.Fail(c, 5001)
+	// 	return
+	// }
 }

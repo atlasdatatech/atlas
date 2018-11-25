@@ -137,126 +137,135 @@ func (b *DatasetBind) toDataset() *Dataset {
 
 // Bank 本行机构表
 type Bank struct {
-	ID      string         `json:"id" gorm:"unique;index"`
-	Name    string         `json:"name" gorm:"index"`
-	State   string         `json:"state"`
-	Region  string         `json:"region"`
-	Type    string         `json:"type"`
-	Admin   string         `json:"admin"`
-	Manager string         `json:"manager"`
-	House   string         `json:"house"`
-	Area    float32        `json:"area"`
-	Term    time.Time      `json:"term"`
-	Date    time.Time      `json:"date"`
-	Staff   int            `json:"staff"`
-	Class   string         `json:"class"`
-	Lat     float32        `json:"lat"`
-	Lng     float32        `json:"lng"`
+	ID      string         `gorm:"column:机构号;unique;index"`
+	Name    string         `gorm:"column:网点名称;index"`
+	State   string         `gorm:"column:营业状态"`
+	Region  string         `gorm:"column:行政区"`
+	Type    string         `gorm:"column:网点类型"`
+	Depart  string         `gorm:"column:营业部"`
+	Manager string         `gorm:"column:管理行"`
+	House   string         `gorm:"column:权属"`
+	Area    float32        `gorm:"column:营业面积"`
+	Term    time.Time      `gorm:"column:到期时间"`
+	Date    time.Time      `gorm:"column:装修时间"`
+	Staff   int            `gorm:"column:人数"`
+	Level   string         `gorm:"column:行评等级"`
+	X       float32        ``
+	Y       float32        ``
 	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
 	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
-// Saving 存款表
+// Saving 存款表,,,,,,,,
 type Saving struct {
-	BankID    string  `json:"bank_id" gorm:"index"`
-	Year      string  `json:"year"`
-	Total     float32 `json:"total"`
-	Corporate float32 `json:"corporate"`
-	Personal  float32 `json:"personal"`
-	Margin    float32 `json:"margin"`
-	Other     float32 `json:"other"`
+	BankID   string  `gorm:"column:机构号;index"`
+	Name     string  `gorm:"column:名称"`
+	Year     int     `gorm:"column:年份"`
+	Total    float32 `gorm:"column:总存款日均"`
+	Public   float32 `gorm:"column:单位存款日均"`
+	Personal float32 `gorm:"column:个人存款日均"`
+	Margin   float32 `gorm:"column:保证金存款日均"`
+	Other    float32 `gorm:"column:其他存款日均"`
 }
 
 // Other 他行机构表
 type Other struct {
-	ID      string         `json:"id" gorm:"index"`
-	Name    string         `json:"name" gorm:"index"`
-	Class   string         `json:"class"`
-	Address string         `json:"address"`
-	Lat     float32        `json:"lat"`
-	Lng     float32        `json:"lng"`
+	ID      string         `gorm:"column:机构号;index"`
+	Name    string         `gorm:"column:名称;index"`
+	Class   string         `gorm:"column:银行类别"`
+	Type    string         `gorm:"column:网点类型"`
+	Address string         `gorm:"column:地址"`
+	SID     string         `gorm:"column:sid"`
+	X       float32        ``
+	Y       float32        ``
 	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
 	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
-// Basepoi 基础需求点
-type Basepoi struct {
-	ID    uint      `json:"id" gorm:"primary_key"`
-	Name  string    `json:"name" gorm:"index"`
-	Class string    `json:"class"`
-	Lat   float32   `json:"lat"`
-	Lng   float32   `json:"lng"`
-	Geom  orb.Point `sql:"type:geometry(Geometry,4326)"`
-}
-
 // Poi 需求点POI
 type Poi struct {
-	ID         uint           `json:"id" gorm:"primary_key"`
-	Name       string         `json:"name" gorm:"index"`
-	Class      int            `json:"class"`
-	Type       string         `json:"type"`
-	Hit        string         `json:"hit"`
-	Per        float32        `json:"per"`
-	Area       float32        `json:"area"`
-	Households int            `json:"households"`
-	Date       string         `json:"date"`
-	Lat        float32        `json:"lat"`
-	Lng        float32        `json:"lng"`
-	Geom       orb.Point      `sql:"type:geometry(Geometry,4326)"`
-	Search     pq.StringArray `json:"search" gorm:"type:varchar[];index"`
+	ID      uint           `json:"id" gorm:"primary_key"`
+	Name    string         `gorm:"column:名称;index"`
+	Type    string         `gorm:"column:类型"`
+	Class   string         `gorm:"column:性质"`
+	Area    float32        `gorm:"column:建筑面积"`
+	Hit     string         `gorm:"column:热度"`
+	Per     float32        `gorm:"column:人均消费"`
+	Price   float32        `gorm:"column:均价"`
+	Houses  int            `gorm:"column:户数"`
+	Date    string         `gorm:"column:交付时间"`
+	Staff   int            `gorm:"column:职工人数"`
+	Remarks string         `gorm:"column:备注"`
+	X       float32        ``
+	Y       float32        ``
+	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
 // M1 立地条件
 type M1 struct {
-	BankID string  `json:"bank_id" gorm:"index"`
-	C1     float32 `json:"c1"`
-	C2     float32 `json:"c2"`
-	C3     float32 `json:"c3"`
-	C4     float32 `json:"c4"`
-	C5     float32 `json:"c5"`
-	C6     float32 `json:"c6"`
-	C7     float32 `json:"c7"`
-	C8     float32 `json:"c8"`
-	C9     float32 `json:"c9"`
-	C10    float32 `json:"c10"`
-	C11    float32 `json:"c11"`
-	C12    float32 `json:"c12"`
-	C13    float32 `json:"c13"`
-	C14    float32 `json:"c14"`
-	C15    float32 `json:"c15"`
-	C16    float32 `json:"c16"`
-	Result float32 `json:"result"`
+	ID     string  `gorm:"column:机构号;index"`
+	Name   string  `gorm:"column:名称;index"`
+	C1     float32 `gorm:"column:商业规模"`
+	C2     float32 `gorm:"column:商业人流"`
+	C3     float32 `gorm:"column:道路特征"`
+	C4     float32 `gorm:"column:快速路"`
+	C5     float32 `gorm:"column:位置特征"`
+	C6     float32 `gorm:"column:转角位置"`
+	C7     float32 `gorm:"column:街巷"`
+	C8     float32 `gorm:"column:斜坡"`
+	C9     float32 `gorm:"column:公共交通类型"`
+	C10    float32 `gorm:"column:距离"`
+	C11    float32 `gorm:"column:停车位"`
+	C12    float32 `gorm:"column:收费"`
+	C13    float32 `gorm:"column:建筑形象"`
+	C14    float32 `gorm:"column:营业厅面积"`
+	C15    float32 `gorm:"column:装修水准"`
+	C16    float32 `gorm:"column:网点类型"`
+	Result float32 `gorm:"column:总得分"`
 }
 
 //M2 竞争力
 type M2 struct {
-	BankID string  `json:"bank_id" gorm:"index"`
-	B1     float32 `json:"b1"`
-	B2     float32 `json:"b2"`
-	B3     float32 `json:"b3"`
-	B4     float32 `json:"b4"`
-	B5     float32 `json:"b5"`
-	B6     float32 `json:"b6"`
-	Result float32 `json:"result"`
+	ID     string  `gorm:"column:机构号;index"`
+	Name   string  `gorm:"column:名称;index"`
+	C1     float32 `gorm:"column:营业面积"`
+	C2     float32 `gorm:"column:人数"`
+	C3     float32 `gorm:"column:个人增长"`
+	C4     float32 `gorm:"column:个人存量"`
+	C5     float32 `gorm:"column:公司存量"`
+	Result float32 `gorm:"column:总得分"`
 }
 
-//M3 竞争力
+//M3 资源分析
 type M3 struct {
-	BankID string  `json:"bank_id" gorm:"index"`
-	Result float32 `json:"result"`
+	ID     string  `gorm:"column:机构号;index"`
+	Name   string  `gorm:"column:名称;index"`
+	C1     float32 `gorm:"column:商业资源"`
+	C2     float32 `gorm:"column:对公资源"`
+	C3     float32 `gorm:"column:零售资源"`
+	Result float32 `gorm:"column:总得分"`
 }
 
-//M4 宏观战略
+//M4 竞争力分析
 type M4 struct {
-	Region     string  `json:"region"`
-	GDP        float32 `json:"name" gorm:"column:gdp"`
-	Population float32 `json:"population"`
-	Area       float32 `json:"area"`
-	Price      float32 `json:"price"`
-	Cusume     float32 `json:"cusume"`
-	Industrial float32 `json:"industrial"`
-	Saving     float32 `json:"saving"`
-	Loan       float32 `json:"loan"`
+	ID     string  `gorm:"column:机构号;index"`
+	Name   string  `gorm:"column:名称;index"`
+	Result float32 `gorm:"column:总得分"`
+}
+
+//M5 宏观战略
+type M5 struct {
+	Region     string  `gorm:"column:行政区;index"`
+	GDP        float32 `gorm:"column:生产总值"`
+	Population float32 `gorm:"column:人口"`
+	Area       float32 `gorm:"column:房地产成交面积"`
+	Price      float32 `gorm:"column:房地产成交均价"`
+	Cusume     float32 `gorm:"column:社会消费品零售总额"`
+	Industrial float32 `gorm:"column:规模以上工业增加值"`
+	Saving     float32 `gorm:"column:金融机构存款"`
+	Loan       float32 `gorm:"column:金融机构贷款"`
+	Result     float32 `gorm:"column:总得分"`
 }
 
 func validate(name string, password string) error {

@@ -52,7 +52,7 @@ func main() {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{}, &Dataset{})
 		//业务数据表
-		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Basepoi{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{})
+		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		db = pg
 	}
 	defer pg.Close()
@@ -225,8 +225,9 @@ func bindRoutes(r *gin.Engine) {
 		datasets.POST("/:name/import/", importDataset)
 		datasets.POST("/:name/query/", queryGeojson)
 		datasets.POST("/:name/cube/", cubeQuery)
-		datasets.POST("/:name/kvs/", queryExec)
+		datasets.POST("/:name/common/", queryExec)
 		datasets.GET("/:name/business/", queryBusiness)
+		datasets.POST("/:name/buffers/", queryBuffers)
 	}
 
 	//route not found
