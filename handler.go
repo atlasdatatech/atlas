@@ -689,40 +689,24 @@ func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	if id == "root" || casEnf.HasRoleForUser(id, "super") {
-		var body struct {
-			ID        string      `form:"id" json:"id" gorm:"primary_key"`
-			Title     string      `form:"title" json:"title"`
-			Summary   string      `form:"summary" json:"summary"`
-			User      string      `form:"user" json:"user"`
-			Thumbnail []byte      `form:"thumbnail" json:"thumbnail"`
-			Config    interface{} `form:"config" json:"config" gorm:"type:json"`
-		}
-
+		body := &MapBind{}
 		err := c.Bind(&body)
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 4001)
 			return
 		}
-		m := &Map{
-			ID:        body.ID,
-			Title:     body.Title,
-			Summary:   body.Summary,
-			User:      body.User,
-			Thumbnail: body.Thumbnail,
-		}
-
-		m.Config, _ = json.Marshal(body.Config)
-		m.ID, _ = shortid.Generate()
+		mm := body.toMap()
+		mm.ID, _ = shortid.Generate()
 		// insertUser
-		err = db.Create(&m).Error
+		err = db.Create(mm).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
 		res.DoneData(c, gin.H{
-			"id": m.ID,
+			"id": mm.ID,
 		})
 		return
 	}
@@ -742,19 +726,19 @@ func updInsetMap(c *gin.Context) {
 		res.Fail(c, 403)
 		return
 	}
-	m := &Map{}
-	err := c.Bind(&m)
+	body := &MapBind{}
+	err := c.Bind(&body)
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
-
-	err = db.Model(&Map{}).Where("id = ?", mid).Update(m).Error
+	mm := body.toMap()
+	err = db.Model(&Map{}).Where("id = ?", mid).First(&Map{}).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			m.ID = mid
-			err = db.Create(&m).Error
+			mm.ID = mid
+			err = db.Create(&mm).Error
 			if err != nil {
 				log.Error(err)
 				res.Fail(c, 5001)
@@ -763,6 +747,12 @@ func updInsetMap(c *gin.Context) {
 			res.Done(c, "")
 			return
 		}
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	err = db.Model(&Map{}).Where("id = ?", mid).Update(mm).Error
+	if err != nil {
 		log.Error(err)
 		res.Fail(c, 5001)
 		return
@@ -1598,8 +1588,8 @@ func getGeojson(c *gin.Context) {
 		if err != nil {
 			log.Error(err)
 		}
-
-		f := geojson.NewFeature(orb.Point{0, 0})
+		var f *geojson.Feature
+		f = geojson.NewFeature(orb.Point{0, 0})
 		for i, t := range cols {
 			// skip nil values.
 			if vals[i] == nil {
@@ -1909,6 +1899,22 @@ func queryExec(c *gin.Context) {
 	}
 	res.DoneData(c, ams)
 
+}
+
+func queryBusiness(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+	var linkTables []string
+	if name != "banks" {
+		res.DoneData(c, gin.H{
+			name: linkTables,
+		})
+		return
+	}
+	linkTables = cfgV.GetStringSlice("business.banks.linked")
+	res.DoneData(c, gin.H{
+		name: linkTables,
+	})
 }
 
 func listFonts(c *gin.Context) {
