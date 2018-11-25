@@ -2115,5 +2115,6 @@ func getBuffers(c *gin.Context) {
 		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
 		return
 	}
-	res.DoneData(c, json.RawMessage(gj))
+	c.JSON(http.StatusOK, json.RawMessage(gj))
+	// res.DoneData(c, json.RawMessage(gj))
 }
