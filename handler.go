@@ -2022,7 +2022,7 @@ func getBuffers(c *gin.Context) {
 	name := c.Param("name")
 	rs := c.Query("radius")
 	r, _ := strconv.ParseFloat(rs, 64)
-	t := c.Param("type")
+	t := c.Query("type")
 
 	if code := checkDataset(name); code != 200 {
 		res.Fail(c, code)
