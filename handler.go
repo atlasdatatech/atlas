@@ -1341,38 +1341,158 @@ func getDistinctValues(c *gin.Context) {
 	res.DoneData(c, valCnts)
 }
 
-func importDataset(c *gin.Context) {
+func importFiles(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	ftype := c.Param("name")
+	if ftype != "csv" && ftype != "geojson" {
+		res.Fail(c, 400)
+		// res.FailMsg(c, "unkonw file type, must be .geojson or .csv")
+		return
+	}
 
-	file, err := c.FormFile(name)
+	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`importDataset, get form: %s; file: %s`, err, name)
+		log.Errorf(`importFiles, get form: %s; type: %s`, err, ftype)
 		res.Fail(c, 4046)
 		return
 	}
 
 	dir := cfgV.GetString("assets.datasets")
-	ext := filepath.Ext(file.Filename)
-	filename := strings.TrimSuffix(file.Filename, ext)
+	filename := file.Filename
+	ext := filepath.Ext(filename)
+	name := strings.TrimSuffix(filename, ext)
 	id, _ := shortid.Generate()
-	id = filename + "." + id
+	id = name + "." + id
 	dst := filepath.Join(dir, id+ext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`importDataset, upload file: %s; file: %s`, err, name)
+		log.Errorf(`importFiles, saving tmp file: %s; file: %s`, err, filename)
 		res.Fail(c, 5002)
 		return
 	}
 	buf, err := ioutil.ReadFile(dst)
 	if err != nil {
-		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, file.Filename)
+		log.Errorf(`importFiles, csv reader failed: %s; file: %s`, err, filename)
 		res.Fail(c, 5003)
 		return
 	}
+
+	switch ftype {
+	case "geojson":
+		fc, err := geojson.UnmarshalFeatureCollection(buf)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
+		db.DropTableIfExists(name)
+		var cnt int64
+		createTable := func(fc *geojson.FeatureCollection) error {
+			var headers []string
+			var fts []string
+			var geoType string
+			for _, f := range fc.Features {
+				geoType = f.Geometry.GeoJSONType()
+				for k, v := range f.Properties {
+					t := "TEXT"
+					switch v.(type) {
+					case bool:
+						t = "BOOL"
+					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+						t = "INTEGER"
+					case float32, float64:
+						t = "NUMERIC"
+					case time.Time:
+						t = "TIMESTAMPTZ" //or 'timestamp with time zone'
+					case []interface{}:
+						t = "_VARCHAR" //or 'character varying[]'
+					default: //string map[string]interface{}
+						t = "TEXT"
+					}
+					headers = append(headers, k)
+					fts = append(fts, k+" "+t)
+				}
+				break
+			}
+			//add 'geom geometry(Geometry,4326)'
+			geom := fmt.Sprintf("geom geometry(%s,4326)", geoType)
+			headers = append(headers, "geom")
+			fts = append(fts, geom)
+
+			st := fmt.Sprintf(`CREATE TABLE %s (%s);`, name, strings.Join(fts, ","))
+			err := db.Exec(st).Error
+			if err != nil {
+				return err
+			}
+
+			kvs := make(map[string]int, len(headers))
+			for i, h := range headers {
+				kvs[h] = i
+			}
+
+			var vals []string
+			for _, f := range fc.Features {
+				vs := make([]string, len(headers))
+				for k, prop := range f.Properties {
+					var s string
+					switch v := prop.(type) {
+					case bool:
+						s = strconv.FormatBool(v)
+						s = "'" + s + "'"
+					case int, int8, int16, int32, int64:
+						s = strconv.FormatInt(v.(int64), 10)
+					case uint, uint8, uint16, uint32, uint64:
+						s = strconv.FormatUint(v.(uint64), 10)
+					case float32, float64:
+						s = strconv.FormatFloat(v.(float64), 'E', -1, 64)
+					default: //string,map[string]interface{},[]interface{},time.Time,bool
+						if v == nil {
+							s = ""
+						} else {
+							s = v.(string)
+						}
+						s = "'" + s + "'"
+					}
+					vs[kvs[k]] = s
+					// vs += s + ","
+				}
+				geom, err := geojson.NewGeometry(f.Geometry).MarshalJSON()
+				if err != nil {
+					return err
+				}
+				vs[kvs["geom"]] = fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
+				// fmt.Println(strings.Join(vs, ","))
+				vals = append(vals, fmt.Sprintf(`(%s)`, strings.Join(vs, ",")))
+			}
+
+			st = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			// log.Println(st)
+			query := db.Exec(st)
+			if err, cnt = query.Error, query.RowsAffected; err != nil {
+				return err
+			}
+			return nil
+		}
+
+		err = createTable(fc)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
+
+		res.DoneData(c, gin.H{
+			"cnt": cnt,
+		})
+		return
+	case "csv":
+	default:
+		return
+	}
+
 	reader := csv.NewReader(bytes.NewReader(buf))
 	csvHeader, err := reader.Read()
 	if err != nil {
-		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, file.Filename)
+		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, filename)
 		res.Fail(c, 5003)
 		return
 	}
@@ -1382,7 +1502,7 @@ func importDataset(c *gin.Context) {
 		for i, col := range cols {
 			// fmt.Println(i, col.DatabaseTypeName(), col.Name())
 			switch col.DatabaseTypeName() {
-			case "INT", "INT4", "NUMERIC": //number
+			case "INTEGER", "NUMERIC": //number
 				if "" == row[i] {
 					vals = vals + "null,"
 				} else {
@@ -1411,7 +1531,7 @@ func importDataset(c *gin.Context) {
 		s = fmt.Sprintf(`DELETE FROM datasets WHERE name=%s;`, name)
 		return db.Exec(s).Error
 	}
-
+	var cnt int64
 	insert := func(header string) error {
 		if len(strings.Split(header, ",")) != len(csvHeader) {
 			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
@@ -1442,7 +1562,9 @@ func importDataset(c *gin.Context) {
 			vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 		}
 		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		return db.Exec(s).Error
+		query := db.Exec(s)
+		cnt = query.RowsAffected
+		return query.Error
 	}
 
 	getFields := func(name string) ([]byte, error) {
@@ -1534,11 +1656,10 @@ func importDataset(c *gin.Context) {
 	// }
 	err = insert(header)
 	if err != nil {
-		log.Errorf("import %s error:%s", name, err.Error())
+		log.Errorf("import %s error:%s", filename, err.Error())
 		res.Fail(c, 5001)
 		return
 	}
-
 	if updateGeom {
 		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326)%s;`, name, search)
 		result := db.Exec(update)
@@ -1559,7 +1680,7 @@ func importDataset(c *gin.Context) {
 	ds := &Dataset{
 		ID:     name,
 		Name:   name,
-		Label:  file.Filename,
+		Label:  filename,
 		Type:   datasetType,
 		Fields: jfs,
 	}
@@ -1575,7 +1696,8 @@ func importDataset(c *gin.Context) {
 		log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
 	}
 	res.DoneData(c, gin.H{
-		"id": id,
+		"id":  id,
+		"cnt": cnt,
 	})
 }
 

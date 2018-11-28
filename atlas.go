@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"path/filepath"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/casbin/casbin"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 
 	"github.com/jinzhu/gorm"
@@ -88,10 +88,12 @@ func main() {
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
 
-	staticsHome := cfgV.GetString("assets.statics")
-	r.Static("/statics", staticsHome)
-	templatesPath := filepath.Join(staticsHome, "/templates/*")
-	r.LoadHTMLGlob(templatesPath)
+	r.Use(static.Serve("/", static.LocalFile("./public", true)))
+
+	// staticsHome := cfgV.GetString("assets.statics")
+	// r.Static("/statics", staticsHome)
+	// templatesPath := filepath.Join(staticsHome, "/templates/*")
+	// r.LoadHTMLGlob(templatesPath)
 
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
 
@@ -222,7 +224,7 @@ func bindRoutes(r *gin.Engine) {
 		datasets.GET("/:name/", getDatasetInfo)
 		datasets.POST("/:name/distinct/", getDistinctValues)
 		datasets.GET("/:name/geojson/", getGeojson)
-		datasets.POST("/:name/import/", importDataset)
+		datasets.POST("/:name/import/", importFiles)
 		datasets.POST("/:name/query/", queryGeojson)
 		datasets.POST("/:name/cube/", cubeQuery)
 		datasets.POST("/:name/common/", queryExec)
