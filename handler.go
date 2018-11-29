@@ -1378,6 +1378,10 @@ func importFiles(c *gin.Context) {
 
 	switch ftype {
 	case "geojson":
+		if name != "block_lines" && name != "regions" && name != "interest" {
+			res.FailMsg(c, "unkown datasets")
+			return
+		}
 		fc, err := geojson.UnmarshalFeatureCollection(buf)
 		if err != nil {
 			log.Error(err)
@@ -1393,19 +1397,15 @@ func importFiles(c *gin.Context) {
 			for _, f := range fc.Features {
 				geoType = f.Geometry.GeoJSONType()
 				for k, v := range f.Properties {
-					t := "TEXT"
+					var t string
 					switch v.(type) {
 					case bool:
-						t = "BOOL"
-					case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-						t = "INTEGER"
-					case float32, float64:
+						t = "BOOL" //or 'timestamp with time zone'
+					case float64:
 						t = "NUMERIC"
-					case time.Time:
-						t = "TIMESTAMPTZ" //or 'timestamp with time zone'
 					case []interface{}:
 						t = "_VARCHAR" //or 'character varying[]'
-					default: //string map[string]interface{}
+					default: //string/map[string]interface{}/nil
 						t = "TEXT"
 					}
 					headers = append(headers, k)
@@ -1424,43 +1424,49 @@ func importFiles(c *gin.Context) {
 				return err
 			}
 
-			kvs := make(map[string]int, len(headers))
+			kvsi := make(map[string]int, len(headers))
+			kvst := make(map[string]string, len(headers))
 			for i, h := range headers {
-				kvs[h] = i
+				kvsi[h] = i
+				kvst[h] = strings.Split(fts[i], " ")[1]
 			}
 
 			var vals []string
 			for _, f := range fc.Features {
 				vs := make([]string, len(headers))
-				for k, prop := range f.Properties {
+				for k, val := range f.Properties {
 					var s string
-					switch v := prop.(type) {
-					case bool:
-						s = strconv.FormatBool(v)
-						s = "'" + s + "'"
-					case int, int8, int16, int32, int64:
-						s = strconv.FormatInt(v.(int64), 10)
-					case uint, uint8, uint16, uint32, uint64:
-						s = strconv.FormatUint(v.(uint64), 10)
-					case float32, float64:
-						s = strconv.FormatFloat(v.(float64), 'E', -1, 64)
+					switch kvst[k] {
+					case "BOOL":
+						v, ok := val.(bool) // Alt. non panicking version
+						if ok {
+							s = strconv.FormatBool(v)
+						} else {
+							s = "null"
+						}
+					case "NUMERIC":
+						v, ok := val.(float64) // Alt. non panicking version
+						if ok {
+							s = strconv.FormatFloat(v, 'E', -1, 64)
+						} else {
+							s = "null"
+						}
 					default: //string,map[string]interface{},[]interface{},time.Time,bool
-						if v == nil {
+						if val == nil {
 							s = ""
 						} else {
-							s = v.(string)
+							s = val.(string)
 						}
 						s = "'" + s + "'"
 					}
-					vs[kvs[k]] = s
-					// vs += s + ","
+					vs[kvsi[k]] = s
 				}
 				geom, err := geojson.NewGeometry(f.Geometry).MarshalJSON()
 				if err != nil {
 					return err
 				}
-				vs[kvs["geom"]] = fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
-				// fmt.Println(strings.Join(vs, ","))
+				vs[kvsi["geom"]] = fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
+
 				vals = append(vals, fmt.Sprintf(`(%s)`, strings.Join(vs, ",")))
 			}
 
@@ -1502,7 +1508,7 @@ func importFiles(c *gin.Context) {
 		for i, col := range cols {
 			// fmt.Println(i, col.DatabaseTypeName(), col.Name())
 			switch col.DatabaseTypeName() {
-			case "INTEGER", "NUMERIC": //number
+			case "INT", "INT4", "NUMERIC": //number
 				if "" == row[i] {
 					vals = vals + "null,"
 				} else {
@@ -1645,6 +1651,7 @@ func importFiles(c *gin.Context) {
 			header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
 		}
 	default:
+		res.FailMsg(c, "unkown datasets")
 		return
 	}
 
@@ -2239,4 +2246,84 @@ func getBuffers(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, json.RawMessage(gj))
 	// res.DoneData(c, json.RawMessage(gj))
+}
+
+func getModels(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+	filter := c.Query("filter")
+
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	err := calcM2()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+	err = calcM3()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+
+	if filter != "" {
+		filter = " WHERE " + filter
+	}
+
+	s := fmt.Sprintf(`SELECT * FROM %s %s;`, name, filter)
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	cols, _ := rows.ColumnTypes()
+	var ams []map[string]interface{}
+	for rows.Next() {
+		// Create a slice of interface{}'s to represent each column,
+		// and a second slice to contain pointers to each item in the columns slice.
+		columns := make([]sql.RawBytes, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		// Scan the result into the column pointers...
+		if err := rows.Scan(columnPointers...); err != nil {
+			log.Error(err)
+			continue
+		}
+
+		// Create our map, and retrieve the value for each column from the pointers slice,
+		// storing it in the map with the name of the column as the key.
+		m := make(map[string]interface{})
+		for i, col := range columns {
+			if col == nil {
+				continue
+			}
+			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
+			v := string(col)
+			switch cols[i].DatabaseTypeName() {
+			case "INT", "INT4":
+				m[cols[i].Name()], _ = strconv.Atoi(v)
+			case "NUMERIC", "DECIMAL": //number
+				m[cols[i].Name()], _ = strconv.ParseFloat(v, 64)
+			// case "BOOL":
+			// case "TIMESTAMPTZ":
+			// case "_VARCHAR":
+			// case "TEXT", "VARCHAR", "BIGINT":
+			default:
+				m[cols[i].Name()] = v
+			}
+		}
+		// fmt.Print(m)
+		ams = append(ams, m)
+	}
+	c.JSON(http.StatusOK, ams)
 }

@@ -266,12 +266,7 @@ func checkDataset(did string) int {
 	if did == "" {
 		return 4001
 	}
-	ds := &Dataset{}
-	if err := db.Where("name = ?", did).First(&ds).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			return 5001
-		}
+	if !db.HasTable(did) {
 		return 4045
 	}
 	return 200
@@ -362,6 +357,118 @@ func buffering(name string, r float64) int {
 		return 5001
 	}
 	return 200
+}
+
+func calcM1() {
+
+}
+func calcM2() error {
+	name := "m2"
+	fields := cfgV.GetStringSlice("models.m2.fields")
+	scales := cfgV.GetStringSlice("models.m2.scales")
+	cvar := cfgV.GetString("models.m2.const")
+	log.Info(cvar)
+	if len(fields) < len(scales) {
+		return fmt.Errorf(`model m2 config err, the field number should equal scale number`)
+	}
+
+	var cacls []string
+	//cacl fields scale
+	for i, fld := range fields {
+		cacls = append(cacls, fmt.Sprintf(`COALESCE(%s, 0)*%s`, fld, scales[i]))
+	}
+
+	cacls = append(cacls, cvar) //add const value
+	st := fmt.Sprintf(`UPDATE %s SET "总得分"=(%s);`, name, strings.Join(cacls, "+"))
+	query := db.Exec(st)
+	if query.Error != nil {
+		return query.Error
+	}
+
+	st = fmt.Sprintf(`UPDATE %s SET "总得分"=99 WHERE "总得分">99;`, name)
+	query = db.Exec(st)
+	if query.Error != nil {
+		return query.Error
+	}
+	return nil
+}
+
+func calcM3() error {
+	// name := "m3"
+	var tcnt int
+	db.Raw(`SELECT count(*) FROM pois;`).Row().Scan(&tcnt)
+	fcnt := float32(tcnt) / 100.0
+	st := fmt.Sprintf(`DROP TABLE IF EXISTS p1;
+	CREATE TABLE p1 AS
+	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('1','11') AND st_contains(b.geom,a.geom)
+	GROUP BY b."机构号";
+	DROP TABLE IF EXISTS p2;
+	CREATE TABLE p2 AS
+	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('2','22') AND st_contains(b.geom,a.geom)
+	GROUP BY b."机构号";
+	DROP TABLE IF EXISTS p3;
+	CREATE TABLE p3 AS
+	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('3','33') AND st_contains(b.geom,a.geom)
+	GROUP BY b."机构号";
+	TRUNCATE TABLE m3;
+	INSERT INTO m3("机构号","商业资源")
+	SELECT id, res FROM p1;
+	
+	UPDATE m3
+	SET "对公资源"=s.res
+	FROM (SELECT id, res FROM p2) AS s
+	WHERE m3."机构号"=s.id;
+	
+	INSERT INTO m3 (机构号,"对公资源")
+	SELECT id, res FROM p2 AS s
+	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
+		
+	UPDATE m3
+	SET "零售资源"=s.res
+	FROM (SELECT id, res FROM p3) AS s
+	WHERE m3."机构号"=s.id;
+	
+	INSERT INTO m3 (机构号,"零售资源")
+	SELECT id, res FROM p3 AS s
+	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
+	
+	UPDATE m3 SET "总得分"=100*(COALESCE(零售资源, 0)+COALESCE(对公资源, 0)+COALESCE(商业资源, 0));`, fcnt, fcnt, fcnt)
+	query := db.Exec(st)
+	if query.Error != nil {
+		return query.Error
+	}
+	return nil
+}
+
+func calcM4() error {
+	// name := "m4"
+	st := fmt.Sprintf(`SELECT id,sum(w*s*cnt) FROM 
+	(SELECT d.id,d.type,d.cnt,e.w FROM
+	(SELECT "机构号" as id, "银行类别" as name,"网点类型" as type,COUNT(*) as cnt FROM  
+	(SELECT b."机构号",a."银行类别",a."网点类型" FROM others a,buffers_block b WHERE st_contains(b.geom,a.geom) ) c
+	GROUP BY c."机构号", c."银行类别",c."网点类型" ORDER BY c."机构号", c."银行类别",c."网点类型") d, m4_w e 
+	WHERE d.name=e."t") f,m4_s g
+	WHERE f.type=g.t
+	GROUP BY id;`)
+	query := db.Exec(st)
+	if query.Error != nil {
+		return query.Error
+	}
+	return nil
+}
+func calcM5() error {
+	// name := "m5"
+	st := fmt.Sprintf(`SELECT t1.name,t1.s-t2.s as result FROM
+	(SELECT b.name, count(a."机构号")/110.0 as s FROM banks a,regions b WHERE st_contains(b.geom,a.geom)
+	GROUP BY b.name) as t1,
+	(SELECT b.name, count(a."机构号")/530.0 as s FROM others a,regions b WHERE st_contains(b.geom,a.geom) AND a."银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行')
+	GROUP BY b.name) as t2 WHERE t1.name=t2.name
+	GROUP BY t1.name,t1.s,t2.s;`)
+	query := db.Exec(st)
+	if query.Error != nil {
+		return query.Error
+	}
+	return nil
 }
 
 func newFeatrue(geoType string) *geojson.Feature {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
@@ -90,10 +91,10 @@ func main() {
 
 	r.Use(static.Serve("/", static.LocalFile("./public", true)))
 
-	// staticsHome := cfgV.GetString("assets.statics")
-	// r.Static("/statics", staticsHome)
-	// templatesPath := filepath.Join(staticsHome, "/templates/*")
-	// r.LoadHTMLGlob(templatesPath)
+	staticsHome := cfgV.GetString("assets.statics")
+	r.Static("/statics", staticsHome)
+	templatesPath := filepath.Join(staticsHome, "/templates/*")
+	r.LoadHTMLGlob(templatesPath)
 
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
 
@@ -231,6 +232,7 @@ func bindRoutes(r *gin.Engine) {
 		datasets.GET("/:name/business/", queryBusiness)
 		datasets.POST("/:name/buffers/", queryBuffers)
 		datasets.GET("/:name/buffers/", getBuffers)
+		datasets.GET("/:name/models/", getModels)
 	}
 
 	//route not found

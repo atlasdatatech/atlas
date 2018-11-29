@@ -10,50 +10,15 @@
     <h1>上传数据</h1>
     <ul>
         <li>
-            <form action="/datasets/banks/import/" method="post" enctype="multipart/form-data">
-                本行机构: <input type="file" name="banks"><br>
+            <form action="/datasets/csv/import/" method="post" enctype="multipart/form-data">
+                数据导入csv: <input type="file" name="file"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
         <br>
         <li>
-            <form action="/datasets/savings/import/" method="post" enctype="multipart/form-data">
-                日均存款: <input type="file" name="savings"><br>
-                <input type="submit" value="上传">
-            </form>
-        </li>
-        <br>
-        <li>
-            <form action="/datasets/others/import/" method="post" enctype="multipart/form-data">
-                他行机构: <input type="file" name="others"><br>
-                <input type="submit" value="上传">
-            </form>
-        </li>
-        <br>
-        <li>
-            <form action="/datasets/pois/import/" method="post" enctype="multipart/form-data">
-                需求点: <input type="file" name="pois"><br>
-                <input type="submit" value="上传">
-            </form>
-        </li>
-        <br>
-        <li>
-            <form action="/datasets/m1/import/" method="post" enctype="multipart/form-data">
-                立地条件: <input type="file" name="m1"><br>
-                <input type="submit" value="上传">
-            </form>
-        </li>
-        <br>
-        <li>
-            <form action="/datasets/m2/import/" method="post" enctype="multipart/form-data">
-                竞争力: <input type="file" name="m2"><br>
-                <input type="submit" value="上传">
-            </form>
-        </li>
-        <br>
-        <li>
-            <form action="/datasets/m5/import/" method="post" enctype="multipart/form-data">
-                宏观: <input type="file" name="m5"><br>
+            <form action="/datasets/geojson/import/" method="post" enctype="multipart/form-data">
+                数据导入geojson: <input type="file" name="file"><br>
                 <input type="submit" value="上传">
             </form>
         </li>
