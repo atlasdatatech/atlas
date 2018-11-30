@@ -20,15 +20,6 @@
 		password = "atlas"
 		name   = "lzyh"
 		
-	[buffer]
-		field="网点类型"
-		values = ["旗舰型","综合型","社区支行","小微支行"]
-		scales = [1.5,1.0,0.6,0.6]
-
-	[business]
-		[business.banks]
-		linked = ["savings","m1","m2","m3"]
-
 	[models]
 		[models.m1]
 

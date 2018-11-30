@@ -1629,7 +1629,7 @@ func importFiles(c *gin.Context) {
 		switch name {
 		case "banks":
 			header = "机构号,名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
-			search = ",search =ARRAY[机构号,名称,行政区,管理行]"
+			search = ",search =ARRAY[机构号,名称,行政区,网点类型,管理行]"
 		case "others":
 			header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
 			search = ",search =ARRAY[机构号,名称,银行类别,地址]"
@@ -2257,18 +2257,42 @@ func getModels(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-
-	err := calcM2()
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-	err = calcM3()
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
+	needCacl := true
+	if needCacl {
+		switch name {
+		case "m1":
+		case "m2":
+			err := calcM2()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				// return
+			}
+		case "m3":
+			err := calcM3()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				// return
+			}
+		case "m4":
+			err := calcM3()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				// return
+			}
+		case "m5":
+			err := calcM3()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				// return
+			}
+		default:
+			res.FailMsg(c, "unkown model name")
+			return
+		}
 	}
 
 	if filter != "" {
@@ -2324,6 +2348,106 @@ func getModels(c *gin.Context) {
 		}
 		// fmt.Print(m)
 		ams = append(ams, m)
+	}
+	c.JSON(http.StatusOK, ams)
+}
+
+func searchGeos(c *gin.Context) {
+	res := NewRes()
+	searchType := c.Param("name")
+	keyword := c.Query("keyword")
+	if searchType != "search" || keyword == "" {
+		res.Fail(c, 4001)
+		return
+	}
+	var ams []map[string]interface{}
+	search := func(s string) {
+		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+		defer rows.Close()
+
+		cols, _ := rows.ColumnTypes()
+		for rows.Next() {
+			// Create a slice of interface{}'s to represent each column,
+			// and a second slice to contain pointers to each item in the columns slice.
+			columns := make([]sql.RawBytes, len(cols))
+			columnPointers := make([]interface{}, len(cols))
+			for i := range columns {
+				columnPointers[i] = &columns[i]
+			}
+
+			// Scan the result into the column pointers...
+			if err := rows.Scan(columnPointers...); err != nil {
+				log.Error(err)
+				continue
+			}
+
+			// Create our map, and retrieve the value for each column from the pointers slice,
+			// storing it in the map with the name of the column as the key.
+			m := make(map[string]interface{})
+			for i, col := range columns {
+				if col == nil {
+					continue
+				}
+				//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
+				v := string(col)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					m[cols[i].Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					m[cols[i].Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					m[cols[i].Name()] = v
+				}
+			}
+			// fmt.Print(m)
+			ams = append(ams, m)
+		}
+	}
+	st := fmt.Sprintf(`SELECT name,geom FROM regions WHERE name = '%s';`, keyword)
+	search(st)
+	if len(ams) != 0 {
+		c.JSON(http.StatusOK, ams)
+		return
+	}
+	bbox := c.Query("bbox")
+	var gfilter string
+	if bbox != "" {
+		gfilter = fmt.Sprintf(` geom && st_makeenvelope(%s,4326) AND `, bbox)
+	}
+	limit := c.Query("limit")
+	var limiter string
+	if limit != "" {
+		limiter = fmt.Sprintf(` LIMIT %s `, limit)
+	}
+	st = fmt.Sprintf(`SELECT 机构号,名称,geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	log.Println(st)
+	search(st)
+	if len(ams) != 0 {
+		c.JSON(http.StatusOK, ams)
+		return
+	}
+	st = fmt.Sprintf(`SELECT 机构号,名称,geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	log.Println(st)
+	search(st)
+	if len(ams) != 0 {
+		c.JSON(http.StatusOK, ams)
+		return
+	}
+	st = fmt.Sprintf(`SELECT 名称,geom,s 搜索 FROM (SELECT 名称,geom,unnest(search) s FROM pois) x WHERE %s s LIKE '%%%s%%' GROUP BY 名称,geom,s %s;`, gfilter, keyword, limiter)
+	log.Println(st)
+	search(st)
+	if len(ams) != 0 {
+		c.JSON(http.StatusOK, ams)
+		return
 	}
 	c.JSON(http.StatusOK, ams)
 }

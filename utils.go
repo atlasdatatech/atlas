@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -287,35 +286,12 @@ func buffering(name string, r float64) int {
 	}
 
 	err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-						SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom 
-						FROM %s LIMIT 0;`, r, name)).Error
+	SELECT a."机构号",a."名称",st_buffer(a.geom::geography,b.s*%f)::geometry as geom FROM %s a, buffers_s b
+	WHERE a."网点类型"=b.t
+	GROUP BY a."机构号",a."名称",a.geom,b.s;`, r, name)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
-	}
-	field := cfgV.GetString("buffer.field")
-	values := cfgV.GetStringSlice("buffer.values")
-	scales := cfgV.GetStringSlice("buffer.scales")
-	if len(scales) < len(values) {
-		return 5005
-	}
-	for i, v := range values {
-		scale, _ := strconv.ParseFloat(strings.TrimSpace(scales[i]), 32)
-		if err != nil {
-			log.Error(fmt.Errorf("could not parse %q to floats: %v", scales[i], err))
-			return 5005
-		}
-		r = r * scale
-
-		s := fmt.Sprintf(`INSERT INTO buffers 
-						SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom FROM %s
-						WHERE %s='%s';`, r, name, field, v)
-
-		err = db.Exec(s).Error
-		if err != nil {
-			log.Error(err)
-			return 5001
-		}
 	}
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
@@ -398,38 +374,39 @@ func calcM3() error {
 	var tcnt int
 	db.Raw(`SELECT count(*) FROM pois;`).Row().Scan(&tcnt)
 	fcnt := float32(tcnt) / 100.0
-	st := fmt.Sprintf(`DROP TABLE IF EXISTS p1;
-	CREATE TABLE p1 AS
+	st := fmt.Sprintf(`DROP TABLE IF EXISTS m3_tmp1;
+	CREATE TABLE m3_tmp1 AS
 	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('1','11') AND st_contains(b.geom,a.geom)
 	GROUP BY b."机构号";
-	DROP TABLE IF EXISTS p2;
-	CREATE TABLE p2 AS
+	DROP TABLE IF EXISTS m3_tmp2;
+	CREATE TABLE m3_tmp2 AS
 	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('2','22') AND st_contains(b.geom,a.geom)
 	GROUP BY b."机构号";
-	DROP TABLE IF EXISTS p3;
-	CREATE TABLE p3 AS
+	DROP TABLE IF EXISTS m3_tmp3;
+	CREATE TABLE m3_tmp3 AS
 	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('3','33') AND st_contains(b.geom,a.geom)
 	GROUP BY b."机构号";
 	TRUNCATE TABLE m3;
+
 	INSERT INTO m3("机构号","商业资源")
-	SELECT id, res FROM p1;
+	SELECT id, res FROM m3_tmp1;
 	
 	UPDATE m3
 	SET "对公资源"=s.res
-	FROM (SELECT id, res FROM p2) AS s
+	FROM (SELECT id, res FROM m3_tmp2) AS s
 	WHERE m3."机构号"=s.id;
 	
 	INSERT INTO m3 (机构号,"对公资源")
-	SELECT id, res FROM p2 AS s
+	SELECT id, res FROM m3_tmp2 AS s
 	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
 		
 	UPDATE m3
 	SET "零售资源"=s.res
-	FROM (SELECT id, res FROM p3) AS s
+	FROM (SELECT id, res FROM m3_tmp3) AS s
 	WHERE m3."机构号"=s.id;
 	
 	INSERT INTO m3 (机构号,"零售资源")
-	SELECT id, res FROM p3 AS s
+	SELECT id, res FROM m3_tmp3 AS s
 	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
 	
 	UPDATE m3 SET "总得分"=100*(COALESCE(零售资源, 0)+COALESCE(对公资源, 0)+COALESCE(商业资源, 0));`, fcnt, fcnt, fcnt)

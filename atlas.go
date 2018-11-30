@@ -233,6 +233,7 @@ func bindRoutes(r *gin.Engine) {
 		datasets.POST("/:name/buffers/", queryBuffers)
 		datasets.GET("/:name/buffers/", getBuffers)
 		datasets.GET("/:name/models/", getModels)
+		datasets.GET("/:name/geos/", searchGeos)
 	}
 
 	//route not found
