@@ -2412,7 +2412,7 @@ func searchGeos(c *gin.Context) {
 			ams = append(ams, m)
 		}
 	}
-	st := fmt.Sprintf(`SELECT name,geom FROM regions WHERE name = '%s';`, keyword)
+	st := fmt.Sprintf(`SELECT name,st_asgeojson(geom) as geom FROM regions WHERE name = '%s';`, keyword)
 	search(st)
 	if len(ams) != 0 {
 		c.JSON(http.StatusOK, ams)
@@ -2428,21 +2428,21 @@ func searchGeos(c *gin.Context) {
 	if limit != "" {
 		limiter = fmt.Sprintf(` LIMIT %s `, limit)
 	}
-	st = fmt.Sprintf(`SELECT 机构号,名称,geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	st = fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
 	log.Println(st)
 	search(st)
 	if len(ams) != 0 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
-	st = fmt.Sprintf(`SELECT 机构号,名称,geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	st = fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
 	log.Println(st)
 	search(st)
 	if len(ams) != 0 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
-	st = fmt.Sprintf(`SELECT 名称,geom,s 搜索 FROM (SELECT 名称,geom,unnest(search) s FROM pois) x WHERE %s s LIKE '%%%s%%' GROUP BY 名称,geom,s %s;`, gfilter, keyword, limiter)
+	st = fmt.Sprintf(`SELECT 名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 名称,geom,unnest(search) s FROM pois) x WHERE %s s LIKE '%%%s%%' GROUP BY 名称,geom,s %s;`, gfilter, keyword, limiter)
 	log.Println(st)
 	search(st)
 	if len(ams) != 0 {
