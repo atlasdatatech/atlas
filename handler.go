@@ -2451,3 +2451,60 @@ func searchGeos(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, ams)
 }
+
+func updateDataset(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	var body struct {
+		ID   string `form:"id" json:"id" binding:"required"`
+		Type string `form:"type" json:"type" binding:"required"`
+		Data string `form:"data" json:"data"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+
+	switch body.Type {
+	case "geom":
+
+		_, err := geojson.UnmarshalGeometry([]byte(body.Data))
+		if err != nil {
+			res.FailMsg(c, "geom type data fmt error")
+			return
+		}
+		st := fmt.Sprintf(`UPDATE %s SET geom=st_setsrid(st_geomfromgeojson('%s'),4326)	WHERE "机构号"='%s'`, name, body.Data, body.ID)
+		err = db.Exec(st).Error
+		if err != nil {
+			res.Fail(c, 5001)
+			return
+		}
+
+	case "props":
+
+		bank := make(map[string]interface{})
+		err := json.Unmarshal([]byte(body.Data), &bank)
+		if err != nil {
+			log.Error(err)
+			res.FailMsg(c, "props type data fmt error")
+			return
+		}
+		if err := db.Model(&Bank{}).Where("机构号 = ?", body.ID).Update(bank).Error; err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+	default:
+		res.FailMsg(c, "unkown update type, can only be geom/props")
+		return
+	}
+
+	res.Done(c, "")
+}
