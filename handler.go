@@ -2457,7 +2457,6 @@ func updateInsertData(c *gin.Context) {
 	name := c.Param("name")
 
 	if code := checkDataset(name); code != 200 {
-		log.Error(err)
 		res.Fail(c, code)
 		return
 	}
@@ -2508,13 +2507,15 @@ func updateInsertData(c *gin.Context) {
 
 	case "props":
 
-		bank := make(map[string]interface{})
+		// bank := make(map[string]interface{})
+		bank := Bank{}
 		err := json.Unmarshal([]byte(body.Data), &bank)
 		if err != nil {
 			log.Error(err)
 			res.FailMsg(c, "props type data fmt error")
 			return
 		}
+		bank.Search = []string{bank.ID, bank.Name, bank.Region, bank.Type, bank.Manager}
 		if err := db.Model(&Bank{}).Where("机构号 = ?", body.ID).Update(bank).Error; err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
