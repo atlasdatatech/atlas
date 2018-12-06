@@ -2457,6 +2457,7 @@ func updateInsertData(c *gin.Context) {
 	name := c.Param("name")
 
 	if code := checkDataset(name); code != 200 {
+		log.Error(err)
 		res.Fail(c, code)
 		return
 	}
@@ -2468,6 +2469,7 @@ func updateInsertData(c *gin.Context) {
 	}
 	err := c.Bind(&body)
 	if err != nil {
+		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
