@@ -1998,7 +1998,7 @@ func queryExec(c *gin.Context) {
 		// storing it in the map with the name of the column as the key.
 		m := make(map[string]interface{})
 		for i, col := range columns {
-			if col == nil || cols[i].Name() == "geom" || cols[i].Name() == "search" {
+			if cols[i].Name() == "geom" || cols[i].Name() == "search" {
 				continue
 			}
 			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
