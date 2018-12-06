@@ -1998,7 +1998,7 @@ func queryExec(c *gin.Context) {
 		// storing it in the map with the name of the column as the key.
 		m := make(map[string]interface{})
 		for i, col := range columns {
-			if col == nil {
+			if col == nil || cols[i].Name() == "geom" || cols[i].Name() == "search" {
 				continue
 			}
 			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
@@ -2452,7 +2452,7 @@ func searchGeos(c *gin.Context) {
 	c.JSON(http.StatusOK, ams)
 }
 
-func updateDataset(c *gin.Context) {
+func updateInsertData(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
 
@@ -2474,12 +2474,29 @@ func updateDataset(c *gin.Context) {
 
 	switch body.Type {
 	case "geom":
-
 		_, err := geojson.UnmarshalGeometry([]byte(body.Data))
 		if err != nil {
 			res.FailMsg(c, "geom type data fmt error")
 			return
 		}
+		bank := &Bank{}
+		err = db.Where("机构号 = ?", body.ID).First(bank).Error
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				st := fmt.Sprintf(`INSERT INTO %s (机构号,geom) VALUES (%s,st_setsrid(st_geomfromgeojson('%s'),4326))`, name, body.ID, body.Data)
+				err = db.Exec(st).Error
+				if err != nil {
+					res.Fail(c, 5001)
+					return
+				}
+				res.Done(c, "created")
+				return
+			}
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+
 		st := fmt.Sprintf(`UPDATE %s SET geom=st_setsrid(st_geomfromgeojson('%s'),4326)	WHERE "机构号"='%s'`, name, body.Data, body.ID)
 		err = db.Exec(st).Error
 		if err != nil {
@@ -2506,5 +2523,32 @@ func updateDataset(c *gin.Context) {
 		return
 	}
 
+	res.Done(c, "")
+}
+
+func deleteData(c *gin.Context) {
+	res := NewRes()
+	name := c.Param("name")
+
+	if code := checkDataset(name); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	var body struct {
+		ID string `form:"id" json:"id" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+
+	err = db.Where("机构号 = ?", body.ID).Delete(&Bank{}).Error
+	if err != nil {
+		log.Errorf("delete data : %s; dataid: %s", err, body.ID)
+		res.Fail(c, 5001)
+		return
+	}
 	res.Done(c, "")
 }
