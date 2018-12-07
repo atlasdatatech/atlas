@@ -2461,69 +2461,39 @@ func updateInsertData(c *gin.Context) {
 		return
 	}
 
-	var body struct {
-		ID   string `form:"id" json:"id" binding:"required"`
-		Type string `form:"type" json:"type" binding:"required"`
-		Data string `form:"data" json:"data"`
-	}
-	err := c.Bind(&body)
+	bank := &Bank{}
+	err := c.BindJSON(bank)
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
 
-	switch body.Type {
-	case "geom":
-		_, err := geojson.UnmarshalGeometry([]byte(body.Data))
+	bank.Search = []string{bank.ID, bank.Name, bank.Region, bank.Type, bank.Manager}
+
+	if db.Table(name).Where("机构号 = ?", bank.ID).First(&Bank{}).RecordNotFound() {
+		db.Create(bank)
+	} else {
+		err := db.Table(name).Where("机构号 = ?", bank.ID).Update(bank).Error
 		if err != nil {
-			res.FailMsg(c, "geom type data fmt error")
-			return
-		}
-		bank := &Bank{}
-		err = db.Where("机构号 = ?", body.ID).First(bank).Error
-		if err != nil {
-			if gorm.IsRecordNotFoundError(err) {
-				st := fmt.Sprintf(`INSERT INTO %s (机构号,geom) VALUES (%s,st_setsrid(st_geomfromgeojson('%s'),4326))`, name, body.ID, body.Data)
-				err = db.Exec(st).Error
-				if err != nil {
-					res.Fail(c, 5001)
-					return
-				}
-				res.Done(c, "created")
-				return
-			}
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
+	}
 
-		st := fmt.Sprintf(`UPDATE %s SET geom=st_setsrid(st_geomfromgeojson('%s'),4326)	WHERE "机构号"='%s'`, name, body.Data, body.ID)
-		err = db.Exec(st).Error
-		if err != nil {
-			res.Fail(c, 5001)
-			return
-		}
-
-	case "props":
-
-		// bank := make(map[string]interface{})
-		bank := Bank{}
-		err := json.Unmarshal([]byte(body.Data), &bank)
-		if err != nil {
-			log.Error(err)
-			res.FailMsg(c, "props type data fmt error")
-			return
-		}
-		bank.Search = []string{bank.ID, bank.Name, bank.Region, bank.Type, bank.Manager}
-		if err := db.Model(&Bank{}).Where("机构号 = ?", body.ID).Update(bank).Error; err != nil {
-			log.Error(err)
-			res.Fail(c, 5001)
-			return
-		}
-	default:
-		res.FailMsg(c, "unkown update type, can only be geom/props")
+	if bank.X < -180 || bank.X > 180 || bank.Y < -85 || bank.Y > 85 {
+		log.Errorf("x, y must be reasonable values, name")
+		res.FailMsg(c, "x, y must be reasonable values")
 		return
+	} else {
+		stgeo := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326);`, name)
+		result := db.Exec(stgeo)
+		if result.Error != nil {
+			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+			res.Fail(c, 5001)
+			return
+		}
 	}
 
 	res.Done(c, "")

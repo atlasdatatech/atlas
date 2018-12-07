@@ -150,9 +150,30 @@ type Bank struct {
 	Date    time.Time      `json:"装修时间" gorm:"column:装修时间"`
 	Staff   int            `json:"人数" gorm:"column:人数"`
 	Level   string         `json:"行评等级" gorm:"column:行评等级"`
-	X       float32        ``
-	Y       float32        ``
-	Geom    orb.Point      `json:"geom" sql:"type:geometry(Geometry,4326)"`
+	X       float32        `json:"x"`
+	Y       float32        `json:"y"`
+	Geom    orb.Point      `json:"geom" gorm:"-" sql:"type:geometry(Geometry,4326)"`
+	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
+}
+
+// Bank 本行机构表
+type BankT struct {
+	ID      string         `json:"机构号" gorm:"column:机构号;unique;index" binding:"required"`
+	Name    string         `json:"名称" gorm:"column:名称;index"`
+	State   string         `json:"营业状态" gorm:"column:营业状态"`
+	Region  string         `json:"行政区" gorm:"column:行政区"`
+	Type    string         `json:"网点类型" gorm:"column:网点类型"`
+	Depart  string         `json:"营业部" gorm:"column:营业部"`
+	Manager string         `json:"管理行" gorm:"column:管理行"`
+	House   string         `json:"权属" gorm:"column:权属"`
+	Area    float32        `json:"营业面积" gorm:"column:营业面积"`
+	Term    time.Time      `json:"到期时间" gorm:"column:到期时间"`
+	Date    time.Time      `json:"装修时间" gorm:"column:装修时间"`
+	Staff   int            `json:"人数" gorm:"column:人数"`
+	Level   string         `json:"行评等级" gorm:"column:行评等级"`
+	X       float32        `json:"x"  binding:"required"`
+	Y       float32        `json:"y"  binding:"required"`
+	Geom    *orb.Point     `json:"-" sql:"type:geometry(Geometry,4326)"`
 	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
