@@ -1639,7 +1639,7 @@ func importFiles(c *gin.Context) {
 		}
 		updateGeom = true
 		datasetType = TypePoint
-	case "savings", "m1", "m2", "m5":
+	case "savings", "m1", "m2", "m5", "buffer_scales", "m2_weights", "m4_weights", "m4_scales":
 		switch name {
 		case "savings":
 			header = "机构号,名称,年份,总存款日均,单位存款日均,个人存款日均,保证金存款日均,其他存款日均"
@@ -1649,6 +1649,14 @@ func importFiles(c *gin.Context) {
 			header = "机构号,营业面积,人数,个人增长,个人存量,公司存量"
 		case "m5":
 			header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
+		case "buffer_scales":
+			header = "type,scale"
+		case "m2_weights":
+			header = "field,weight"
+		case "m4_weights":
+			header = "type,weight"
+		case "m4_scales":
+			header = "type,scale"
 		}
 	default:
 		res.FailMsg(c, "unkown datasets")
@@ -1656,11 +1664,6 @@ func importFiles(c *gin.Context) {
 	}
 
 	clear(name)
-	// if err != nil {
-	// 	log.Error(err)
-	// 	res.Fail(c, 5001)
-	// 	return
-	// }
 	err = insert(header)
 	if err != nil {
 		log.Errorf("import %s error:%s", filename, err.Error())
@@ -2069,7 +2072,7 @@ func queryBuffers(c *gin.Context) {
 		bName = "buffers_block"
 	}
 
-	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
+	s := fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
 
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
@@ -2170,7 +2173,7 @@ func getBuffers(c *gin.Context) {
 		bName = "buffers_block"
 	}
 
-	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
+	s := fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
 
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
@@ -2428,14 +2431,14 @@ func searchGeos(c *gin.Context) {
 	if limit != "" {
 		limiter = fmt.Sprintf(` LIMIT %s `, limit)
 	}
-	st = fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT id,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY id,名称,geom,s %s;`, gfilter, keyword, limiter)
 	log.Println(st)
 	search(st)
 	if len(ams) != 0 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
-	st = fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 机构号,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY 机构号,名称,geom,s %s;`, gfilter, keyword, limiter)
+	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT id,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY id,名称,geom,s %s;`, gfilter, keyword, limiter)
 	log.Println(st)
 	search(st)
 	if len(ams) != 0 {
@@ -2469,12 +2472,12 @@ func updateInsertData(c *gin.Context) {
 		return
 	}
 
-	bank.Search = []string{bank.ID, bank.Name, bank.Region, bank.Type, bank.Manager}
+	bank.Search = []string{bank.No, bank.Name, bank.Region, bank.Type, bank.Manager}
 
-	if db.Table(name).Where("机构号 = ?", bank.ID).First(&Bank{}).RecordNotFound() {
-		db.Create(bank)
+	if db.Table(name).Where("id = ?", bank.ID).First(&Bank{}).RecordNotFound() {
+		db.Omit("geom").Create(bank)
 	} else {
-		err := db.Table(name).Where("机构号 = ?", bank.ID).Update(bank).Error
+		err := db.Table(name).Where("id = ?", bank.ID).Update(bank).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
@@ -2486,17 +2489,18 @@ func updateInsertData(c *gin.Context) {
 		log.Errorf("x, y must be reasonable values, name")
 		res.FailMsg(c, "x, y must be reasonable values")
 		return
-	} else {
-		stgeo := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326);`, name)
-		result := db.Exec(stgeo)
-		if result.Error != nil {
-			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
-			res.Fail(c, 5001)
-			return
-		}
+	}
+	stgeo := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326) WHERE id=%d;`, name, bank.ID)
+	result := db.Exec(stgeo)
+	if result.Error != nil {
+		log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+		res.Fail(c, 5001)
+		return
 	}
 
-	res.Done(c, "")
+	res.DoneData(c, gin.H{
+		"id": bank.ID,
+	})
 }
 
 func deleteData(c *gin.Context) {
@@ -2517,7 +2521,7 @@ func deleteData(c *gin.Context) {
 		return
 	}
 
-	err = db.Where("机构号 = ?", body.ID).Delete(&Bank{}).Error
+	err = db.Where("id = ?", body.ID).Delete(&Bank{}).Error
 	if err != nil {
 		log.Errorf("delete data : %s; dataid: %s", err, body.ID)
 		res.Fail(c, 5001)

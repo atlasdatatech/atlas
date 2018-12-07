@@ -53,7 +53,8 @@ func main() {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{}, &Dataset{})
 		//业务数据表
-		pg.AutoMigrate(&Bank{}, &BankT{}, &Saving{}, &Other{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
+		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
+		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
 		db = pg
 	}
 	defer pg.Close()

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -275,9 +276,9 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS buffers;`)
 	if "banks" != name {
-		err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-		SELECT 机构号,名称,st_buffer(geom::geography,%f)::geometry as geom 
-		FROM %s;`, r, name)).Error
+		err := db.Exec(fmt.Sprintf(`CREATE TABLE %s_buffers AS 
+		SELECT id,名称,st_buffer(geom::geography,%f)::geometry as geom 
+		FROM %s;`, name, r, name)).Error
 		if err != nil {
 			log.Error(err)
 			return 5001
@@ -286,9 +287,9 @@ func buffering(name string, r float64) int {
 	}
 
 	err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-	SELECT a."机构号",a."名称",st_buffer(a.geom::geography,b.s*%f)::geometry as geom FROM %s a, buffers_s b
-	WHERE a."网点类型"=b.t
-	GROUP BY a."机构号",a."名称",a.geom,b.s;`, r, name)).Error
+	SELECT a."id",a."名称",st_buffer(a.geom::geography,b.scale*%f)::geometry as geom FROM %s a, buffers_scales b
+	WHERE a."网点类型"=b.type
+	GROUP BY a."id",a."名称",a.geom,b.scale;`, r, name)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -296,12 +297,12 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
 	err = db.Exec(`CREATE TABLE tmp_lines AS
-	SELECT 机构号,geom FROM 
-	(SELECT a.机构号,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
+	SELECT id,geom FROM 
+	(SELECT a.id,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
 	buffers as a, 
 	block_lines as b 
 	WHERE st_intersects(a.geom,b.geom) 
-	GROUP BY a.机构号,a.geom) as lines;`).Error
+	GROUP BY a.id,a.geom) as lines;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -309,25 +310,25 @@ func buffering(name string, r float64) int {
 
 	db.Exec(`DROP TABLE if EXISTS tmp_polys;`)
 	err = db.Exec(`CREATE TABLE tmp_polys AS
-	SELECT polys.机构号, (st_dump(polys.geom)).geom FROM
-	(SELECT 机构号,st_polygonize(geom) as geom FROM tmp_lines
-	GROUP BY 机构号) as polys
-	GROUP BY polys.机构号,polys.geom;`).Error
+	SELECT polys.id, (st_dump(polys.geom)).geom FROM
+	(SELECT id,st_polygonize(geom) as geom FROM tmp_lines
+	GROUP BY id) as polys
+	GROUP BY polys.id,polys.geom;`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
 	db.Exec(`DROP TABLE if EXISTS buffers_block;`)
-	err = db.Exec(`CREATE TABLE buffers_block AS
-	SELECT a.机构号,a.名称,st_union(b.geom) as geom FROM banks a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.机构号=b.机构号
-	GROUP BY a.机构号,a.名称;`).Error
+	err = db.Exec(fmt.Sprintf(`CREATE TABLE buffers_block AS
+	SELECT a.id,a."名称",st_union(b.geom) as geom FROM %s a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.id=b.id
+	GROUP BY a.id,a.名称;`, name)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
-	err = db.Exec(`INSERT INTO buffers_block (机构号,名称,geom)
-	SELECT b.机构号,b.名称,b.geom FROM buffers as b
-	WHERE NOT EXISTS (SELECT 机构号 FROM buffers_block WHERE 机构号=b.机构号 );`).Error
+	err = db.Exec(`INSERT INTO buffers_block (id,名称,geom)
+	SELECT b.id,b.名称,b.geom FROM buffers as b
+	WHERE NOT EXISTS (SELECT id FROM buffers_block WHERE id=b.id );`).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -339,29 +340,39 @@ func calcM1() {
 
 }
 func calcM2() error {
-	name := "m2"
-	fields := cfgV.GetStringSlice("models.m2.fields")
-	scales := cfgV.GetStringSlice("models.m2.scales")
-	cvar := cfgV.GetString("models.m2.const")
-	log.Info(cvar)
-	if len(fields) < len(scales) {
-		return fmt.Errorf(`model m2 config err, the field number should equal scale number`)
-	}
 
+	cvar := cfgV.GetString("models.const")
+	st := fmt.Sprintf(`SELECT "field", "weight" FROM  m2_weights`)
+	rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var f string
+	var w float64
+	fws := make(map[string]string)
+	for rows.Next() {
+		err = rows.Scan(&f, &w)
+		if err != nil {
+			log.Error(err)
+		}
+		fws[f] = strconv.FormatFloat(w, 'E', -1, 64)
+	}
 	var cacls []string
 	//cacl fields scale
-	for i, fld := range fields {
-		cacls = append(cacls, fmt.Sprintf(`COALESCE(%s, 0)*%s`, fld, scales[i]))
+	for f, w := range fws {
+		cacls = append(cacls, fmt.Sprintf(`COALESCE(%s, 0)*%s`, f, w))
 	}
 
 	cacls = append(cacls, cvar) //add const value
-	st := fmt.Sprintf(`UPDATE %s SET "总得分"=(%s);`, name, strings.Join(cacls, "+"))
+	st = fmt.Sprintf(`UPDATE m2 SET "总得分"=(%s);`, strings.Join(cacls, "+"))
 	query := db.Exec(st)
 	if query.Error != nil {
 		return query.Error
 	}
 
-	st = fmt.Sprintf(`UPDATE %s SET "总得分"=99 WHERE "总得分">99;`, name)
+	st = fmt.Sprintf(`UPDATE m2 SET "总得分"=99 WHERE "总得分">99;`)
 	query = db.Exec(st)
 	if query.Error != nil {
 		return query.Error
@@ -370,44 +381,43 @@ func calcM2() error {
 }
 
 func calcM3() error {
-	// name := "m3"
 	var tcnt int
 	db.Raw(`SELECT count(*) FROM pois;`).Row().Scan(&tcnt)
-	fcnt := float32(tcnt) / 100.0
+	fcnt := float32(tcnt) // / 100.0
 	st := fmt.Sprintf(`DROP TABLE IF EXISTS m3_tmp1;
 	CREATE TABLE m3_tmp1 AS
-	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('1','11') AND st_contains(b.geom,a.geom)
-	GROUP BY b."机构号";
+	SELECT b."id", count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('1','11') AND st_contains(b.geom,a.geom)
+	GROUP BY b."id";
 	DROP TABLE IF EXISTS m3_tmp2;
 	CREATE TABLE m3_tmp2 AS
-	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('2','22') AND st_contains(b.geom,a.geom)
-	GROUP BY b."机构号";
+	SELECT b."id", count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('2','22') AND st_contains(b.geom,a.geom)
+	GROUP BY b."id";
 	DROP TABLE IF EXISTS m3_tmp3;
 	CREATE TABLE m3_tmp3 AS
-	SELECT b."机构号" as id, count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('3','33') AND st_contains(b.geom,a.geom)
-	GROUP BY b."机构号";
+	SELECT b."id", count(a.id)/%f as res FROM pois a,buffers_block b WHERE a."类型" in ('3','33') AND st_contains(b.geom,a.geom)
+	GROUP BY b."id";
 	TRUNCATE TABLE m3;
 
-	INSERT INTO m3("机构号","商业资源")
+	INSERT INTO m3("id","商业资源")
 	SELECT id, res FROM m3_tmp1;
 	
 	UPDATE m3
 	SET "对公资源"=s.res
 	FROM (SELECT id, res FROM m3_tmp2) AS s
-	WHERE m3."机构号"=s.id;
+	WHERE m3."id"=s.id;
 	
-	INSERT INTO m3 (机构号,"对公资源")
+	INSERT INTO m3 (id,"对公资源")
 	SELECT id, res FROM m3_tmp2 AS s
-	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
+	WHERE NOT EXISTS (SELECT m3.id FROM m3 WHERE m3.id=s.id );
 		
 	UPDATE m3
 	SET "零售资源"=s.res
 	FROM (SELECT id, res FROM m3_tmp3) AS s
-	WHERE m3."机构号"=s.id;
+	WHERE m3."id"=s.id;
 	
-	INSERT INTO m3 (机构号,"零售资源")
+	INSERT INTO m3 (id,"零售资源")
 	SELECT id, res FROM m3_tmp3 AS s
-	WHERE NOT EXISTS (SELECT m3.机构号 FROM m3 WHERE m3.机构号=s.id );
+	WHERE NOT EXISTS (SELECT m3.id FROM m3 WHERE m3.id=s.id );
 	
 	UPDATE m3 SET "总得分"=100*(COALESCE(零售资源, 0)+COALESCE(对公资源, 0)+COALESCE(商业资源, 0));`, fcnt, fcnt, fcnt)
 	query := db.Exec(st)
@@ -418,14 +428,13 @@ func calcM3() error {
 }
 
 func calcM4() error {
-	// name := "m4"
-	st := fmt.Sprintf(`SELECT id,sum(w*s*cnt) FROM 
-	(SELECT d.id,d.type,d.cnt,e.w FROM
-	(SELECT "机构号" as id, "银行类别" as name,"网点类型" as type,COUNT(*) as cnt FROM  
-	(SELECT b."机构号",a."银行类别",a."网点类型" FROM others a,buffers_block b WHERE st_contains(b.geom,a.geom) ) c
-	GROUP BY c."机构号", c."银行类别",c."网点类型" ORDER BY c."机构号", c."银行类别",c."网点类型") d, m4_w e 
-	WHERE d.name=e."t") f,m4_s g
-	WHERE f.type=g.t
+	st := fmt.Sprintf(`SELECT id,sum(weight*g.scale*cnt) FROM 
+	(SELECT d.id,d.type,d.cnt,e.weight FROM
+	(SELECT "id", "银行类别" as name,"网点类型" as type,COUNT(*) as cnt FROM  
+	(SELECT b."id",a."银行类别",a."网点类型" FROM others a,buffers_block b WHERE st_contains(b.geom,a.geom) ) c
+	GROUP BY c."id", c."银行类别",c."网点类型" ORDER BY c."id", c."银行类别",c."网点类型") d, m4_weights e 
+	WHERE d.name=e."type") f,m4_scales g
+	WHERE f.type=g.type
 	GROUP BY id;`)
 	query := db.Exec(st)
 	if query.Error != nil {
@@ -434,13 +443,18 @@ func calcM4() error {
 	return nil
 }
 func calcM5() error {
-	// name := "m5"
+	var bcnt, ocnt int
+	db.Raw(`SELECT count(id) FROM banks;`).Row().Scan(&bcnt)
+	db.Raw(`SELECT count(id) FROM others WHERE "银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行');`).Row().Scan(&ocnt)
+	fbcnt := float32(bcnt)
+	focnt := float32(ocnt)
+
 	st := fmt.Sprintf(`SELECT t1.name,t1.s-t2.s as result FROM
-	(SELECT b.name, count(a."机构号")/110.0 as s FROM banks a,regions b WHERE st_contains(b.geom,a.geom)
+	(SELECT b.name, count(a."id")/%f as s FROM banks a,regions b WHERE st_contains(b.geom,a.geom)
 	GROUP BY b.name) as t1,
-	(SELECT b.name, count(a."机构号")/530.0 as s FROM others a,regions b WHERE st_contains(b.geom,a.geom) AND a."银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行')
+	(SELECT b.name, count(a."id")/%f as s FROM others a,regions b WHERE st_contains(b.geom,a.geom) AND a."银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行')
 	GROUP BY b.name) as t2 WHERE t1.name=t2.name
-	GROUP BY t1.name,t1.s,t2.s;`)
+	GROUP BY t1.name,t1.s,t2.s;`, fbcnt, focnt)
 	query := db.Exec(st)
 	if query.Error != nil {
 		return query.Error
