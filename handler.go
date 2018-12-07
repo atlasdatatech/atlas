@@ -2173,7 +2173,7 @@ func getBuffers(c *gin.Context) {
 		bName = "buffers_block"
 	}
 
-	s := fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
+	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
 
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
@@ -2254,14 +2254,15 @@ func getBuffers(c *gin.Context) {
 func getModels(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
+	fields := c.Query("fields")
 	filter := c.Query("filter")
+	needCacl := c.Query("cacl")
 
 	if code := checkDataset(name); code != 200 {
 		res.Fail(c, code)
 		return
 	}
-	needCacl := true
-	if needCacl {
+	if needCacl != "" {
 		switch name {
 		case "m1":
 		case "m2":
@@ -2279,14 +2280,14 @@ func getModels(c *gin.Context) {
 				// return
 			}
 		case "m4":
-			err := calcM3()
+			err := calcM4()
 			if err != nil {
 				log.Error(err)
 				res.FailErr(c, err)
 				// return
 			}
 		case "m5":
-			err := calcM3()
+			err := calcM5()
 			if err != nil {
 				log.Error(err)
 				res.FailErr(c, err)
@@ -2297,12 +2298,14 @@ func getModels(c *gin.Context) {
 			return
 		}
 	}
-
+	if fields == "" {
+		fields = " * "
+	}
 	if filter != "" {
 		filter = " WHERE " + filter
 	}
 
-	s := fmt.Sprintf(`SELECT * FROM %s %s;`, name, filter)
+	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, fields, name, filter)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -2331,9 +2334,9 @@ func getModels(c *gin.Context) {
 		// storing it in the map with the name of the column as the key.
 		m := make(map[string]interface{})
 		for i, col := range columns {
-			if col == nil {
-				continue
-			}
+			// if col == nil {
+			// continue
+			// }
 			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
 			v := string(col)
 			switch cols[i].DatabaseTypeName() {
