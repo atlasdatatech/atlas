@@ -199,6 +199,7 @@ type Poi struct {
 	Date    string         `gorm:"column:交付时间"`
 	Staff   int            `gorm:"column:职工人数"`
 	Remarks string         `gorm:"column:备注"`
+	SID     string         `gorm:"column:sid"`
 	X       float32        ``
 	Y       float32        ``
 	Geom    orb.Point      `sql:"type:geometry(Geometry,4326)"`

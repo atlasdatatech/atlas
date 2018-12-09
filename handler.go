@@ -1634,7 +1634,7 @@ func importFiles(c *gin.Context) {
 			header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
 			search = ",search =ARRAY[机构号,名称,银行类别,地址]"
 		case "pois":
-			header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y"
+			header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y,SID"
 			search = ",search =ARRAY[名称,备注]"
 		}
 		updateGeom = true
