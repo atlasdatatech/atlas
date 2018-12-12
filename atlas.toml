@@ -18,7 +18,7 @@
 		port     = "5432"
 		user     = "atlas"
 		password = "atlas"
-		name   = "lzyh"
+		name   = "atlas"
 		
 	[models]
 		const = 69

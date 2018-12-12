@@ -457,14 +457,14 @@ func calcM5() error {
 
 	st := fmt.Sprintf(`UPDATE m5 SET "总得分"=r.result
 	FROM
-		(SELECT t1.name,t1.s-t2.s as result FROM
-			(SELECT b.name, count(a."机构号")/%f as s FROM banks a,regions b WHERE st_contains(b.geom,a.geom)
-				GROUP BY b.name) as t1,
-			(SELECT b.name, count(a."机构号")/%f as s FROM others a,regions b WHERE st_contains(b.geom,a.geom) AND a."银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行')
-				GROUP BY b.name) as t2 
-		WHERE t1.name=t2.name
-		GROUP BY t1.name,t1.s,t2.s) as r
-	WHERE r.name=m5."行政区";`, fbcnt, focnt)
+		(SELECT t1."名称",t1.s-t2.s as result FROM
+			(SELECT b."名称", count(a."机构号")/%f as s FROM banks a,regions b WHERE st_contains(b.geom,a.geom)
+				GROUP BY b."名称") as t1,
+			(SELECT b."名称", count(a."机构号")/%f as s FROM others a,regions b WHERE st_contains(b.geom,a.geom) AND a."银行类别" in ('中国银行','建设银行','工商银行','农业银行','兰州农商行','甘肃银行')
+				GROUP BY b."名称") as t2 
+		WHERE t1."名称"=t2."名称"
+		GROUP BY t1."名称",t1.s,t2.s) as r
+	WHERE r."名称"=m5."名称";`, fbcnt, focnt)
 	query := db.Exec(st)
 	if query.Error != nil {
 		return query.Error

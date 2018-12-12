@@ -1376,9 +1376,12 @@ func importFiles(c *gin.Context) {
 		return
 	}
 
+	var cnt int64
+	datasetType := TypeAttribute
+
 	switch ftype {
 	case "geojson":
-		if name != "block_lines" && name != "regions" && name != "interest" {
+		if name != "block_lines" && name != "regions" && name != "interests" && name != "static_buffers" {
 			res.FailMsg(c, "unkown datasets")
 			return
 		}
@@ -1389,7 +1392,6 @@ func importFiles(c *gin.Context) {
 			return
 		}
 		db.DropTableIfExists(name)
-		var cnt int64
 		createTable := func(fc *geojson.FeatureCollection) error {
 			var headers []string
 			var fts []string
@@ -1485,92 +1487,145 @@ func importFiles(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
-
-		res.DoneData(c, gin.H{
-			"cnt": cnt,
-		})
-		return
 	case "csv":
-	default:
-		return
-	}
+		reader := csv.NewReader(bytes.NewReader(buf))
+		csvHeader, err := reader.Read()
+		if err != nil {
+			log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, filename)
+			res.Fail(c, 5003)
+			return
+		}
 
-	reader := csv.NewReader(bytes.NewReader(buf))
-	csvHeader, err := reader.Read()
-	if err != nil {
-		log.Errorf(`importDataset, csv reader failed: %s; file: %s`, err, filename)
-		res.Fail(c, 5003)
-		return
-	}
-
-	row2values := func(row []string, cols []*sql.ColumnType) string {
-		var vals string
-		for i, col := range cols {
-			// fmt.Println(i, col.DatabaseTypeName(), col.Name())
-			switch col.DatabaseTypeName() {
-			case "INT", "INT4", "NUMERIC": //number
-				if "" == row[i] {
-					vals = vals + "null,"
-				} else {
-					vals = vals + row[i] + ","
-				}
-			case "TIMESTAMPTZ":
-				if "" == row[i] {
-					vals = vals + "null,"
-				} else {
+		row2values := func(row []string, cols []*sql.ColumnType) string {
+			var vals string
+			for i, col := range cols {
+				// fmt.Println(i, col.DatabaseTypeName(), col.Name())
+				switch col.DatabaseTypeName() {
+				case "INT", "INT4", "NUMERIC": //number
+					if "" == row[i] {
+						vals = vals + "null,"
+					} else {
+						vals = vals + row[i] + ","
+					}
+				case "TIMESTAMPTZ":
+					if "" == row[i] {
+						vals = vals + "null,"
+					} else {
+						vals = vals + "'" + row[i] + "',"
+					}
+				default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
 					vals = vals + "'" + row[i] + "',"
 				}
-			default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
-				vals = vals + "'" + row[i] + "',"
 			}
-		}
-		vals = strings.TrimSuffix(vals, ",")
-		return vals
-	}
-
-	clear := func(name string) error {
-		s := fmt.Sprintf(`DELETE FROM %s;`, name)
-		err := db.Exec(s).Error
-		if err != nil {
-			return err
-		}
-		s = fmt.Sprintf(`DELETE FROM datasets WHERE name=%s;`, name)
-		return db.Exec(s).Error
-	}
-	var cnt int64
-	insert := func(header string) error {
-		if len(strings.Split(header, ",")) != len(csvHeader) {
-			log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
-			return fmt.Errorf("the cvs file format error, file:%s", name)
+			vals = strings.TrimSuffix(vals, ",")
+			return vals
 		}
 
-		s := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", header, name)
-		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		cols, err := rows.ColumnTypes()
-		if err != nil {
-			return err
-		}
-		var vals []string
-		for {
-			row, err := reader.Read()
-			if err == io.EOF {
-				break
-			}
+		clear := func(name string) error {
+			s := fmt.Sprintf(`DELETE FROM %s;`, name)
+			err := db.Exec(s).Error
 			if err != nil {
 				return err
 			}
-			rval := row2values(row, cols)
-			log.Debug(rval)
-			vals = append(vals, fmt.Sprintf(`(%s)`, rval))
+			s = fmt.Sprintf(`DELETE FROM datasets WHERE name=%s;`, name)
+			return db.Exec(s).Error
 		}
-		s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		query := db.Exec(s)
-		cnt = query.RowsAffected
-		return query.Error
+		insert := func(header string) error {
+			if len(strings.Split(header, ",")) != len(csvHeader) {
+				log.Errorf("the cvs file format error, file:%s,  should be:%s", name, header)
+				return fmt.Errorf("the cvs file format error, file:%s", name)
+			}
+
+			s := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", header, name)
+			rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			cols, err := rows.ColumnTypes()
+			if err != nil {
+				return err
+			}
+			var vals []string
+			for {
+				row, err := reader.Read()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return err
+				}
+				rval := row2values(row, cols)
+				log.Debug(rval)
+				vals = append(vals, fmt.Sprintf(`(%s)`, rval))
+			}
+			s = fmt.Sprintf(`INSERT INTO %s (%s) VALUES %s ON CONFLICT DO NOTHING;`, name, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			query := db.Exec(s)
+			cnt = query.RowsAffected
+			return query.Error
+		}
+
+		//数据入库
+		var header, search string
+		updateGeom := false
+		switch name {
+		case "banks", "others", "pois":
+			switch name {
+			case "banks":
+				header = "机构号,名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
+				search = ",search =ARRAY[机构号,名称,行政区,网点类型,管理行]"
+			case "others":
+				header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
+				search = ",search =ARRAY[机构号,名称,银行类别,地址]"
+			case "pois":
+				header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y,SID"
+				search = ",search =ARRAY[名称,备注]"
+			}
+			updateGeom = true
+			datasetType = TypePoint
+		case "savings", "m1", "m2", "m5", "buffer_scales", "m2_weights", "m4_weights", "m4_scales":
+			switch name {
+			case "savings":
+				header = "机构号,名称,年份,总存款日均,单位存款日均,个人存款日均,保证金存款日均,其他存款日均"
+			case "m1":
+				header = "机构号,商业规模,商业人流,道路特征,快速路,位置特征,转角位置,街巷,斜坡,公共交通类型,距离,停车位,收费,建筑形象,营业厅面积,装修水准,网点类型,总得分"
+			case "m2":
+				header = "机构号,营业面积,人数,个人增长,个人存量,公司存量"
+			case "m5":
+				header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
+			case "buffer_scales":
+				header = "type,scale"
+			case "m2_weights":
+				header = "field,weight"
+			case "m4_weights":
+				header = "type,weight"
+			case "m4_scales":
+				header = "type,scale"
+			}
+		default:
+			res.FailMsg(c, "unkown datasets")
+			return
+		}
+
+		clear(name)
+		err = insert(header)
+		if err != nil {
+			log.Errorf("import %s error:%s", filename, err.Error())
+			res.Fail(c, 5001)
+			return
+		}
+		if updateGeom {
+			update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326)%s;`, name, search)
+			result := db.Exec(update)
+			if result.Error != nil {
+				log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+				res.Fail(c, 5001)
+				return
+			}
+		}
+
+	default:
+		return
 	}
 
 	getFields := func(name string) ([]byte, error) {
@@ -1618,66 +1673,6 @@ func importFiles(c *gin.Context) {
 			return nil, err
 		}
 		return jfields, nil
-	}
-
-	//数据入库
-	var header, search string
-	updateGeom := false
-	datasetType := TypeAttribute
-	switch name {
-	case "banks", "others", "pois":
-		switch name {
-		case "banks":
-			header = "机构号,名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
-			search = ",search =ARRAY[机构号,名称,行政区,网点类型,管理行]"
-		case "others":
-			header = "机构号,名称,银行类别,网点类型,地址,X,Y,SID"
-			search = ",search =ARRAY[机构号,名称,银行类别,地址]"
-		case "pois":
-			header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y,SID"
-			search = ",search =ARRAY[名称,备注]"
-		}
-		updateGeom = true
-		datasetType = TypePoint
-	case "savings", "m1", "m2", "m5", "buffer_scales", "m2_weights", "m4_weights", "m4_scales":
-		switch name {
-		case "savings":
-			header = "机构号,名称,年份,总存款日均,单位存款日均,个人存款日均,保证金存款日均,其他存款日均"
-		case "m1":
-			header = "机构号,商业规模,商业人流,道路特征,快速路,位置特征,转角位置,街巷,斜坡,公共交通类型,距离,停车位,收费,建筑形象,营业厅面积,装修水准,网点类型,总得分"
-		case "m2":
-			header = "机构号,营业面积,人数,个人增长,个人存量,公司存量"
-		case "m5":
-			header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
-		case "buffer_scales":
-			header = "type,scale"
-		case "m2_weights":
-			header = "field,weight"
-		case "m4_weights":
-			header = "type,weight"
-		case "m4_scales":
-			header = "type,scale"
-		}
-	default:
-		res.FailMsg(c, "unkown datasets")
-		return
-	}
-
-	clear(name)
-	err = insert(header)
-	if err != nil {
-		log.Errorf("import %s error:%s", filename, err.Error())
-		res.Fail(c, 5001)
-		return
-	}
-	if updateGeom {
-		update := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326)%s;`, name, search)
-		result := db.Exec(update)
-		if result.Error != nil {
-			log.Errorf("update %s create geom error:%s", name, result.Error.Error())
-			res.Fail(c, 5001)
-			return
-		}
 	}
 
 	jfs, err := getFields(name)
@@ -2359,19 +2354,27 @@ func getModels(c *gin.Context) {
 }
 
 func searchGeos(c *gin.Context) {
-	res := NewRes()
+	// res := NewRes()
 	searchType := c.Param("name")
 	keyword := c.Query("keyword")
+	var ams []map[string]interface{}
+
+	log.Println("***********", keyword, "**************")
 	if searchType != "search" || keyword == "" {
-		res.Fail(c, 4001)
+		// res.Fail(c, 4001)
+		c.JSON(http.StatusOK, ams)
 		return
 	}
-	var ams []map[string]interface{}
-	search := func(s string) {
-		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	search := func(s string, keyword string) {
+		stmt, err := db.DB().Prepare(s)
 		if err != nil {
 			log.Error(err)
-			res.Fail(c, 5001)
+			return
+		}
+		defer stmt.Close()
+		rows, err := stmt.Query(keyword)
+		if err != nil {
+			log.Error(err)
 			return
 		}
 		defer rows.Close()
@@ -2418,9 +2421,11 @@ func searchGeos(c *gin.Context) {
 			ams = append(ams, m)
 		}
 	}
-	st := fmt.Sprintf(`SELECT name,st_asgeojson(geom) as geom FROM regions WHERE name = '%s';`, keyword)
-	search(st)
-	if len(ams) != 0 {
+
+	st := fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom FROM regions WHERE 名称 ~ $1;`)
+	fmt.Println(st)
+	search(st, keyword)
+	if len(ams) > 10 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
@@ -2434,24 +2439,27 @@ func searchGeos(c *gin.Context) {
 	if limit != "" {
 		limiter = fmt.Sprintf(` LIMIT %s `, limit)
 	}
-	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT id,名称,geom,unnest(search) s FROM banks) x WHERE %s s LIKE '%%%s%%' GROUP BY id,名称,geom,s %s;`, gfilter, keyword, limiter)
-	log.Println(st)
-	search(st)
-	if len(ams) != 0 {
+	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 
+	FROM (SELECT id,名称,geom,unnest(search) s FROM banks) x WHERE %s s ~ $1 GROUP BY id,名称,geom,s %s;`, gfilter, limiter)
+	fmt.Println(st)
+	search(st, keyword)
+	if len(ams) > 10 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
-	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT id,名称,geom,unnest(search) s FROM others) x WHERE %s s LIKE '%%%s%%' GROUP BY id,名称,geom,s %s;`, gfilter, keyword, limiter)
-	log.Println(st)
-	search(st)
-	if len(ams) != 0 {
+	st = fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom,s 搜索 
+	FROM (SELECT id,名称,geom,unnest(search) s FROM others) x WHERE %s s ~ $1 GROUP BY id,名称,geom,s %s;`, gfilter, limiter)
+	fmt.Println(st)
+	search(st, keyword)
+	if len(ams) > 10 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
-	st = fmt.Sprintf(`SELECT 名称,st_asgeojson(geom) as geom,s 搜索 FROM (SELECT 名称,geom,unnest(search) s FROM pois) x WHERE %s s LIKE '%%%s%%' GROUP BY 名称,geom,s %s;`, gfilter, keyword, limiter)
-	log.Println(st)
-	search(st)
-	if len(ams) != 0 {
+	st = fmt.Sprintf(`SELECT 名称,st_asgeojson(geom) as geom,s 搜索 
+	FROM (SELECT 名称,geom,unnest(search) s FROM pois) x WHERE %s s ~ $1 GROUP BY 名称,geom,s %s;`, gfilter, limiter)
+	fmt.Println(st)
+	search(st, keyword)
+	if len(ams) > 10 {
 		c.JSON(http.StatusOK, ams)
 		return
 	}
