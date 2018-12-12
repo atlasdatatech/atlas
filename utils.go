@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -272,37 +273,100 @@ func checkDataset(did string) int {
 	return 200
 }
 
-func buffering(name string, r float64) int {
+func updateDatasetInfo(did string) error {
 
-	db.Exec(`DROP TABLE if EXISTS buffers;`)
-	if "banks" != name {
-		err := db.Exec(fmt.Sprintf(`CREATE TABLE %s_buffers AS 
-		SELECT id,名称,st_buffer(geom::geography,%f)::geometry as geom 
-		FROM %s;`, name, r, name)).Error
-		if err != nil {
-			log.Error(err)
-			return 5001
+	s := fmt.Sprintf(`SELECT * FROM %s LIMIT 0;`, did)
+	rows, err := db.Exec(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		return err
+	}
+	var fields []Field
+	for _, col := range cols {
+		var t string
+		switch col.DatabaseTypeName() {
+		case "INT", "INT4":
+			t = TypeInteger
+		case "NUMERIC": //number
+			t = TypeReal
+		case "BOOL":
+			t = TypeBool
+		case "TIMESTAMPTZ":
+			t = TypeDate
+		case "_VARCHAR":
+			t = TypeStringArray
+		case "TEXT", "VARCHAR":
+			t = TypeString
+		default:
+			t = TypeUnkown
 		}
-		return 200
+		field := Field{
+			Name:   col.Name(),
+			Type:   t,
+			Format: "",
+		}
+		fields = append(fields, field)
 	}
 
-	err := db.Exec(fmt.Sprintf(`CREATE TABLE buffers AS 
-	SELECT a."机构号",a."名称",st_buffer(a.geom::geography,b.scale*%f)::geometry as geom FROM %s a, buffer_scales b
-	WHERE a."网点类型"=b.type
-	GROUP BY a."机构号",a."名称",a.geom,b.scale;`, r, name)).Error
+	jfs, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+
+	ds := &Dataset{
+		ID:     did,
+		Name:   did,
+		Label:  did,
+		Type:   TypePolygon,
+		Fields: jfs,
+	}
+	//更新元数据
+	err = pubSet.updateInsertDataset(ds)
+	if err != nil {
+		return err
+	}
+	//更新服务
+	err = pubSet.AddDatasetService(ds)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func buffering(name string, r float64) int {
+
+	bblocks := cfgV.GetString("buffers.blocks")
+	bprefix := cfgV.GetString("buffers.prefix")
+	bsuffix := cfgV.GetString("buffers.suffix")
+	bscales := cfgV.GetString("buffers.scales")
+	btype := cfgV.GetString("buffers.scaleType")
+	bname := name + bsuffix
+	fname := bprefix + bname
+
+	db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS %s;`, bname))
+
+	err := db.Exec(fmt.Sprintf(`CREATE TABLE %s AS 
+	SELECT a."机构号",a."名称",st_buffer(a.geom::geography,b.scale*%f)::geometry as geom FROM %s a, %s b
+	WHERE a."%s"=b.type
+	GROUP BY a."机构号",a."名称",a.geom,b.scale;`, bname, r, name, bscales, btype)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
+	updateDatasetInfo(bname)
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
-	err = db.Exec(`CREATE TABLE tmp_lines AS
+	err = db.Exec(fmt.Sprintf(`CREATE TABLE tmp_lines AS
 	SELECT 机构号,geom FROM 
 	(SELECT a.机构号,st_union(st_boundary(a.geom), st_union(b.geom)) as geom FROM 
-	buffers as a, 
-	block_lines as b 
+	%s as a, 
+	%s as b 
 	WHERE st_intersects(a.geom,b.geom) 
-	GROUP BY a.机构号,a.geom) as lines;`).Error
+	GROUP BY a.机构号,a.geom) as lines;`, bname, bblocks)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -318,21 +382,22 @@ func buffering(name string, r float64) int {
 		log.Error(err)
 		return 5001
 	}
-	db.Exec(`DROP TABLE if EXISTS buffers_block;`)
-	err = db.Exec(fmt.Sprintf(`CREATE TABLE buffers_block AS
+	db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS %s;`, fname))
+	err = db.Exec(fmt.Sprintf(`CREATE TABLE %s AS
 	SELECT a.机构号,a."名称",st_union(b.geom) as geom FROM %s a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.机构号=b.机构号
-	GROUP BY a.机构号,a.名称;`, name)).Error
+	GROUP BY a.机构号,a.名称;`, fname, name)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
-	err = db.Exec(`INSERT INTO buffers_block (机构号,名称,geom)
-	SELECT b.机构号,b.名称,b.geom FROM buffers as b
-	WHERE NOT EXISTS (SELECT 机构号 FROM buffers_block WHERE 机构号=b.机构号 );`).Error
+	err = db.Exec(fmt.Sprintf(`INSERT INTO %s (机构号,名称,geom)
+	SELECT b.机构号,b.名称,b.geom FROM %s as b
+	WHERE NOT EXISTS (SELECT 机构号 FROM %s WHERE 机构号=b.机构号 );`, fname, bname, fname)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
+	updateDatasetInfo(fname)
 	return 200
 }
 

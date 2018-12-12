@@ -1377,7 +1377,7 @@ func importFiles(c *gin.Context) {
 	}
 
 	var cnt int64
-	datasetType := TypeAttribute
+	// datasetType := TypeAttribute
 
 	switch ftype {
 	case "geojson":
@@ -1582,7 +1582,7 @@ func importFiles(c *gin.Context) {
 				search = ",search =ARRAY[名称,备注]"
 			}
 			updateGeom = true
-			datasetType = TypePoint
+			// datasetType = TypePoint
 		case "savings", "m1", "m2", "m5", "buffer_scales", "m2_weights", "m4_weights", "m4_scales":
 			switch name {
 			case "savings":
@@ -1628,78 +1628,6 @@ func importFiles(c *gin.Context) {
 		return
 	}
 
-	getFields := func(name string) ([]byte, error) {
-		s := fmt.Sprintf(`SELECT * FROM %s LIMIT 0;`, name)
-		rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		cols, err := rows.ColumnTypes()
-		if err != nil {
-			return nil, err
-		}
-		var fields []Field
-		for _, col := range cols {
-			var t string
-			log.Debug(col.DatabaseTypeName())
-			switch col.DatabaseTypeName() {
-			case "INT", "INT4":
-				t = TypeInteger
-			case "NUMERIC": //number
-				t = TypeReal
-			case "BOOL":
-				t = TypeBool
-			case "TIMESTAMPTZ":
-				t = TypeDate
-			case "_VARCHAR":
-				t = TypeStringArray
-			case "TEXT", "VARCHAR":
-				t = TypeString
-			default:
-				t = TypeUnkown
-			}
-			field := Field{
-				Name:   col.Name(),
-				Type:   t,
-				Format: "",
-			}
-			fields = append(fields, field)
-		}
-
-		// return fields, nil
-		jfields, err := json.Marshal(fields)
-		if err != nil {
-			return nil, err
-		}
-		return jfields, nil
-	}
-
-	jfs, err := getFields(name)
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-
-	ds := &Dataset{
-		ID:     name,
-		Name:   name,
-		Label:  filename,
-		Type:   datasetType,
-		Fields: jfs,
-	}
-	//更新元数据
-	err = pubSet.updateInsertDataset(ds)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	//更新服务
-	err = pubSet.AddDatasetService(ds)
-	if err != nil {
-		log.Errorf(`importDataset, add %s to dataset service: %s ^^`, name, err)
-	}
 	res.DoneData(c, gin.H{
 		"id":  id,
 		"cnt": cnt,
@@ -2036,140 +1964,34 @@ func queryBusiness(c *gin.Context) {
 	})
 }
 
-func queryBuffers(c *gin.Context) {
-	res := NewRes()
-	name := c.Param("name")
-
-	if code := checkDataset(name); code != 200 {
-		res.Fail(c, code)
-		return
-	}
-	//判断数据过多
-	var body struct {
-		Radius float64 `form:"radius" json:"radius" binding:"exists"`
-		Type   string  `form:"type" json:"type"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 4001)
-		return
-	}
-	if body.Radius != 0 {
-		if code := buffering(name, body.Radius); code != 200 {
-			res.Fail(c, code)
-			return
-		}
-	}
-	//查询数据
-	bName := "buffers"
-	if body.Type == "" && name == "banks" {
-		bName = "buffers_block"
-	}
-
-	s := fmt.Sprintf(`SELECT id,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
-
-	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-	defer rows.Close()
-	cols, err := rows.ColumnTypes()
-	if err != nil {
-		res.Fail(c, 5001)
-		return
-	}
-	fc := geojson.NewFeatureCollection()
-	for rows.Next() {
-		// Scan needs an array of pointers to the values it is setting
-		// This creates the object and sets the values correctly
-		vals := make([]interface{}, len(cols))
-		for i := range cols {
-			vals[i] = new(sql.RawBytes)
-		}
-		err = rows.Scan(vals...)
-		if err != nil {
-			log.Error(err)
-		}
-
-		// f := newFeatrue(t)
-		f := geojson.NewFeature(nil)
-		for i, t := range cols {
-			// skip nil values.
-			if vals[i] == nil {
-				continue
-			}
-			rb, ok := vals[i].(*sql.RawBytes)
-			if !ok {
-				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
-				continue
-			}
-
-			switch t.Name() {
-			case "geom":
-				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
-				if err != nil {
-					log.Error(err)
-					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
-					continue
-				}
-				f.Geometry = geom.Geometry()
-			default:
-				v := string(*rb)
-				switch cols[i].DatabaseTypeName() {
-				case "INT", "INT4":
-					f.Properties[t.Name()], _ = strconv.Atoi(v)
-				case "NUMERIC", "DECIMAL": //number
-					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
-				// case "BOOL":
-				// case "TIMESTAMPTZ":
-				// case "_VARCHAR":
-				// case "TEXT", "VARCHAR", "BIGINT":
-				default:
-					f.Properties[t.Name()] = v
-				}
-			}
-
-		}
-		fc.Append(f)
-	}
-	gj, err := fc.MarshalJSON()
-	if err != nil {
-		log.Errorf("unable to MarshalJSON of featureclection.")
-		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
-		return
-	}
-	res.DoneData(c, json.RawMessage(gj))
-}
-
 func getBuffers(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("name")
 	rs := c.Query("radius")
-	r, _ := strconv.ParseFloat(rs, 64)
 	t := c.Query("type")
+	bprefix := cfgV.GetString("buffers.prefix")
+	bsuffix := cfgV.GetString("buffers.suffix")
+	bname := name + bsuffix
+	if t == "static" {
+		bstatic := cfgV.GetString("buffers.static")
+		bname = bstatic
+	} else {
+		r, _ := strconv.ParseFloat(rs, 64)
+		if r != 0 {
+			if code := buffering(name, r); code != 200 {
+				res.Fail(c, code)
+			}
+		}
+		if t != "circle" {
+			bname = bprefix + bname
+		}
+	}
 
-	if code := checkDataset(name); code != 200 {
+	if code := checkDataset(bname); code != 200 {
 		res.Fail(c, code)
 		return
 	}
-	//判断数据过多
-	if r != 0 {
-		if code := buffering(name, r); code != 200 {
-			res.Fail(c, code)
-			return
-		}
-	}
-	//查询数据
-	bName := "buffers"
-	if t == "" && name == "banks" {
-		bName = "buffers_block"
-	}
-
-	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bName)
-
+	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bname)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)

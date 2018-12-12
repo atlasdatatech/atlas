@@ -231,7 +231,6 @@ func bindRoutes(r *gin.Engine) {
 		datasets.POST("/:name/cube/", cubeQuery)
 		datasets.POST("/:name/common/", queryExec)
 		datasets.GET("/:name/business/", queryBusiness)
-		datasets.POST("/:name/buffers/", queryBuffers)
 		datasets.GET("/:name/buffers/", getBuffers)
 		datasets.GET("/:name/models/", getModels)
 		datasets.GET("/:name/geos/", searchGeos)

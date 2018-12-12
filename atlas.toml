@@ -20,5 +20,14 @@
 		password = "atlas"
 		name   = "atlas"
 		
+	[buffers]
+		static = "static_buffers"
+		prefix = "block_"
+		suffix = "_buffers"
+		scales = "buffer_scales"
+		scaleType = "网点类型"
+		blocks = "block_lines"
+
+
 	[models]
 		const = 69
