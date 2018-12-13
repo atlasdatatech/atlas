@@ -1527,7 +1527,7 @@ func importFiles(c *gin.Context) {
 			if err != nil {
 				return err
 			}
-			s = fmt.Sprintf(`DELETE FROM datasets WHERE name=%s;`, name)
+			s = fmt.Sprintf(`DELETE FROM datasets WHERE name='%s';`, name)
 			return db.Exec(s).Error
 		}
 		insert := func(header string) error {
@@ -1536,7 +1536,7 @@ func importFiles(c *gin.Context) {
 				return fmt.Errorf("the cvs file format error, file:%s", name)
 			}
 
-			s := fmt.Sprintf("SELECT %s FROM %s LIMIT 0", header, name)
+			s := fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, header, name)
 			rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 			if err != nil {
 				return err
@@ -1592,7 +1592,7 @@ func importFiles(c *gin.Context) {
 			case "m2":
 				header = "机构号,营业面积,人数,个人增长,个人存量,公司存量"
 			case "m5":
-				header = "行政区,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
+				header = "名称,生产总值,人口,房地产成交面积,房地产成交均价,社会消费品零售总额,规模以上工业增加值,金融机构存款,金融机构贷款"
 			case "buffer_scales":
 				header = "type,scale"
 			case "m2_weights":
