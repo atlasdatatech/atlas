@@ -2092,6 +2092,12 @@ func getModels(c *gin.Context) {
 	if needCacl != "" {
 		switch name {
 		case "m1":
+			err := calcM1()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				// return
+			}
 		case "m2":
 			err := calcM2()
 			if err != nil {
