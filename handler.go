@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/paulmach/orb"
-
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 
@@ -1669,7 +1667,6 @@ func getGeojson(c *gin.Context) {
 		return
 	}
 	fc := geojson.NewFeatureCollection()
-	bound := orb.Bound{Min: orb.Point{1, 1}, Max: orb.Point{-1, -1}}
 	for rows.Next() {
 		// Scan needs an array of pointers to the values it is setting
 		// This creates the object and sets the values correctly
@@ -1721,7 +1718,6 @@ func getGeojson(c *gin.Context) {
 
 		}
 		fc.Append(f)
-		bound.Union(f.Geometry.Bound())
 	}
 
 	// var bbox struct {
@@ -1731,7 +1727,9 @@ func getGeojson(c *gin.Context) {
 	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, name, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
-	fc.BBox = geojson.NewBBox(ext.Geometry().Bound())
+	if err == nil {
+		fc.BBox = geojson.NewBBox(ext.Geometry().Bound())
+	}
 	gj, err := fc.MarshalJSON()
 	if err != nil {
 		log.Errorf("unable to MarshalJSON of featureclection.")

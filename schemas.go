@@ -265,7 +265,7 @@ type M4 struct {
 //M5 宏观战略
 type M5 struct {
 	ID         uint    `json:"id" gorm:"primary_key"`
-	Region     string  `gorm:"column:行政区;index"`
+	Name       string  `gorm:"column:名称;index"`
 	GDP        float32 `gorm:"column:生产总值"`
 	Population float32 `gorm:"column:人口"`
 	Area       float32 `gorm:"column:房地产成交面积"`
