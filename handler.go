@@ -480,6 +480,14 @@ func addUserRole(c *gin.Context) {
 	}
 
 	if casEnf.AddRoleForUser(uid, body.RID) {
+		user := &User{}
+		db.Select("role").Where("name=?", uid).First(user)
+		err = db.Model(&User{}).Where("name = ?", uid).Update(User{Role: append(user.Role, body.RID)}).Error
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
 		res.Done(c, "")
 		return
 	}
@@ -508,6 +516,23 @@ func deleteUserRole(c *gin.Context) {
 	}
 
 	if casEnf.DeleteRoleForUser(uid, body.RID) {
+
+		user := &User{}
+		db.Select("role").Where("name=?", uid).First(user)
+		var roles []string
+		for i, r := range user.Role {
+			if r == body.RID {
+				roles = append(user.Role[:i], user.Role[i+1:]...)
+				break
+			}
+		}
+		err = db.Model(&User{}).Where("name = ?", uid).Update(User{Role: roles}).Error
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+
 		res.Done(c, "")
 		return
 	}
@@ -648,6 +673,31 @@ func getRoleUsers(c *gin.Context) {
 	}
 	users := casEnf.GetUsersForRole(rid)
 	res.DoneData(c, users)
+}
+
+func getMapPerms(c *gin.Context) {
+	res := NewRes()
+	mid := c.Param("id")
+	if code := checkMap(mid); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	uperms := casEnf.GetFilteredPolicy(1, mid)
+
+	var pers []MapPerm
+	for _, perm := range uperms {
+		m := &Map{}
+		db.Where("id = ?", perm[1]).First(&m)
+		p := MapPerm{
+			ID:      perm[0],
+			MapID:   perm[1],
+			MapName: m.Title,
+			Action:  perm[2],
+		}
+		pers = append(pers, p)
+	}
+	res.DoneData(c, pers)
 }
 
 func listMaps(c *gin.Context) {

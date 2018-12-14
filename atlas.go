@@ -170,6 +170,7 @@ func bindRoutes(r *gin.Engine) {
 		// > map op
 		maproute.GET("/", listMaps)
 		maproute.GET("/:id/", getMap)
+		maproute.GET("/:id/perms/", getMapPerms)
 		maproute.POST("/", createMap)
 		maproute.POST("/:id/", updInsetMap)
 		maproute.POST("/:id/del/", deleteMap)
