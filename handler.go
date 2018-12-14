@@ -386,7 +386,20 @@ func getUserMaps(c *gin.Context) {
 		rperms := casEnf.GetPermissionsForUser(role)
 		uperms = append(uperms, rperms...)
 	}
-	res.DoneData(c, uperms)
+
+	var pers []MapPerm
+	for _, perm := range uperms {
+		m := &Map{}
+		db.Where("id = ?", perm[1]).First(&m)
+		p := MapPerm{
+			ID:      perm[0],
+			MapID:   perm[1],
+			MapName: m.Title,
+			Action:  perm[2],
+		}
+		pers = append(pers, p)
+	}
+	res.DoneData(c, pers)
 }
 
 func addUserMap(c *gin.Context) {
@@ -509,7 +522,20 @@ func getRoleMaps(c *gin.Context) {
 		return
 	}
 	uperms := casEnf.GetPermissionsForUser(id)
-	res.DoneData(c, uperms)
+
+	var pers []MapPerm
+	for _, perm := range uperms {
+		m := &Map{}
+		db.Where("id = ?", perm[1]).First(&m)
+		p := MapPerm{
+			ID:      perm[0],
+			MapID:   perm[1],
+			MapName: m.Title,
+			Action:  perm[2],
+		}
+		pers = append(pers, p)
+	}
+	res.DoneData(c, pers)
 }
 
 func addRoleMap(c *gin.Context) {

@@ -54,6 +54,14 @@ type Map struct {
 	UpdatedAt time.Time
 }
 
+//MapPerm 地图权限表
+type MapPerm struct {
+	ID      string //role/user id
+	MapID   string
+	MapName string
+	Action  string
+}
+
 //MapBind 登录记录表
 type MapBind struct {
 	ID        string      `form:"id" json:"id"`
