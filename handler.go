@@ -1487,6 +1487,11 @@ func importFiles(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
+		err = updateDatasetInfo(name)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+		}
 	case "csv":
 		reader := csv.NewReader(bytes.NewReader(buf))
 		csvHeader, err := reader.Read()
@@ -1623,7 +1628,12 @@ func importFiles(c *gin.Context) {
 				return
 			}
 		}
-
+		err = updateDatasetInfo(name)
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
 	default:
 		return
 	}
@@ -2369,7 +2379,6 @@ func deleteData(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-
 	err = db.Where("id = ?", body.ID).Delete(&Bank{}).Error
 	if err != nil {
 		log.Errorf("delete data : %s; dataid: %s", err, body.ID)

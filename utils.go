@@ -274,9 +274,8 @@ func checkDataset(did string) int {
 }
 
 func updateDatasetInfo(did string) error {
-
 	s := fmt.Sprintf(`SELECT * FROM %s LIMIT 0;`, did)
-	rows, err := db.Exec(s).Rows() // (*sql.Rows, error)
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		return err
 	}
@@ -408,8 +407,10 @@ func calcM1() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
+	updateDatasetInfo("m1")
 	return nil
 }
+
 func calcM2() error {
 	weights := cfgV.GetString("models.m2.weights")
 	cvar := cfgV.GetString("models.m2.const")
@@ -455,12 +456,11 @@ func calcM2() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
-
+	updateDatasetInfo("m2")
 	return nil
 }
 
 func calcM3() error {
-
 	bprefix := cfgV.GetString("buffers.prefix")
 	bsuffix := cfgV.GetString("buffers.suffix")
 	bname := "banks" + bsuffix
@@ -515,11 +515,11 @@ func calcM3() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
+	updateDatasetInfo("m3")
 	return nil
 }
 
 func calcM4() error {
-
 	bprefix := cfgV.GetString("buffers.prefix")
 	bsuffix := cfgV.GetString("buffers.suffix")
 	bname := "banks" + bsuffix
@@ -550,10 +550,11 @@ func calcM4() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
+	updateDatasetInfo("m4")
 	return nil
 }
-func calcM5() error {
 
+func calcM5() error {
 	field := cfgV.GetString("models.m5.field")
 	values := cfgV.GetStringSlice("models.m5.values")
 	instr := strings.Join(values, "','")
@@ -577,6 +578,7 @@ func calcM5() error {
 	if query.Error != nil {
 		return query.Error
 	}
+	updateDatasetInfo("m5")
 	return nil
 }
 
