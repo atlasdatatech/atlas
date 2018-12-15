@@ -48,6 +48,7 @@ type Map struct {
 	Title     string `json:"title"`
 	Summary   string `json:"summary"`
 	User      string `json:"user"`
+	Action    string `json:"action"`
 	Thumbnail string `json:"thumbnail"`
 	Config    []byte `json:"config" gorm:"type:json"`
 	CreatedAt time.Time
@@ -68,6 +69,7 @@ type MapBind struct {
 	Title     string      `form:"title" json:"title"`
 	Summary   string      `form:"summary" json:"summary"`
 	User      string      `form:"user" json:"user"`
+	Action    string      `form:"action" json:"action"`
 	Thumbnail string      `form:"thumbnail" json:"thumbnail"`
 	Config    interface{} `form:"config" json:"config"`
 }
@@ -78,6 +80,7 @@ func (m *Map) toBind() *MapBind {
 		Title:     m.Title,
 		Summary:   m.Summary,
 		User:      m.User,
+		Action:    m.Action,
 		Thumbnail: m.Thumbnail,
 	}
 	json.Unmarshal(m.Config, &out.Config)
@@ -90,6 +93,7 @@ func (b *MapBind) toMap() *Map {
 		Title:     b.Title,
 		Summary:   b.Summary,
 		User:      b.User,
+		Action:    b.Action,
 		Thumbnail: b.Thumbnail,
 	}
 	out.Config, _ = json.Marshal(b.Config)

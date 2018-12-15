@@ -68,9 +68,7 @@ func main() {
 		log.Fatal("JWT Error:" + err.Error())
 	}
 
-	initUserRole("root", Role{ID: "super_group", Name: "超级管理员"})
-	initUserRole("admin", Role{ID: "admin_group", Name: "管理员"})
-	initUserRole("user", Role{ID: "user_group", Name: "普通用户"})
+	initSystemUserRole()
 
 	createPaths("pub")
 
@@ -104,9 +102,6 @@ func main() {
 }
 
 func bindRoutes(r *gin.Engine) {
-
-	//tmp
-	r.POST("/test/", test)
 
 	r.GET("/", index)
 	r.GET("/login/", renderLogin)
@@ -243,10 +238,11 @@ func bindRoutes(r *gin.Engine) {
 	// router.NoRoute(renderStatus404)
 }
 
-func initUserRole(name string, role Role) {
-	password := "1234"
-	phone := "13579246810"
-	department := "system"
+func initSystemUserRole() {
+	name := cfgV.GetString("user.root")
+	password := cfgV.GetString("user.password")
+	group := cfgV.GetString("user.group")
+	role := Role{ID: group, Name: "管理员"}
 	user := User{}
 	db.Where("name = ?", name).First(&user)
 	if user.Name != "" {
@@ -258,21 +254,23 @@ func initUserRole(name string, role Role) {
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Role = []string{role.ID}
-	user.Phone = phone
-	user.Department = department
+	user.Department = "system"
 	//No verification required
 	user.JWT, user.Expires, _ = authMid.TokenGenerator(&user)
 	user.Activation = "yes"
-	user.Search = []string{name, phone, department}
+	user.Role = []string{role.ID}
 	// insertUser
 	if err := db.Create(&user).Error; err != nil {
 		log.Errorf("super user create error")
 		return
 	}
+
 	if err := db.Create(&role).Error; err != nil {
-		log.Errorf("super role create error")
+		log.Errorf("admin group create error")
 		return
 	}
 	casEnf.AddGroupingPolicy(name, role.ID)
+	//添加管理员组的用户管理权限
+	casEnf.AddPolicy(role.ID, "/users/*", "(GET)|(POST)")
+	casEnf.AddPolicy(role.ID, "/roles/*", "(GET)|(POST)")
 }

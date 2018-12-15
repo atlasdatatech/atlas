@@ -653,7 +653,11 @@ func deleteRole(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-
+	group := cfgV.GetString("user.group")
+	if rid == group {
+		res.FailMsg(c, "unable to system group")
+		return
+	}
 	casEnf.DeleteRole(rid)
 	err := db.Where("id = ?", rid).Delete(&Role{}).Error
 	if err != nil {
@@ -701,11 +705,10 @@ func getMapPerms(c *gin.Context) {
 }
 
 func listMaps(c *gin.Context) {
-
 	res := NewRes()
 	id := c.GetString(identityKey)
 	var maps []Map
-	if id == "root" || casEnf.HasRoleForUser(id, "super") {
+	if id == "root" {
 		db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Find(&maps)
 		res.DoneData(c, maps)
 		return
@@ -717,10 +720,10 @@ func listMaps(c *gin.Context) {
 		rperms := casEnf.GetPermissionsForUser(role)
 		uperms = append(uperms, rperms...)
 	}
-	mapids := make(map[string]bool)
+	mapids := make(map[string]string)
 	for _, p := range uperms {
 		if len(p) == 3 {
-			mapids[p[1]] = true
+			mapids[p[1]] = p[2]
 		}
 	}
 	var ids []string
@@ -728,6 +731,12 @@ func listMaps(c *gin.Context) {
 		ids = append(ids, k)
 	}
 	db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Where("id in (?)", ids).Find(&maps)
+
+	//添加每个map对应的该用户的权限
+	for _, m := range maps {
+		m.Action = mapids[m.ID]
+	}
+
 	res.DoneData(c, maps)
 	return
 }
@@ -740,7 +749,7 @@ func getMap(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.Enforce(id, mid, "GET") {
+	if !casEnf.Enforce(id, mid, "(READ)|(EDIT)") {
 		res.Fail(c, 403)
 		return
 	}
@@ -756,13 +765,11 @@ func getMap(c *gin.Context) {
 	res.DoneData(c, m.toBind())
 }
 
-func test(c *gin.Context) {
-}
-
 func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	if id == "root" || casEnf.HasRoleForUser(id, "super") {
+	group := cfgV.GetString("user.group")
+	if id == "root" || casEnf.HasRoleForUser(id, group) {
 		body := &MapBind{}
 		err := c.Bind(&body)
 		if err != nil {
@@ -772,12 +779,20 @@ func createMap(c *gin.Context) {
 		}
 		mm := body.toMap()
 		mm.ID, _ = shortid.Generate()
+		mm.User = id
+		if mm.Action == "" {
+			mm.Action = "(READ)|(EDIT)"
+		}
 		// insertUser
 		err = db.Create(mm).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
+		}
+		//管理员创建地图后自己拥有,root不需要
+		if id != "root" {
+			casEnf.AddPolicy(mm.User, mm.ID, mm.Action)
 		}
 		res.DoneData(c, gin.H{
 			"id": mm.ID,
@@ -796,7 +811,7 @@ func updInsetMap(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.Enforce(id, mid, "POST") {
+	if !casEnf.Enforce(id, mid, "EDIT") {
 		res.Fail(c, 403)
 		return
 	}
@@ -842,7 +857,7 @@ func deleteMap(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	if !casEnf.Enforce(id, mid, "POST") {
+	if !casEnf.Enforce(id, mid, "EDIT") {
 		res.Fail(c, 403)
 		return
 	}
