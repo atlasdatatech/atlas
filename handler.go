@@ -1992,6 +1992,9 @@ func cubeQuery(c *gin.Context) {
 			}
 			r = append(r, string(v))
 		}
+		if len(r) == 0 {
+			continue
+		}
 		t = append(t, r)
 	}
 	res.DoneData(c, t)
