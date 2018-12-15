@@ -551,14 +551,16 @@ func getRoleMaps(c *gin.Context) {
 	var pers []MapPerm
 	for _, perm := range uperms {
 		m := &Map{}
-		db.Where("id = ?", perm[1]).First(&m)
-		p := MapPerm{
-			ID:      perm[0],
-			MapID:   perm[1],
-			MapName: m.Title,
-			Action:  perm[2],
+		err := db.Where("id = ?", perm[1]).First(&m).Error
+		if err == nil { //有错误,说明改权限策略不是用于map的
+			p := MapPerm{
+				ID:      perm[0],
+				MapID:   perm[1],
+				MapName: m.Title,
+				Action:  perm[2],
+			}
+			pers = append(pers, p)
 		}
-		pers = append(pers, p)
 	}
 	res.DoneData(c, pers)
 }
