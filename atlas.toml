@@ -25,7 +25,6 @@
 		name   = "atlas"
 		
 	[buffers]
-		static = "static_buffers"
 		prefix = "block_"
 		suffix = "_buffers"
 		scales = "buffer_scales"

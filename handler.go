@@ -2083,40 +2083,45 @@ func getBuffers(c *gin.Context) {
 	name := c.Param("name")
 	rs := c.Query("radius")
 	t := c.Query("type")
-	fields := c.Query("fields")
-	filter := c.Query("filter")
 	bprefix := cfgV.GetString("buffers.prefix")
 	bsuffix := cfgV.GetString("buffers.suffix")
 	bname := name + bsuffix
-	if t == "static" {
-		bstatic := cfgV.GetString("buffers.static")
-		bname = bstatic
-	} else {
-		r, _ := strconv.ParseFloat(rs, 64)
-		if r != 0 {
-			if code := buffering(name, r); code != 200 {
-				res.Fail(c, code)
-			}
-		}
-		if t != "circle" {
-			bname = bprefix + bname
+	r, _ := strconv.ParseFloat(rs, 64)
+	if r != 0 {
+		if code := buffering(name, r); code != 200 {
+			res.Fail(c, code)
 		}
 	}
+	if t == "block" {
+		bname = bprefix + bname
+	}
+
+	fields := c.Query("fields")
+	filter := c.Query("filter")
 
 	if code := checkDataset(bname); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 
-	selStr := "st_asgeojson(geom) as geom "
+	selStr := "st_asgeojson(b.geom) as geom "
+
 	if "" != fields {
-		selStr = selStr + "," + fields
+		flds := strings.Split(fields, ",")
+		if len(flds) == 1 {
+			selStr = selStr + ", a." + flds[0]
+		} else {
+			selStr = selStr + ", a." + strings.Join(flds, ", a.")
+		}
 	}
-	var whr string
+	whr := " WHERE a.id=b.id "
 	if "" != filter {
-		whr = " WHERE " + filter
+		filter = strings.Replace(filter, " id ", " a.id ", -1)
+		filter = strings.Replace(filter, " geom ", " a.geom ", -1)
+		whr += " AND ( " + filter + " )"
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, bname, whr)
+	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, name, bname, whr)
+	log.Println(s)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -2184,7 +2189,7 @@ func getBuffers(c *gin.Context) {
 		fc.Append(f)
 	}
 	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, name, whr)
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(b.geom)) as extent FROM %s as a,%s as b %s;`, name, bname, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
