@@ -624,6 +624,9 @@ func newFeatrue(geoType string) *geojson.Feature {
 
 //Thumbnail 缩略图
 func Thumbnail(width, height uint, b64img string) string {
+	if b64img == "" {
+		return ""
+	}
 	pos := strings.Index(b64img, ";base64,")
 	imgbuf, err := base64.StdEncoding.DecodeString(b64img[pos+8:])
 	if err != nil {
