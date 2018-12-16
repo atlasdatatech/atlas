@@ -1824,10 +1824,6 @@ func getGeojson(c *gin.Context) {
 		}
 		fc.Append(f)
 	}
-
-	// var bbox struct {
-	// 	Extent string
-	// }
 	var extent []byte
 	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, name, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
@@ -2087,6 +2083,8 @@ func getBuffers(c *gin.Context) {
 	name := c.Param("name")
 	rs := c.Query("radius")
 	t := c.Query("type")
+	fields := c.Query("fields")
+	filter := c.Query("filter")
 	bprefix := cfgV.GetString("buffers.prefix")
 	bsuffix := cfgV.GetString("buffers.suffix")
 	bname := name + bsuffix
@@ -2109,7 +2107,16 @@ func getBuffers(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	s := fmt.Sprintf(`SELECT 机构号,名称,st_asgeojson(geom) as geom  FROM %s;`, bname)
+
+	selStr := "st_asgeojson(geom) as geom "
+	if "" != fields {
+		selStr = selStr + "," + fields
+	}
+	var whr string
+	if "" != filter {
+		whr = " WHERE " + filter
+	}
+	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, bname, whr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -2176,6 +2183,13 @@ func getBuffers(c *gin.Context) {
 		}
 		fc.Append(f)
 	}
+	var extent []byte
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, name, whr)
+	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
+	ext, err := geojson.UnmarshalGeometry(extent)
+	if err == nil {
+		fc.BBox = geojson.NewBBox(ext.Geometry().Bound())
+	}
 	gj, err := fc.MarshalJSON()
 	if err != nil {
 		log.Errorf("unable to MarshalJSON of featureclection.")
@@ -2183,7 +2197,6 @@ func getBuffers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, json.RawMessage(gj))
-	// res.DoneData(c, json.RawMessage(gj))
 }
 
 func getModels(c *gin.Context) {

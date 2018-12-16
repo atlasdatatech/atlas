@@ -350,9 +350,9 @@ func buffering(name string, r float64) int {
 	db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS %s;`, bname))
 
 	err := db.Exec(fmt.Sprintf(`CREATE TABLE %s AS 
-	SELECT a."机构号",a."名称",st_buffer(a.geom::geography,b.scale*%f)::geometry as geom FROM %s a, %s b
+	SELECT a."id", a."机构号",a."名称",st_buffer(a.geom::geography,b.scale*%f)::geometry as geom FROM %s a, %s b
 	WHERE a."%s"=b.type
-	GROUP BY a."机构号",a."名称",a.geom,b.scale;`, bname, r, name, bscales, btype)).Error
+	GROUP BY a."id",a."机构号",a."名称",a.geom,b.scale;`, bname, r, name, bscales, btype)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
@@ -384,14 +384,14 @@ func buffering(name string, r float64) int {
 	}
 	db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS %s;`, fname))
 	err = db.Exec(fmt.Sprintf(`CREATE TABLE %s AS
-	SELECT a.机构号,a."名称",st_union(b.geom) as geom FROM %s a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.机构号=b.机构号
-	GROUP BY a.机构号,a.名称;`, fname, name)).Error
+	SELECT a."id", a.机构号,a."名称",st_union(b.geom) as geom FROM %s a, tmp_polys b WHERE st_intersects(a.geom,b.geom) AND a.机构号=b.机构号
+	GROUP BY a."id", a.机构号,a.名称;`, fname, name)).Error
 	if err != nil {
 		log.Error(err)
 		return 5001
 	}
-	err = db.Exec(fmt.Sprintf(`INSERT INTO %s (机构号,名称,geom)
-	SELECT b.机构号,b.名称,b.geom FROM %s as b
+	err = db.Exec(fmt.Sprintf(`INSERT INTO %s (id,机构号,名称,geom)
+	SELECT b."id", b.机构号,b.名称,b.geom FROM %s as b
 	WHERE NOT EXISTS (SELECT 机构号 FROM %s WHERE 机构号=b.机构号 );`, fname, bname, fname)).Error
 	if err != nil {
 		log.Error(err)
