@@ -2092,7 +2092,7 @@ func getBuffers(c *gin.Context) {
 			res.Fail(c, code)
 		}
 	}
-	if t == "block" {
+	if t != "circle" {
 		bname = bprefix + bname
 	}
 
