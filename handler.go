@@ -2114,14 +2114,16 @@ func getBuffers(c *gin.Context) {
 			selStr = selStr + ", a." + strings.Join(flds, ", a.")
 		}
 	}
-	whr := " WHERE a.id=b.id "
+	whr := " WHERE a.id = b.id "
 	if "" != filter {
-		filter = strings.Replace(filter, " id ", " a.id ", -1)
-		filter = strings.Replace(filter, " geom ", " a.geom ", -1)
 		whr += " AND ( " + filter + " )"
+		whr = strings.Replace(whr, " id ", " a.id ", -1)
+		whr = strings.Replace(whr, " id=", " a.id= ", -1)
+		whr = strings.Replace(whr, " geom ", " a.geom ", -1)
+		whr = strings.Replace(whr, " (geom", " (a.geom ", -1)
+		whr = strings.Replace(whr, "geom) ", " a.geom) ", -1)
 	}
 	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, name, bname, whr)
-	log.Println(s)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
