@@ -13,6 +13,7 @@ import (
 
 	"github.com/casbin/casbin"
 	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/contrib/gzip"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 
@@ -80,7 +81,7 @@ func main() {
 	}
 
 	r := gin.Default()
-	// r.Use(gzip.Gzip(gzip.DefaultCompression))
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	config := cors.DefaultConfig()
 	// config.AllowAllOrigins = true
 	config.AllowOrigins = []string{"*"}
