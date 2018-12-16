@@ -105,6 +105,12 @@
 			"revisionTime": "2017-01-09T09:34:21Z"
 		},
 		{
+			"checksumSHA1": "/wcFZhyaLCRNmxUXdsxL8G8tozA=",
+			"path": "github.com/gin-gonic/contrib/gzip",
+			"revision": "39cfb9727134fef3120d2458fce5fab14265a46c",
+			"revisionTime": "2018-06-14T03:20:58Z"
+		},
+		{
 			"checksumSHA1": "C89PwrD8oleMlXQKCVuCHMFywlw=",
 			"path": "github.com/gin-gonic/contrib/static",
 			"revision": "39cfb9727134fef3120d2458fce5fab14265a46c",
@@ -277,6 +283,12 @@
 			"path": "github.com/mitchellh/mapstructure",
 			"revision": "fa473d140ef3c6adf42d6b391fe76707f1f243c8",
 			"revisionTime": "2018-08-24T00:32:02Z"
+		},
+		{
+			"checksumSHA1": "ARs6DX2FkmBhPs3eL9Znc9qaA1I=",
+			"path": "github.com/nfnt/resize",
+			"revision": "83c6a9932646f83e3267f353373d47347b6036b2",
+			"revisionTime": "2018-02-21T19:10:11Z"
 		},
 		{
 			"checksumSHA1": "rZDVWlHAQ1KtUSm/FsSAJ7KovAU=",

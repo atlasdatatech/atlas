@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	"github.com/nfnt/resize"
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
@@ -174,10 +179,6 @@ var rUsername, _ = regexp.Compile(`^[a-zA-Z0-9\-\_]+$`)
 var rEmail, _ = regexp.Compile(`^[a-zA-Z0-9\-\_\.\+]+@[a-zA-Z0-9\-\_\.]+\.[a-zA-Z0-9\-\_]+$`)
 
 var signupProviderReg, _ = regexp.Compile(`/[^a-zA-Z0-9\-\_]/g`)
-
-/**
-preparing id
-*/
 
 func slugify(str string) string {
 	str = strings.ToLower(str)
@@ -619,4 +620,49 @@ func newFeatrue(geoType string) *geojson.Feature {
 	// 	res.Fail(c, 5001)
 	// 	return
 	// }
+}
+
+//Thumbnail 缩略图
+func Thumbnail(width, height uint, b64img string) string {
+	pos := strings.Index(b64img, ";base64,")
+	imgbuf, err := base64.StdEncoding.DecodeString(b64img[pos+8:])
+	if err != nil {
+		log.Error(err)
+		return ""
+	}
+	switch b64img[5:pos] {
+	case "image/png":
+		pngI, err := png.Decode(bytes.NewReader(imgbuf))
+		if err != nil {
+			log.Error(err)
+			return ""
+		}
+		thumbnail := resize.Thumbnail(width, height, pngI, resize.Lanczos3)
+		data := new(bytes.Buffer)
+		err = png.Encode(data, thumbnail)
+		if err != nil {
+			log.Error(err)
+			return ""
+		}
+		src := base64.StdEncoding.EncodeToString(data.Bytes())
+		return "data:image/png;base64," + src
+	case "image/jpeg":
+		jpgI, err := jpeg.Decode(bytes.NewReader(imgbuf))
+		if err != nil {
+			log.Error(err)
+			return ""
+		}
+		thumbnail := resize.Thumbnail(width, height, jpgI, resize.Lanczos3)
+		data := new(bytes.Buffer)
+		err = jpeg.Encode(data, thumbnail, &jpeg.Options{
+			Quality: 80,
+		})
+		if err != nil {
+			log.Error(err)
+			return ""
+		}
+		src := base64.StdEncoding.EncodeToString(data.Bytes())
+		return "data:image/jpeg;base64," + src
+	}
+	return ""
 }
