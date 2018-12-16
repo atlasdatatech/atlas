@@ -218,6 +218,21 @@ type Poi struct {
 	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
+// Plan 规划成果,机构号,名称,类型,年份,规划建议,实施时间,X,Y,sid
+type Plan struct {
+	ID        uint      `json:"id" gorm:"primary_key"`
+	No        string    `gorm:"column:机构号;index"`
+	Name      string    `gorm:"column:名称"`
+	Type      string    `gorm:"column:类型"`
+	Year      string    `gorm:"column:年份"`
+	Advice    string    `gorm:"column:规划建议"`
+	Implement string    `gorm:"column:实施时间"`
+	SID       string    `gorm:"column:sid"`
+	X         float32   ``
+	Y         float32   ``
+	Geom      orb.Point `sql:"type:geometry(Geometry,4326)"`
+}
+
 // M1 立地条件
 type M1 struct {
 	ID     uint    `json:"id" gorm:"primary_key"`

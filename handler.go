@@ -1667,7 +1667,7 @@ func importFiles(c *gin.Context) {
 		var header, search string
 		updateGeom := false
 		switch name {
-		case "banks", "others", "pois":
+		case "banks", "others", "pois", "plans":
 			switch name {
 			case "banks":
 				header = "机构号,名称,营业状态,行政区,网点类型,营业部,管理行,权属,营业面积,到期时间,装修时间,人数,行评等级,X,Y"
@@ -1678,6 +1678,8 @@ func importFiles(c *gin.Context) {
 			case "pois":
 				header = "名称,类型,性质,建筑面积,热度,人均消费,均价,户数,交付时间,职工人数,备注,X,Y,SID"
 				search = ",search =ARRAY[名称,备注]"
+			case "plans":
+				header = "机构号,名称,类型,年份,规划建议,实施时间,X,Y,SID"
 			}
 			updateGeom = true
 			// datasetType = TypePoint
