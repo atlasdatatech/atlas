@@ -481,6 +481,11 @@ func calcM3() error {
 	var tcnt int
 	db.Raw(`SELECT count(*) FROM pois;`).Row().Scan(&tcnt)
 	fcnt := float32(tcnt) // / 100.0
+
+	if !db.HasTable(fname) {
+		buffering("banks", 300)
+	}
+
 	st := fmt.Sprintf(`DROP TABLE IF EXISTS m3_tmp1;
 	CREATE TABLE m3_tmp1 AS
 	SELECT b.id, count(a.id)/%f as res FROM pois a,%s b WHERE a."类型" in ('1','11') AND st_contains(b.geom,a.geom)
@@ -522,7 +527,7 @@ func calcM3() error {
 	if query.Error != nil {
 		return query.Error
 	}
-	st = fmt.Sprintf(`UPDATE m3 as a SET "机构号"=b."机构号", "名称"=b."名称" FROM (SELECT 机构号,名称 FROM banks) as b WHERE a.id=b.id;`)
+	st = fmt.Sprintf(`UPDATE m3 as a SET "机构号"=b."机构号", "名称"=b."名称" FROM (SELECT id,机构号,名称 FROM banks) as b WHERE a.id=b.id;`)
 	query = db.Exec(st)
 	if query.Error != nil {
 		log.Error(query.Error)
@@ -538,13 +543,18 @@ func calcM4() error {
 	bname := "banks" + bsuffix
 	fname := bprefix + bname
 
+	if !db.HasTable(fname) {
+		buffering("banks", 300)
+	}
+
 	weights := cfgV.GetString("models.m4.weights")
+
 	scales := cfgV.GetString("models.m4.scales")
 
 	db.Exec(`TRUNCATE TABLE m4;`)
 
 	st := fmt.Sprintf(`INSERT INTO m4(id,"总得分")
-	SELECT id,sum(weight*g.scale*cnt) FROM 
+	SELECT f.id,sum(weight*g.scale*cnt) FROM 
 		(SELECT d.id,d.type,d.cnt,e.weight FROM
 			(SELECT id, "银行类别" as name,"网点类型" as type,COUNT(*) as cnt FROM  
 				(SELECT b.id,a."银行类别",a."网点类型" FROM others a,%s b 
@@ -552,12 +562,12 @@ func calcM4() error {
 			GROUP BY c.id, c."银行类别",c."网点类型" ORDER BY c.id, c."银行类别",c."网点类型") d, %s e 
 		WHERE d.name=e."type") f,%s g
 	WHERE f.type=g.type
-	GROUP BY id;`, fname, weights, scales)
+	GROUP BY f.id;`, fname, weights, scales)
 	query := db.Exec(st)
 	if query.Error != nil {
 		return query.Error
 	}
-	st = fmt.Sprintf(`UPDATE m4 as a SET "机构号"=b."机构号","名称"=b."名称" FROM (SELECT 机构号,名称 FROM banks) as b WHERE a.id=b.id;`)
+	st = fmt.Sprintf(`UPDATE m4 as a SET "机构号"=b."机构号","名称"=b."名称" FROM (SELECT id,机构号,名称 FROM banks) as b WHERE a.id=b.id;`)
 	query = db.Exec(st)
 	if query.Error != nil {
 		log.Error(query.Error)

@@ -2083,26 +2083,31 @@ func getBuffers(c *gin.Context) {
 	name := c.Param("name")
 	rs := c.Query("radius")
 	t := c.Query("type")
-	bprefix := cfgV.GetString("buffers.prefix")
 	bsuffix := cfgV.GetString("buffers.suffix")
-	bname := name + bsuffix
-	r, _ := strconv.ParseFloat(rs, 64)
-	if r != 0 {
-		if code := buffering(name, r); code != 200 {
-			res.Fail(c, code)
-		}
+	tbname := name + bsuffix //circle
+	switch t {
+	case "circle":
+	case "block", "":
+		bprefix := cfgV.GetString("buffers.prefix")
+		tbname = bprefix + tbname
+	// case "time", "voronoi":
+	default:
+		res.FailMsg(c, "unkown buffer type")
+		return
 	}
-	if t != "circle" {
-		bname = bprefix + bname
+	r, _ := strconv.ParseFloat(rs, 64)
+	if r == 0 {
+		res.FailMsg(c, "invalid radius value")
+		return
+	}
+	if code := buffering(name, r); code != 200 {
+		log.Error(codes[code])
+		res.Fail(c, code)
+		return
 	}
 
 	fields := c.Query("fields")
 	filter := c.Query("filter")
-
-	if code := checkDataset(bname); code != 200 {
-		res.Fail(c, code)
-		return
-	}
 
 	selStr := "st_asgeojson(b.geom) as geom "
 
@@ -2123,7 +2128,7 @@ func getBuffers(c *gin.Context) {
 		whr = strings.Replace(whr, " (geom", " (a.geom ", -1)
 		whr = strings.Replace(whr, "geom) ", " a.geom) ", -1)
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, name, bname, whr)
+	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, name, tbname, whr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -2191,7 +2196,7 @@ func getBuffers(c *gin.Context) {
 		fc.Append(f)
 	}
 	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(b.geom)) as extent FROM %s as a,%s as b %s;`, name, bname, whr)
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(b.geom)) as extent FROM %s as a,%s as b %s;`, name, tbname, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
