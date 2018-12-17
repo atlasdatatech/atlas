@@ -30,6 +30,7 @@
 		scales = "buffer_scales"
 		scaleType = "网点类型"
 		blocks = "block_lines"
+		radius = 300
 
 
 	[models]

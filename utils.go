@@ -483,7 +483,10 @@ func calcM3() error {
 	fcnt := float32(tcnt) // / 100.0
 
 	if !db.HasTable(fname) {
-		buffering("banks", 300)
+		radius := cfgV.GetFloat64("buffers.radius")
+		if code := buffering("banks", radius); code != 200 {
+			return fmt.Errorf("buffering error")
+		}
 	}
 
 	st := fmt.Sprintf(`DROP TABLE IF EXISTS m3_tmp1;
@@ -544,7 +547,10 @@ func calcM4() error {
 	fname := bprefix + bname
 
 	if !db.HasTable(fname) {
-		buffering("banks", 300)
+		radius := cfgV.GetFloat64("buffers.radius")
+		if code := buffering("banks", radius); code != 200 {
+			return fmt.Errorf("buffering error")
+		}
 	}
 
 	weights := cfgV.GetString("models.m4.weights")
