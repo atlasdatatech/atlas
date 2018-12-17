@@ -712,6 +712,9 @@ func listMaps(c *gin.Context) {
 	var maps []Map
 	if id == "root" {
 		db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Find(&maps)
+		for i := 0; i < len(maps); i++ {
+			maps[i].Action = "EDIT"
+		}
 		res.DoneData(c, maps)
 		return
 	}
@@ -735,8 +738,8 @@ func listMaps(c *gin.Context) {
 	db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Where("id in (?)", ids).Find(&maps)
 
 	//添加每个map对应的该用户的权限
-	for _, m := range maps {
-		m.Action = mapids[m.ID]
+	for i := 0; i < len(maps); i++ {
+		maps[i].Action = mapids[maps[i].ID]
 	}
 
 	res.DoneData(c, maps)
