@@ -167,6 +167,7 @@ func bindRoutes(r *gin.Engine) {
 		maproute.GET("/", listMaps)
 		maproute.GET("/:id/", getMap)
 		maproute.GET("/:id/perms/", getMapPerms)
+		maproute.GET("/:id/export/", exportMap)
 		maproute.POST("/", createMap)
 		maproute.POST("/:id/", updInsetMap)
 		maproute.POST("/:id/del/", deleteMap)
@@ -183,6 +184,8 @@ func bindRoutes(r *gin.Engine) {
 		studio.GET("/styles/upload/:sid/", renderSpriteUpload)
 		studio.GET("/tilesets/upload/", renderTilesetsUpload)
 		studio.GET("/datasets/upload/", renderDatasetsUpload)
+		studio.GET("/maps/import/", renderMapsImport)
+
 	}
 
 	styles := r.Group("/styles")
@@ -234,7 +237,14 @@ func bindRoutes(r *gin.Engine) {
 		datasets.POST("/:name/update/", updateInsertData)
 		datasets.POST("/:name/delete/", deleteData)
 	}
-
+	//utilroute
+	utilroute := r.Group("/util")
+	utilroute.Use(authMid.MiddlewareFunc())
+	{
+		// > utils
+		utilroute.GET("/export/maps/", exportMaps)
+		utilroute.POST("/import/maps/", importMaps)
+	}
 	//route not found
 	// router.NoRoute(renderStatus404)
 }

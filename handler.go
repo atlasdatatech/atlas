@@ -880,6 +880,13 @@ func deleteMap(c *gin.Context) {
 	res.Done(c, "")
 }
 
+func renderMapsImport(c *gin.Context) {
+	id := c.GetString(identityKey)
+	c.HTML(http.StatusOK, "import-m.html", gin.H{
+		"Title": "AtlasMap",
+		"User":  id,
+	})
+}
 func studioIndex(c *gin.Context) {
 	//public
 	c.HTML(http.StatusOK, "index.html", gin.H{
@@ -2512,4 +2519,153 @@ func deleteData(c *gin.Context) {
 		return
 	}
 	res.Done(c, "")
+}
+
+func exportMap(c *gin.Context) {
+	res := NewRes()
+	id := c.Param("id")
+	if id == "" {
+		res.FailMsg(c, "map id can not null ~")
+		return
+	}
+	dbmap := Map{}
+	if err := db.Where("id = ?", id).First(&dbmap).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+		res.FailMsg(c, "map id not found ~")
+		return
+	}
+	maps := []*MapBind{dbmap.toBind()}
+	data, _ := json.Marshal(maps)
+	yy, mm, dd := time.Now().Date()
+	h, m, s := time.Now().Clock()
+	filename := fmt.Sprintf(`%s_maps_%d_%d_%d_%d_%d_%d.json`, id, yy, mm, dd, h, m, s)
+	reader := bytes.NewReader(data)
+	contentLength := int64(len(data))
+	contentType := "application/json"
+	extraHeaders := map[string]string{
+		"Content-Disposition": fmt.Sprintf(`attachment; filename="%s"`, filename),
+	}
+	c.DataFromReader(http.StatusOK, contentLength, contentType, reader, extraHeaders)
+}
+
+func exportMaps(c *gin.Context) {
+	id := c.GetString(identityKey)
+	var maps []Map
+
+	if id == "root" {
+		db.Find(&maps)
+		for i := 0; i < len(maps); i++ {
+			maps[i].Action = "EDIT"
+		}
+	} else {
+		uperms := casEnf.GetPermissionsForUser(id)
+		roles := casEnf.GetRolesForUser(id)
+		for _, role := range roles {
+			rperms := casEnf.GetPermissionsForUser(role)
+			uperms = append(uperms, rperms...)
+		}
+		mapids := make(map[string]string)
+		for _, p := range uperms {
+			if len(p) == 3 {
+				mapids[p[1]] = p[2]
+			}
+		}
+		var ids []string
+		for k := range mapids {
+			ids = append(ids, k)
+		}
+		db.Where("id in (?)", ids).Find(&maps)
+
+		//添加每个map对应的该用户的权限
+		for i := 0; i < len(maps); i++ {
+			maps[i].Action = mapids[maps[i].ID]
+		}
+	}
+
+	var bindMaps []*MapBind
+	for _, m := range maps {
+		bindMaps = append(bindMaps, m.toBind())
+	}
+	data, _ := json.Marshal(bindMaps)
+	yy, mm, dd := time.Now().Date()
+	h, m, s := time.Now().Clock()
+	filename := fmt.Sprintf(`%s_maps_%d_%d_%d_%d_%d_%d.json`, id, yy, mm, dd, h, m, s)
+	// c.Writer.Header().Set("Content-Type", "application/json")
+	// c.Writer.Header().Set("Content-Encoding", "deflate")
+	reader := bytes.NewReader(data)
+	contentLength := int64(len(data))
+	contentType := "application/json"
+	extraHeaders := map[string]string{
+		"Content-Disposition": fmt.Sprintf(`attachment; filename="%s"`, filename),
+	}
+	c.DataFromReader(http.StatusOK, contentLength, contentType, reader, extraHeaders)
+}
+
+func importMaps(c *gin.Context) {
+	res := NewRes()
+	id := c.GetString(identityKey)
+	log.Print(id)
+	file, err := c.FormFile("file")
+	if err != nil {
+		res.Fail(c, 4046)
+		return
+	}
+
+	filename := file.Filename
+	// ext := filepath.Ext(filename)
+	// if !strings.EqualFold(ext, ".json") {
+	// }
+	f, err := file.Open()
+	if err != nil {
+		log.Errorf(`read map file error: %s; file: %s`, err, filename)
+		res.Fail(c, 5003)
+		return
+	}
+	defer f.Close()
+	buf := make([]byte, file.Size)
+	f.Read(buf)
+	var maps []MapBind
+	err = json.Unmarshal(buf, &maps)
+	if err != nil {
+		log.Errorf(`map file format error: %s; file: %s`, err, filename)
+		res.Fail(c, 5003)
+		return
+	}
+
+	var insertCnt, updateCnt, failedCnt int
+	for _, m := range maps {
+		mm := m.toMap()
+		err = db.Model(&Map{}).Where("id = ?", mm.ID).First(&Map{}).Error
+		if err != nil {
+			if gorm.IsRecordNotFoundError(err) {
+				err = db.Create(&mm).Error
+				if err != nil {
+					log.Error(err)
+					failedCnt++
+					continue
+				}
+				insertCnt++
+				continue
+			}
+			log.Error(err)
+			failedCnt++
+			continue
+		}
+		err = db.Model(&Map{}).Where("id = ?", mm.ID).Update(mm).Error
+		if err != nil {
+			log.Error(err)
+			failedCnt++
+			continue
+		}
+		updateCnt++
+	}
+	res.DoneData(c, gin.H{
+		"insert": insertCnt,
+		"update": updateCnt,
+		"failed": failedCnt,
+	})
 }

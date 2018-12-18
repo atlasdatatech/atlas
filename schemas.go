@@ -49,8 +49,8 @@ type Map struct {
 	Summary   string `json:"summary"`
 	User      string `json:"user"`
 	Action    string `json:"action"`
-	Thumbnail string `json:"thumbnail"`
 	Config    []byte `json:"config" gorm:"type:json"`
+	Thumbnail string `json:"thumbnail"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -70,8 +70,8 @@ type MapBind struct {
 	Summary   string      `form:"summary" json:"summary"`
 	User      string      `form:"user" json:"user"`
 	Action    string      `form:"action" json:"action"`
-	Thumbnail string      `form:"thumbnail" json:"thumbnail"`
 	Config    interface{} `form:"config" json:"config"`
+	Thumbnail string      `form:"thumbnail" json:"thumbnail"`
 }
 
 func (m *Map) toBind() *MapBind {
