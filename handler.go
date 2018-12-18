@@ -2642,6 +2642,9 @@ func importMaps(c *gin.Context) {
 		err = db.Model(&Map{}).Where("id = ?", mm.ID).First(&Map{}).Error
 		if err != nil {
 			if gorm.IsRecordNotFoundError(err) {
+				mm.User = id
+				mm.Action = "(READ)|(EDIT)"
+				casEnf.AddPolicy(mm.User, mm.ID, mm.Action)
 				err = db.Create(&mm).Error
 				if err != nil {
 					log.Error(err)
