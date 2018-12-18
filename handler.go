@@ -2608,67 +2608,71 @@ func exportMaps(c *gin.Context) {
 func importMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	log.Print(id)
-	file, err := c.FormFile("file")
-	if err != nil {
-		res.Fail(c, 4046)
-		return
-	}
-
-	filename := file.Filename
-	// ext := filepath.Ext(filename)
-	// if !strings.EqualFold(ext, ".json") {
-	// }
-	f, err := file.Open()
-	if err != nil {
-		log.Errorf(`read map file error: %s; file: %s`, err, filename)
-		res.Fail(c, 5003)
-		return
-	}
-	defer f.Close()
-	buf := make([]byte, file.Size)
-	f.Read(buf)
-	var maps []MapBind
-	err = json.Unmarshal(buf, &maps)
-	if err != nil {
-		log.Errorf(`map file format error: %s; file: %s`, err, filename)
-		res.Fail(c, 5003)
-		return
-	}
-
-	var insertCnt, updateCnt, failedCnt int
-	for _, m := range maps {
-		mm := m.toMap()
-		err = db.Model(&Map{}).Where("id = ?", mm.ID).First(&Map{}).Error
+	group := cfgV.GetString("user.group")
+	if id == "root" || casEnf.HasRoleForUser(id, group) {
+		file, err := c.FormFile("file")
 		if err != nil {
-			if gorm.IsRecordNotFoundError(err) {
-				mm.User = id
-				mm.Action = "(READ)|(EDIT)"
-				casEnf.AddPolicy(mm.User, mm.ID, mm.Action)
-				err = db.Create(&mm).Error
-				if err != nil {
-					log.Error(err)
-					failedCnt++
+			res.Fail(c, 4046)
+			return
+		}
+
+		filename := file.Filename
+		// ext := filepath.Ext(filename)
+		// if !strings.EqualFold(ext, ".json") {
+		// }
+		f, err := file.Open()
+		if err != nil {
+			log.Errorf(`read map file error: %s; file: %s`, err, filename)
+			res.Fail(c, 5003)
+			return
+		}
+		defer f.Close()
+		buf := make([]byte, file.Size)
+		f.Read(buf)
+		var maps []MapBind
+		err = json.Unmarshal(buf, &maps)
+		if err != nil {
+			log.Errorf(`map file format error: %s; file: %s`, err, filename)
+			res.Fail(c, 5003)
+			return
+		}
+
+		var insertCnt, updateCnt, failedCnt int
+		for _, m := range maps {
+			mm := m.toMap()
+			err = db.Model(&Map{}).Where("id = ?", mm.ID).First(&Map{}).Error
+			if err != nil {
+				if gorm.IsRecordNotFoundError(err) {
+					mm.User = id
+					mm.Action = "(READ)|(EDIT)"
+					casEnf.AddPolicy(mm.User, mm.ID, mm.Action)
+					err = db.Create(&mm).Error
+					if err != nil {
+						log.Error(err)
+						failedCnt++
+						continue
+					}
+					insertCnt++
 					continue
 				}
-				insertCnt++
+				log.Error(err)
+				failedCnt++
 				continue
 			}
-			log.Error(err)
-			failedCnt++
-			continue
+			err = db.Model(&Map{}).Where("id = ?", mm.ID).Update(mm).Error
+			if err != nil {
+				log.Error(err)
+				failedCnt++
+				continue
+			}
+			updateCnt++
 		}
-		err = db.Model(&Map{}).Where("id = ?", mm.ID).Update(mm).Error
-		if err != nil {
-			log.Error(err)
-			failedCnt++
-			continue
-		}
-		updateCnt++
+		res.DoneData(c, gin.H{
+			"insert": insertCnt,
+			"update": updateCnt,
+			"failed": failedCnt,
+		})
+		return
 	}
-	res.DoneData(c, gin.H{
-		"insert": insertCnt,
-		"update": updateCnt,
-		"failed": failedCnt,
-	})
+	res.Fail(c, 403)
 }
