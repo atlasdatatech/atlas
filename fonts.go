@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/atlasdatatech/lzyh/glyphs"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -158,7 +157,7 @@ func getFontsPBF(fontPath string, fontstack string, fontrange string, fallbacks 
 	if 1 == len(buffers) {
 		return buffers[0]
 	}
-	pbf, err := glyphs.Combine(buffers, fonts)
+	pbf, err := Combine(buffers, fonts)
 	if err != nil {
 		log.Error("combine buffers error:", err)
 	}

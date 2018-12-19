@@ -25,7 +25,8 @@ func InitConf(v *viper.Viper) {
 		return
 	}
 	//配置默认值，如果配置内容中没有指定，就使用以下值来作为配置值，给定默认值是一个让程序更健壮的办法
-	v.SetDefault("port", "8080")
+	v.SetDefault("app.port", "8080")
+
 	v.SetDefault("jwt.realm", "atlasmap")
 	v.SetDefault("jwt.key", "salta-atad-6221")
 	v.SetDefault("jwt.timeOut", "720h")

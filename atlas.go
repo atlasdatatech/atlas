@@ -98,7 +98,7 @@ func main() {
 
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
 
-	r.Run(":" + cfgV.GetString("port"))
+	r.Run(":" + cfgV.GetString("app.port"))
 
 }
 

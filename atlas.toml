@@ -1,8 +1,18 @@
-	port="8080"
+	[app]
+		port="8080"
+
 	[user]
 		root = "root"
 		password = "1234"
 		group = "admin_group"
+
+	[db]
+		host     = "127.0.0.1"
+		port     = "5432"
+		user     = "atlas"
+		password = "atlas"
+		name   = "atlas"
+
 	[jwt]
 		realm="atlasmap"
 		key="salta-atad-6221"
@@ -17,13 +27,6 @@
 		user = 7
 		expiration = "-5m"
 
-	[db]
-		host     = "127.0.0.1"
-		port     = "5432"
-		user     = "atlas"
-		password = "atlas"
-		name   = "atlas"
-		
 	[buffers]
 		prefix = "block_"
 		suffix = "_buffers"
@@ -31,7 +34,6 @@
 		scaleType = "网点类型"
 		blocks = "block_lines"
 		radius = 300
-
 
 	[models]
 		[models.m2]
