@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
 	"github.com/jinzhu/gorm"
+	_ "github.com/mattn/go-oci8"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,6 +37,33 @@ func index(c *gin.Context) {
 		})
 	}
 	c.Redirect(http.StatusFound, "/studio/")
+}
+
+func ping(c *gin.Context) {
+	res := NewRes()
+	// addrs, err := net.InterfaceAddrs()
+	// if err != nil {
+	// 	log.Error(err)
+	// 	res.FailMsg(c, "获取服务器地址失败")
+	// 	return
+	// }
+	// var ips []string
+	// for _, address := range addrs {
+	// 	// 检查ip地址判断是否回环地址
+	// 	if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+	// 		if ipnet.IP.To4() != nil {
+	// 			ips = append(ips, ipnet.IP.String())
+	// 		}
+	// 	}
+	// }
+	err := db.DB().Ping()
+	if err != nil {
+		res.FailErr(c, err)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"currentDB": currentDB + " living",
+	})
 }
 
 func renderLogin(c *gin.Context) {
@@ -2675,4 +2704,182 @@ func importMaps(c *gin.Context) {
 		return
 	}
 	res.Fail(c, 403)
+}
+
+func coreOrclQuery(c *gin.Context) {
+	res := NewRes()
+	os.Setenv("NLS_LANG", "")
+	var openString string
+	openString = `atlas/1234@127.0.0.1:1521/XE`
+	// [username/[password]@]host[:port][/instance_name][?param1=value1&...&paramN=valueN]
+	// A normal simple Open to localhost would look like:
+	// db, err := sql.Open("oci8", "127.0.0.1")
+	// For testing, need to use additional variables
+	dbOrcl, err := sql.Open("oci8", openString)
+	if err != nil {
+		fmt.Printf("Open orcl error is not nil: %v", err)
+		return
+	}
+	if dbOrcl == nil {
+		fmt.Println("dbOrcl is nil")
+		return
+	}
+
+	// defer close database
+	defer func() {
+		err = dbOrcl.Close()
+		if err != nil {
+			fmt.Println("Close error is not nil:", err)
+		}
+	}()
+
+	var rows *sql.Rows
+	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
+	defer cancel()
+	rows, err = dbOrcl.QueryContext(ctx, `select 机构号 as a,年份 as b,总存款日均 as c from "savings"`)
+	if err != nil {
+		fmt.Println("QueryContext error is not nil:", err)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	var t [][]string
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]sql.RawBytes, len(cols))
+		valsScer := make([]interface{}, len(vals))
+		for i := range vals {
+			valsScer[i] = &vals[i]
+		}
+
+		err = rows.Scan(valsScer...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		// sv := &NewSaving{Name: string(vals[0]), BankNo: string(vals[1])}
+		// db.Create(sv)
+
+		var r []string
+		for _, v := range vals {
+			// skip nil values.
+			if v == nil {
+				continue
+			}
+			r = append(r, string(v))
+		}
+
+		if len(r) == 0 {
+			continue
+		}
+		t = append(t, r)
+	}
+	res.DoneData(c, t)
+}
+
+func setOrclAutoInterval(c *gin.Context) {
+	res := NewRes()
+	interval := c.Query("interval")
+	syn := cfgV.GetString("core-orcl.sync")
+	if syn != "on" {
+		log.Info("atlas turn down sync from core orcl ~")
+		return
+	}
+	if interval == "" {
+		//关闭同步
+		if coreOrclIterval == 0 {
+			return
+		}
+		coreOrclIterval = 0
+		coreOrclChan <- struct{}{}
+	} else {
+		//更新同步时间
+		coreOrclIterval, _ = time.ParseDuration(interval)
+		coreOrclChan <- struct{}{}
+		go orclSyncer()
+	}
+	res.Done(c, "")
+}
+
+func coreOrclInfo(c *gin.Context) {
+	res := NewRes()
+	os.Setenv("NLS_LANG", "")
+	var openString string
+	openString = `atlas/1234@127.0.0.1:1521/XE`
+	// [username/[password]@]host[:port][/instance_name][?param1=value1&...&paramN=valueN]
+	// A normal simple Open to localhost would look like:
+	// db, err := sql.Open("oci8", "127.0.0.1")
+	// For testing, need to use additional variables
+	dbOrcl, err := sql.Open("oci8", openString)
+	if err != nil {
+		fmt.Printf("Open orcl error is not nil: %v", err)
+		return
+	}
+	if dbOrcl == nil {
+		fmt.Println("dbOrcl is nil")
+		return
+	}
+
+	// defer close database
+	defer func() {
+		err = dbOrcl.Close()
+		if err != nil {
+			fmt.Println("Close error is not nil:", err)
+		}
+	}()
+
+	var rows *sql.Rows
+	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Second)
+	defer cancel()
+	rows, err = dbOrcl.QueryContext(ctx, `select 机构号 as a,年份 as b,总存款日均 as c from "savings"`)
+	if err != nil {
+		fmt.Println("QueryContext error is not nil:", err)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	var t [][]string
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]sql.RawBytes, len(cols))
+		valsScer := make([]interface{}, len(vals))
+		for i := range vals {
+			valsScer[i] = &vals[i]
+		}
+
+		err = rows.Scan(valsScer...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		// sv := &NewSaving{Name: string(vals[0]), BankNo: string(vals[1])}
+		// db.Create(sv)
+
+		var r []string
+		for _, v := range vals {
+			// skip nil values.
+			if v == nil {
+				continue
+			}
+			r = append(r, string(v))
+		}
+
+		if len(r) == 0 {
+			continue
+		}
+		t = append(t, r)
+	}
+	res.DoneData(c, t)
 }

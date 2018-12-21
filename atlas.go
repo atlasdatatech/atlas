@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
@@ -39,13 +40,18 @@ var authMid *jwt.GinJWTMiddleware
 
 var pubSet *ServiceSet
 
+var currentDB string
+
+var coreOrclIterval time.Duration
+var coreOrclChan chan struct{}
+
 func main() {
 	log.SetLevel(log.DebugLevel)
 	cfgV = viper.New()
 	InitConf(cfgV)
 	identityKey = cfgV.GetString("jwt.identityKey")
 
-	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
+	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.master.host"), cfgV.GetString("db.master.port"), cfgV.GetString("db.master.user"), cfgV.GetString("db.master.password"), cfgV.GetString("db.master.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
@@ -56,7 +62,9 @@ func main() {
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
+		pg.AutoMigrate(&BranchInfo{}, &SaveInfo{}, &LoanInfo{}, &ProfitInfo{})
 		db = pg
+		currentDB = "master"
 	}
 	defer pg.Close()
 
@@ -99,12 +107,12 @@ func main() {
 	bindRoutes(r) // --> cmd/go-getting-started/routers.go
 
 	r.Run(":" + cfgV.GetString("app.port"))
-
 }
 
 func bindRoutes(r *gin.Engine) {
 
 	r.GET("/", index)
+	r.GET("/ping/", ping)
 	r.GET("/login/", renderLogin)
 	r.POST("/login/", login)
 
@@ -245,6 +253,15 @@ func bindRoutes(r *gin.Engine) {
 		utilroute.GET("/export/maps/", exportMaps)
 		utilroute.POST("/import/maps/", importMaps)
 	}
+
+	orclCore := r.Group("/orcl")
+	orclCore.Use(authMid.MiddlewareFunc())
+	{
+		// > utils
+		orclCore.GET("/sync/", coreOrclQuery)
+		orclCore.GET("/sync/interval/", setOrclAutoInterval)
+		orclCore.GET("/info/", coreOrclInfo)
+	}
 	//route not found
 	// router.NoRoute(renderStatus404)
 }
@@ -284,4 +301,65 @@ func initSystemUserRole() {
 	//添加管理员组的用户管理权限
 	casEnf.AddPolicy(role.ID, "/users/*", "(GET)|(POST)")
 	casEnf.AddPolicy(role.ID, "/roles/*", "(GET)|(POST)")
+}
+
+func initAutoHA() {
+	ha := cfgV.GetString("db.ha")
+	if ha != "on" {
+		log.Info("pg ha not enabled ~")
+		return
+	}
+	dbPingIterval := cfgV.GetDuration("db.pinginterval")
+	go func() {
+		ticker := time.NewTicker(dbPingIterval * time.Millisecond)
+		continuous := 0
+		for {
+			select {
+			case <-ticker.C:
+				err := db.DB().Ping()
+				if err != nil {
+					continuous++
+				} else {
+					continuous = 0
+				}
+			}
+			if continuous > 10 {
+				//db error
+				pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.slave.host"), cfgV.GetString("db.master.port"), cfgV.GetString("db.slave.user"), cfgV.GetString("db.slave.password"), cfgV.GetString("db.slave.name"))
+				log.Infof("atlas switching to %s", pgConnInfo)
+				pg, err := gorm.Open("postgres", pgConnInfo)
+				if err != nil {
+					log.Fatal("pg switch db error:" + err.Error())
+				} else {
+					db = pg
+					currentDB = "slave"
+					log.Infof("atlas succeed switch to %s", pgConnInfo)
+				}
+				return
+			}
+		}
+	}()
+}
+
+func initAutoOrcl() {
+	syn := cfgV.GetString("core-orcl.sync")
+	if syn != "on" {
+		log.Info("atlas turn down sync from core orcl ~")
+		return
+	}
+	coreOrclIterval = cfgV.GetDuration("core-orcl.interval")
+	coreOrclChan = make(chan struct{})
+	go orclSyncer()
+}
+
+func orclSyncer() {
+	ticker := time.NewTicker(coreOrclIterval * time.Millisecond)
+	for {
+		select {
+		case <-ticker.C:
+			//同步orcl数据至pg
+		case <-coreOrclChan:
+			return //退出
+		}
+	}
 }

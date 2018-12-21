@@ -154,30 +154,35 @@ func (b *DatasetBind) toDataset() *Dataset {
 
 // Bank 本行机构表
 type Bank struct {
-	ID      uint           `gorm:"primary_key"`
-	No      string         `json:"机构号" gorm:"column:机构号;index"`
-	Name    string         `json:"名称" gorm:"column:名称;index"`
-	State   string         `json:"营业状态" gorm:"column:营业状态"`
-	Region  string         `json:"行政区" gorm:"column:行政区"`
-	Type    string         `json:"网点类型" gorm:"column:网点类型"`
-	Depart  string         `json:"营业部" gorm:"column:营业部"`
-	Manager string         `json:"管理行" gorm:"column:管理行"`
-	House   string         `json:"权属" gorm:"column:权属"`
-	Area    float32        `json:"营业面积" gorm:"column:营业面积"`
-	Term    *time.Time     `json:"到期时间" gorm:"column:到期时间"`
-	Date    *time.Time     `json:"装修时间" gorm:"column:装修时间"`
-	Staff   int            `json:"人数" gorm:"column:人数"`
-	Level   string         `json:"行评等级" gorm:"column:行评等级"`
-	X       float32        `json:"x"`
-	Y       float32        `json:"y"`
-	Geom    orb.Point      `json:"-" sql:"type:geometry(Geometry,4326)"`
-	Search  pq.StringArray `json:"search" gorm:"type:varchar[];index"`
+	ID        uint       `gorm:"primary_key"`
+	Brc       string     `json:"机构号" gorm:"column:机构号;index"`
+	No        string     `json:"编码" gorm:"column:编码"`
+	Name      string     `json:"名称" gorm:"column:名称;index"`
+	State     string     `json:"营业状态" gorm:"column:营业状态"`
+	Region    string     `json:"行政区" gorm:"column:行政区"`
+	Type      string     `json:"网点类型" gorm:"column:网点类型"`
+	Depart    string     `json:"营业部" gorm:"column:营业部"`
+	Manager   string     `json:"管理行" gorm:"column:管理行"`
+	House     string     `json:"权属" gorm:"column:权属"`
+	Area      float32    `json:"营业面积" gorm:"column:营业面积"`
+	Term      *time.Time `json:"到期时间" gorm:"column:到期时间"`
+	Date      *time.Time `json:"装修时间" gorm:"column:装修时间"`
+	Staff     int        `json:"人数" gorm:"column:人数"`
+	Level     string     `json:"行评等级" gorm:"column:行评等级"`
+	Save      float32    `json:"存款" gorm:"column:存款"`
+	Loan      float32    `json:"贷款" gorm:"column:贷款"`
+	Profit    float32    `json:"利润" gorm:"column:利润"`
+	UpdatedAt time.Time
+	X         float32        `json:"x"`
+	Y         float32        `json:"y"`
+	Geom      orb.Point      `json:"-" sql:"type:geometry(Geometry,4326)"`
+	Search    pq.StringArray `json:"search" gorm:"type:varchar[];index"`
 }
 
 // Saving 存款表,,,,,,,,
 type Saving struct {
 	ID       uint    `gorm:"primary_key"`
-	BankNo   string  `gorm:"column:机构号;index"`
+	Brc      string  `gorm:"column:机构号;index"`
 	Name     string  `gorm:"column:名称"`
 	Year     int     `gorm:"column:年份"`
 	Total    float32 `gorm:"column:总存款日均"`
@@ -226,7 +231,7 @@ type Poi struct {
 // Plan 规划成果,机构号,名称,类型,年份,规划建议,实施时间,X,Y,sid
 type Plan struct {
 	ID        uint      `json:"id" gorm:"primary_key"`
-	No        string    `gorm:"column:机构号;index"`
+	Brc       string    `gorm:"column:机构号;index"`
 	Name      string    `gorm:"column:名称"`
 	Type      string    `gorm:"column:类型"`
 	Year      string    `gorm:"column:年份"`
@@ -241,7 +246,7 @@ type Plan struct {
 // M1 立地条件
 type M1 struct {
 	ID     uint    `json:"id" gorm:"primary_key"`
-	BankNo string  `gorm:"column:机构号;index"`
+	Brc    string  `gorm:"column:机构号;index"`
 	Name   string  `gorm:"column:名称;index"`
 	C1     float32 `gorm:"column:商业规模"`
 	C2     float32 `gorm:"column:商业人流"`
@@ -265,7 +270,7 @@ type M1 struct {
 //M2 竞争力
 type M2 struct {
 	ID     uint    `json:"id" gorm:"primary_key"`
-	BankNo string  `gorm:"column:机构号;index"`
+	Brc    string  `gorm:"column:机构号;index"`
 	Name   string  `gorm:"column:名称;index"`
 	C1     float32 `gorm:"column:营业面积"`
 	C2     float32 `gorm:"column:人数"`
@@ -278,7 +283,7 @@ type M2 struct {
 //M3 资源分析
 type M3 struct {
 	ID     uint    `json:"id" gorm:"primary_key"`
-	BankNo string  `gorm:"column:机构号;index"`
+	Brc    string  `gorm:"column:机构号;index"`
 	Name   string  `gorm:"column:名称;index"`
 	C1     float32 `gorm:"column:商业资源"`
 	C2     float32 `gorm:"column:对公资源"`
@@ -289,7 +294,7 @@ type M3 struct {
 //M4 竞争力分析
 type M4 struct {
 	ID     uint    `json:"id" gorm:"primary_key"`
-	BankNo string  `gorm:"column:机构号;index"`
+	Brc    string  `gorm:"column:机构号;index"`
 	Name   string  `gorm:"column:名称;index"`
 	Result float32 `gorm:"column:总得分"`
 }
@@ -335,6 +340,43 @@ type M4Scale struct {
 	ID    uint `gorm:"primary_key"`
 	Type  string
 	Scale float32
+}
+
+//BranchInfo 机构信息表,,,,,,,,
+type BranchInfo struct {
+	ID      uint   `gorm:"primary_key"`
+	Brc     string `gorm:"column:brc;index"`
+	Name    string
+	Short   string
+	Address string
+	Phone   string
+	Last    time.Time
+	Begin   time.Time
+}
+
+//SaveInfo 贷款表,,,,,,,,
+type SaveInfo struct {
+	ID   uint   `gorm:"primary_key"`
+	Brc  string `gorm:"column:brc;index"`
+	Bal  float32
+	Ctrl string //save,term,iner
+}
+
+//LoanInfo 贷款表,,,,,,,,
+type LoanInfo struct {
+	ID   uint   `gorm:"primary_key"`
+	Brc  string `gorm:"column:brc;index"`
+	Bal  float32
+	Ctrl string //贷款1,2,3,4
+}
+
+//ProfitInfo 贷款表,,,,,,,,
+type ProfitInfo struct {
+	ID     uint   `gorm:"primary_key"`
+	Brc    string `gorm:"column:brc;index"`
+	Income float32
+	Outlay float32
+	Profit float32 //income-outlay
 }
 
 func validate(name string, password string) error {

@@ -1,5 +1,5 @@
 	[app]
-		port="8080"
+		port="1226"
 
 	[user]
 		root = "root"
@@ -7,6 +7,15 @@
 		group = "admin_group"
 
 	[db]
+		ha = "on"#on开启pg高可用,off关闭pg高可用
+		pinginterval = "5m"
+	[db.master]
+		host     = "127.0.0.1"
+		port     = "5432"
+		user     = "atlas"
+		password = "atlas"
+		name   = "atlas"
+	[db.slave]
 		host     = "127.0.0.1"
 		port     = "5432"
 		user     = "atlas"
@@ -47,3 +56,7 @@
 		[models.m5]
 		field = "银行类别"
 		values = ["中国银行","建设银行","工商银行","农业银行","兰州农商行","甘肃银行"]
+	[core-orcl]
+		orcl = "atlas/1234@127.0.0.1:1521/XE" #单位可以是 秒->s, 分钟->m, 小时->h
+		sync = "on" #on打开自动同步,off关闭自动同步
+		interval = "3s" #单位可以是,秒->s, 分钟->m, 小时->h
