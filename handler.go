@@ -61,9 +61,7 @@ func ping(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	res.DoneData(c, gin.H{
-		"currentDB": currentDB + " living",
-	})
+	res.DoneData(c, currentDB+" living")
 }
 
 func renderLogin(c *gin.Context) {
@@ -2057,7 +2055,7 @@ func queryExec(c *gin.Context) {
 	defer rows.Close()
 
 	cols, _ := rows.ColumnTypes()
-	var ams []map[string]interface{}
+	var ams [][]interface{}
 	for rows.Next() {
 		// Create a slice of interface{}'s to represent each column,
 		// and a second slice to contain pointers to each item in the columns slice.
@@ -2075,24 +2073,24 @@ func queryExec(c *gin.Context) {
 
 		// Create our map, and retrieve the value for each column from the pointers slice,
 		// storing it in the map with the name of the column as the key.
-		m := make(map[string]interface{})
+		m := make([]interface{}, len(cols))
 		for i, col := range columns {
-			if cols[i].Name() == "geom" || cols[i].Name() == "search" {
-				continue
-			}
+			// if cols[i].Name() == "geom" || cols[i].Name() == "search" {
+			// 	continue
+			// }
 			//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
 			v := string(col)
 			switch cols[i].DatabaseTypeName() {
 			case "INT", "INT4":
-				m[cols[i].Name()], _ = strconv.Atoi(v)
+				m[i], _ = strconv.Atoi(v)
 			case "NUMERIC", "DECIMAL": //number
-				m[cols[i].Name()], _ = strconv.ParseFloat(v, 64)
+				m[i], _ = strconv.ParseFloat(v, 64)
 			// case "BOOL":
 			// case "TIMESTAMPTZ":
 			// case "_VARCHAR":
 			// case "TEXT", "VARCHAR", "BIGINT":
 			default:
-				m[cols[i].Name()] = v
+				m[i] = v
 			}
 		}
 		// fmt.Print(m)
