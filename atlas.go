@@ -259,7 +259,7 @@ func bindRoutes(r *gin.Engine) {
 	{
 		// > utils
 		orclCore.GET("/sync/", coreOrclQuery)
-		orclCore.GET("/sync/interval/", setOrclAutoInterval)
+		orclCore.POST("/sync/", setOrclAutoInterval)
 		orclCore.GET("/info/", coreOrclInfo)
 	}
 	//route not found

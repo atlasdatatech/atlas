@@ -41,27 +41,15 @@ func index(c *gin.Context) {
 
 func ping(c *gin.Context) {
 	res := NewRes()
-	// addrs, err := net.InterfaceAddrs()
-	// if err != nil {
-	// 	log.Error(err)
-	// 	res.FailMsg(c, "获取服务器地址失败")
-	// 	return
-	// }
-	// var ips []string
-	// for _, address := range addrs {
-	// 	// 检查ip地址判断是否回环地址
-	// 	if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-	// 		if ipnet.IP.To4() != nil {
-	// 			ips = append(ips, ipnet.IP.String())
-	// 		}
-	// 	}
-	// }
 	err := db.DB().Ping()
 	if err != nil {
 		res.FailErr(c, err)
 		return
 	}
-	res.DoneData(c, currentDB+" living")
+	dt := time.Now().Format("2006-01-02 15:04:05")
+	res.DoneData(c, gin.H{
+		"status": fmt.Sprintf(`%s → %s living ~`, dt, currentDB),
+	})
 }
 
 func renderLogin(c *gin.Context) {
@@ -2783,13 +2771,23 @@ func coreOrclQuery(c *gin.Context) {
 
 func setOrclAutoInterval(c *gin.Context) {
 	res := NewRes()
-	interval := c.Query("interval")
 	syn := cfgV.GetString("core-orcl.sync")
 	if syn != "on" {
 		log.Info("atlas turn down sync from core orcl ~")
+		res.FailMsg(c, "atlas turn down sync from core orcl ~")
 		return
 	}
-	if interval == "" {
+
+	var body struct {
+		Duration float64 `bounding:"required"`
+	}
+	err := c.BindJSON(&body)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
+		return
+	}
+	if body.Duration <= 0 {
 		//关闭同步
 		if coreOrclIterval == 0 {
 			return
@@ -2798,7 +2796,7 @@ func setOrclAutoInterval(c *gin.Context) {
 		coreOrclChan <- struct{}{}
 	} else {
 		//更新同步时间
-		coreOrclIterval, _ = time.ParseDuration(interval)
+		coreOrclIterval = time.Duration(body.Duration) * time.Second
 		coreOrclChan <- struct{}{}
 		go orclSyncer()
 	}
