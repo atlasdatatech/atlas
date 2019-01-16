@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"time"
 
@@ -13,11 +14,12 @@ import (
 	"github.com/casbin/gorm-adapter"
 
 	"github.com/casbin/casbin"
+	"github.com/didip/tollbooth"
+	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/contrib/gzip"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
-
 	"github.com/jinzhu/gorm"
 	"github.com/spf13/viper"
 )
@@ -51,14 +53,15 @@ func main() {
 	InitConf(cfgV)
 	identityKey = cfgV.GetString("jwt.identityKey")
 
-	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.master.host"), cfgV.GetString("db.master.port"), cfgV.GetString("db.master.user"), cfgV.GetString("db.master.password"), cfgV.GetString("db.master.name"))
+	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{}, &Dataset{})
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
+		pg.AutoMigrate(&Datafile{}, &Dataset{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
@@ -72,7 +75,7 @@ func main() {
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
 
-	authMid, err = jwt.New(JWTMiddleware())
+	authMid, err = jwt.New(JWTMidHandler())
 	if err != nil {
 		log.Fatal("JWT Error:" + err.Error())
 	}
@@ -104,26 +107,63 @@ func main() {
 	templatesPath := filepath.Join(staticsHome, "/templates/*")
 	r.LoadHTMLGlob(templatesPath)
 
-	bindRoutes(r) // --> cmd/go-getting-started/routers.go
+	bindRouters(r) // --> cmd/go-getting-started/routers.go
 
 	r.Run(":" + cfgV.GetString("app.port"))
+	// https
+	// put path to cert instead of CONF.TLS.CERT
+	// put path to key instead of CONF.TLS.KEY
+	/*
+		go func() {
+				http.ListenAndServe(":80", http.HandlerFunc(redirectToHTTPS))
+			}()
+			errorHTTPS := router.RunTLS(":443", CONF.TLS.CERT, CONF.TLS.KEY)
+			if errorHTTPS != nil {
+				log.Fatal("HTTPS doesn't work:", errorHTTPS.Error())
+			}
+	*/
 }
 
-func bindRoutes(r *gin.Engine) {
+// force redirect to https from http
+// necessary only if you use https directly
+// put your domain name instead of CONF.ORIGIN
+func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
+	//http.Redirect(w, req, "https://" + CONF.ORIGIN + req.RequestURI, http.StatusMovedPermanently)
+}
+
+func bindRouters(r *gin.Engine) {
 
 	r.GET("/", index)
 	r.GET("/ping/", ping)
-	r.GET("/login/", renderLogin)
-	r.POST("/login/", login)
+
+	sign := r.Group("/sign")
+	// Create a limiter
+	limiter := tollbooth.NewLimiter(10, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Second})
+	// Set a custom expiration TTL for token bucket.
+	// limiter.SetTokenBucketExpirationTTL(time.Hour)
+	sign.Use(LimitMidHandler(limiter))
+	{
+		sign.GET("/up/", renderSignup)
+		sign.GET("/in/", renderSignin)
+		sign.GET("/reset/", renderForgot)
+		sign.GET("/reset/:user/:token/", renderReset)
+
+		sign.POST("/up/", signup)
+		sign.POST("/in/", signin)
+
+		sign.POST("/reset/", sendReset)
+		sign.POST("/reset/:user/:token/", resetPassword)
+		sign.GET("/verify/:user/:token/", verify)
+	}
 
 	//users
 	user := r.Group("/users")
 	user.Use(authMid.MiddlewareFunc())
-	user.Use(NewAuthorizer(casEnf))
+	user.Use(EnforceMidHandler(casEnf))
 	{
 		//authn > users
 		user.GET("/", listUsers)
-		user.POST("/", createUser)
+		user.POST("/", addUser)
 		user.GET("/:id/", getUser)
 		user.POST("/:id/", updateUser)
 		user.POST("/:id/del/", deleteUser)
@@ -141,7 +181,7 @@ func bindRoutes(r *gin.Engine) {
 	//roles
 	role := r.Group("/roles")
 	role.Use(authMid.MiddlewareFunc())
-	role.Use(NewAuthorizer(casEnf))
+	role.Use(EnforceMidHandler(casEnf))
 	{
 		//authn > roles
 		role.GET("/", listRoles)
@@ -159,8 +199,10 @@ func bindRoutes(r *gin.Engine) {
 	account.Use(authMid.MiddlewareFunc())
 	{
 		account.GET("/index/", renderAccount)
+
 		account.GET("/", getUser)
-		account.GET("/logout/", logout)
+		account.GET("/signout/", signout)
+		account.GET("/verify/", sendVerification)
 		account.GET("/update/", renderUpdateUser)
 		account.POST("/update/", updateUser)
 		account.GET("/refresh/", jwtRefresh)
@@ -226,6 +268,29 @@ func bindRoutes(r *gin.Engine) {
 		tilesets.GET("/:tid/", viewTile)   //view
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
+
+	dsets := r.Group("/dsets")
+	{
+		// > datasets
+		dsets.GET("/", listDatasets)
+		dsets.GET("/info/:name/", getDatasetInfo)
+
+		dsets.POST("/upload/", fileUpload)
+		dsets.POST("/preview/:id/", dataPreview)
+		dsets.POST("/import/:id/", dataImport)
+
+		dsets.POST("/distinct/:name/", getDistinctValues)
+		dsets.GET("/geojson/:name/", getGeojson)
+		dsets.POST("/query/:name/", queryGeojson)
+		dsets.POST("/cube/:name/", cubeQuery)
+		dsets.POST("/common/:name/", queryExec)
+		dsets.GET("/business/:name/", queryBusiness)
+		dsets.GET("/buffers/:name/", getBuffers)
+		dsets.GET("/models/:name/", getModels)
+		dsets.GET("/geos/:name/", searchGeos)
+		dsets.POST("/update/:name//", updateInsertData)
+		dsets.POST("/delete/:name/", deleteData)
+	}
 	datasets := r.Group("/datasets")
 	// datasets.Use(authMid.MiddlewareFunc())
 	{
@@ -284,7 +349,7 @@ func initSystemUserRole() {
 	user.Password = string(hashedPassword)
 	user.Department = "system"
 	//No verification required
-	user.JWT, user.Expires, _ = authMid.TokenGenerator(&user)
+	user.JWT, user.JWTExpires, _ = authMid.TokenGenerator(&user)
 	user.Activation = "yes"
 	user.Role = []string{role.ID}
 	// insertUser
@@ -325,7 +390,7 @@ func initAutoHA() {
 			}
 			if continuous > 10 {
 				//db error
-				pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.slave.host"), cfgV.GetString("db.master.port"), cfgV.GetString("db.slave.user"), cfgV.GetString("db.slave.password"), cfgV.GetString("db.slave.name"))
+				pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
 				log.Infof("atlas switching to %s", pgConnInfo)
 				pg, err := gorm.Open("postgres", pgConnInfo)
 				if err != nil {

@@ -14,10 +14,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/axgle/mahonia"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/nfnt/resize"
@@ -46,10 +46,14 @@ var codes = map[int]string{
 
 	401:  "未授权",
 	4011: "用户名或密码错误",
-	4012: "用户名或密码非法",
+	4012: "用户名非法,请使用字母,数字,短划线,下划线组合或用户名需少于32个字符",
+	4013: "邮箱非法,请使用能收到验证邮件的正确邮箱",
+	4014: "密码非法,请使用至少4位以上密码字符",
+	4015: "用户名已注册,请使用新的用户名",
+	4016: "邮箱已注册,请使用新的邮箱",
 
 	403:  "禁止访问",
-	4031: "用户已存在",
+	4031: "邮箱不存在",
 
 	404:  "找不到资源",
 	4041: "用户不存在",
@@ -141,6 +145,34 @@ func (res *Res) Reset() {
 	res.Msg = codes[http.StatusOK]
 }
 
+// scheme returns the underlying URL scheme of the original request.
+func scheme(r *http.Request) string {
+
+	if r.TLS != nil {
+		return "https"
+	}
+	if scheme := r.Header.Get("X-Forwarded-Proto"); scheme != "" {
+		return scheme
+	}
+	if scheme := r.Header.Get("X-Forwarded-Protocol"); scheme != "" {
+		return scheme
+	}
+	if ssl := r.Header.Get("X-Forwarded-Ssl"); ssl == "on" {
+		return "https"
+	}
+	if scheme := r.Header.Get("X-Url-Scheme"); scheme != "" {
+		return scheme
+	}
+	return "http"
+}
+
+// rootURL returns the root URL of the service. If s.Domain is non-empty, it
+// will be used as the hostname. If s.Path is non-empty, it will be used as a
+// prefix.
+func rootURL(r *http.Request) string {
+	return fmt.Sprintf("%s://%s", scheme(r), r.Host)
+}
+
 //MailConfig email config and data
 type MailConfig struct {
 	From     string
@@ -164,37 +196,12 @@ func (conf *MailConfig) SendMail() (err error) {
 		return template.Must(template.ParseFiles(conf.HTMLPath)).Execute(w, conf.Data)
 	})
 
-	d := gomail.NewDialer(cfgV.GetString("smtp.credentials.host"), 587, cfgV.GetString("smtp.credentials.user"), cfgV.GetString("smtp.credentials.password"))
+	d := gomail.NewDialer(cfgV.GetString("smtp.credentials.host"), cfgV.GetInt("smtp.credentials.port"), cfgV.GetString("smtp.credentials.user"), cfgV.GetString("smtp.credentials.password"))
 	return d.DialAndSend(m)
 }
 
 func getEscapedString(str string) string {
 	return strings.Replace(url.QueryEscape(str), "+", "%20", -1)
-}
-
-var rSlugify1, _ = regexp.Compile(`[^\w ]+`)
-var rSlugify2, _ = regexp.Compile(` +`)
-
-var rUsername, _ = regexp.Compile(`^[a-zA-Z0-9\-\_]+$`)
-var rEmail, _ = regexp.Compile(`^[a-zA-Z0-9\-\_\.\+]+@[a-zA-Z0-9\-\_\.]+\.[a-zA-Z0-9\-\_]+$`)
-
-var signupProviderReg, _ = regexp.Compile(`/[^a-zA-Z0-9\-\_]/g`)
-
-func slugify(str string) string {
-	str = strings.ToLower(str)
-	str = rSlugify1.ReplaceAllString(str, "")
-	str = rSlugify2.ReplaceAllString(str, "-")
-	return str
-}
-
-func slugifyName(str string) string {
-	str = strings.TrimSpace(str)
-	return rSlugify2.ReplaceAllString(str, " ")
-}
-
-//XHR xmlhttprequest
-func XHR(c *gin.Context) bool {
-	return strings.ToLower(c.Request.Header.Get("X-Requested-With")) == "xmlhttprequest"
 }
 
 func generateToken(n int) []byte {
@@ -696,4 +703,13 @@ func Thumbnail(width, height uint, b64img string) string {
 		return "data:image/jpeg;base64," + src
 	}
 	return ""
+}
+
+//ConvertToByte 编码转换
+func ConvertToByte(src string, srcCode string, targetCode string) []byte {
+	srcCoder := mahonia.NewDecoder(srcCode)
+	srcResult := srcCoder.ConvertString(src)
+	tagCoder := mahonia.NewDecoder(targetCode)
+	_, cdata, _ := tagCoder.Translate([]byte(srcResult), true)
+	return cdata
 }

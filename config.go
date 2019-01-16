@@ -35,9 +35,10 @@ func InitConf(v *viper.Viper) {
 	v.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:Token")
 	v.SetDefault("jwt.headName", "Bearer")
 
-	v.SetDefault("attempts.ip", 99)
-	v.SetDefault("attempts.user", 9)
-	v.SetDefault("attempts.expiration", "-5m")
+	v.SetDefault("app.ips", 127)
+	v.SetDefault("app.ipExpiration", "-1m")
+	v.SetDefault("user.attempts", 7)
+	v.SetDefault("user.attemptsExpiration", "-5m")
 
 	v.SetDefault("db.host", "127.0.0.1")
 	v.SetDefault("db.port", "5432")
