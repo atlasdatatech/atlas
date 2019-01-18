@@ -270,9 +270,14 @@ func bindRouters(r *gin.Engine) {
 	}
 
 	dsets := r.Group("/dsets")
+	dsets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
 		dsets.GET("/", listDatasets)
+		dsets.GET("/crs/", crsList)
+		dsets.GET("/encoding/", encodingList)
+		dsets.GET("/ftype/", fieldTypeList)
+
 		dsets.GET("/info/:name/", getDatasetInfo)
 
 		dsets.POST("/upload/", fileUpload)

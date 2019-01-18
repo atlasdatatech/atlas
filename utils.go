@@ -312,9 +312,8 @@ func updateDatasetInfo(did string) error {
 			t = TypeUnkown
 		}
 		field := Field{
-			Name:   col.Name(),
-			Type:   t,
-			Format: "",
+			Name: col.Name(),
+			Type: t,
 		}
 		fields = append(fields, field)
 	}
