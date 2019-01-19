@@ -282,7 +282,7 @@ func checkDataset(did string) int {
 }
 
 func updateDatasetInfo(did string) error {
-	s := fmt.Sprintf(`SELECT * FROM %s LIMIT 0;`, did)
+	s := fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0;`, did)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		return err
