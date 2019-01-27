@@ -297,19 +297,19 @@ func updateDatasetInfo(did string) error {
 		var t string
 		switch col.DatabaseTypeName() {
 		case "INT", "INT4":
-			t = TypeInteger
+			t = Int
 		case "NUMERIC": //number
-			t = TypeReal
+			t = Float
 		case "BOOL":
-			t = TypeBool
+			t = Bool
 		case "TIMESTAMPTZ":
-			t = TypeDate
+			t = Date
 		case "_VARCHAR":
-			t = TypeStringArray
+			t = StringArray
 		case "TEXT", "VARCHAR":
-			t = TypeString
+			t = string(String)
 		default:
-			t = TypeUnkown
+			t = string(String)
 		}
 		field := Field{
 			Name: col.Name(),
@@ -327,7 +327,7 @@ func updateDatasetInfo(did string) error {
 		ID:     did,
 		Name:   did,
 		Label:  did,
-		Type:   TypePolygon,
+		Type:   Polygon,
 		Fields: jfs,
 	}
 	//更新元数据

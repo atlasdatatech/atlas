@@ -267,12 +267,6 @@
 			"revisionTime": "2018-08-30T10:17:45Z"
 		},
 		{
-			"checksumSHA1": "KaYyijAuRd8Qgl0xPbOCVnVtq9k=",
-			"path": "github.com/mattn/go-oci8",
-			"revision": "052f5d97b9b62bcb40dfacf7d582940e8d526d95",
-			"revisionTime": "2018-11-30T07:23:07Z"
-		},
-		{
 			"checksumSHA1": "LLDogKE2YPlzT+fX0Nq30x/cBdg=",
 			"path": "github.com/mattn/go-sqlite3",
 			"revision": "0a88db3545c4089ce0f555f496bfc78c491699e5",

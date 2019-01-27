@@ -1,16 +1,16 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
-	"path"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,8 +20,6 @@ import (
 	"github.com/axgle/mahonia"
 	"github.com/jinzhu/gorm"
 	shp "github.com/jonas-p/go-shp"
-	"github.com/kniren/gota/dataframe"
-	"github.com/kniren/gota/series"
 
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	// "github.com/paulmach/orb/encoding/wkb"
@@ -64,11 +62,13 @@ type FieldType string
 
 // Supported Series Types
 const (
-	String FieldType = "string"
-	Bool             = "bool"
-	Int              = "int"
-	Float            = "float"
-	Date             = "date"
+	String      FieldType = "string"
+	Bool                  = "bool"
+	Int                   = "int"
+	Float                 = "float"
+	Date                  = "date"
+	StringArray           = "string_array"
+	Geojson               = "geojson"
 )
 
 //FieldTypes 支持的字段类型
@@ -91,6 +91,7 @@ type Datafile struct {
 	Lon       string  `json:"lon"`
 	Fields    []Field `json:"fields"`
 	Process   string  `json:"process"`
+	Overwrite bool    `json:"overwrite"`
 	CreatedAt time.Time
 	DeletedAt *time.Time `sql:"index"`
 }
@@ -110,6 +111,17 @@ type DataPreview struct {
 	Rows      [][]string `json:"rows" form:"rows"`
 	Count     int        `json:"count" form:"count"`
 	Update    bool       `json:"update" form:"update"`
+}
+
+// ImportTask 数据导入信息预览
+type ImportTask struct {
+	ID       string `json:"id" form:"id" binding:"required"`
+	Name     string `json:"name" form:"name" binding:"required"`
+	Fail     int    `json:"fail" form:"fail"`
+	Succeed  int    `json:"succeed" form:"succeed"`
+	Count    int    `json:"count" form:"count"`
+	Progress int    `json:"progress" form:"progress"`
+	State    string `json:"state"`
 }
 
 // Field 字段
@@ -232,20 +244,83 @@ func (df *Datafile) getPreview() *DataPreview {
 		log.Errorf("datafile may not be nil")
 		return dp
 	}
-	buf, err := df.getDatabuf()
-	if err != nil {
-		log.Errorf(`getPreview, get databuf error, details:%s`, err)
-		return dp
-	}
 	switch df.Format {
 	case ".csv":
-		frame := dataframe.ReadCSV(bytes.NewReader(buf))
-		names := frame.Names()
-		types := frame.Types()
+		buf, err := df.getDatabuf()
+		if err != nil {
+			log.Errorf(`getPreview, get databuf error, details:%s`, err)
+			return dp
+		}
+		csvReader := csv.NewReader(bytes.NewReader(buf))
+		headers, err := csvReader.Read()
+		if err != nil {
+			log.Errorf(`getPreview, csvReader read headers failed: %s`, err)
+			return dp
+		}
+
+		var records [][]string
+		var rowNum, preNum int
+		for {
+			row, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				continue
+			}
+			if preNum < 7 {
+				records = append(records, row)
+				preNum++
+			}
+			rowNum++
+		}
+
+		findType := func(arr []string) FieldType {
+			var hasFloats, hasInts, hasBools, hasStrings bool
+			for _, str := range arr {
+				if str == "" {
+					continue
+				}
+				if _, err := strconv.Atoi(str); err == nil {
+					hasInts = true
+					continue
+				}
+				if _, err := strconv.ParseFloat(str, 64); err == nil {
+					hasFloats = true
+					continue
+				}
+				if str == "true" || str == "false" {
+					hasBools = true
+					continue
+				}
+				hasStrings = true
+			}
+			switch {
+			case hasStrings:
+				return String
+			case hasBools:
+				return Bool
+			case hasFloats:
+				return Float
+			case hasInts:
+				return Int
+			default: //all null or string data
+				return String
+			}
+		}
+		types := make([]FieldType, len(headers))
+		for i := range headers {
+			col := make([]string, len(records))
+			for j := 0; j < len(records); j++ {
+				col[j] = records[j][i]
+			}
+			types[i] = findType(col)
+		}
+
 		var fields []Field
-		for i, n := range names {
+		for i, name := range headers {
 			fields = append(fields, Field{
-				Name: n,
+				Name: name,
 				Type: string(types[i])})
 		}
 
@@ -261,59 +336,74 @@ func (df *Datafile) getPreview() *DataPreview {
 		}
 
 		detechColumn := func(min float64, max float64) string {
-			types := frame.Types()
-			names := frame.Names()
-			for i, t := range types {
-				if t == series.Float {
-					ds := frame.Select([]string{names[i]}).Describe().Subset([]int{2, 6})
-					emin := ds.Elem(0, 1).Float()
-					emax := ds.Elem(0, 1).Float()
-					if emin > min && emax < max {
-						return names[i]
+			for i, name := range headers {
+				num := 0
+				for _, row := range records {
+					f, err := strconv.ParseFloat(row[i], 64)
+					if err != nil || f < min || f > max {
+						break
 					}
+					num++
+				}
+				if num == len(records) {
+					return name
 				}
 			}
 			return ""
 		}
 
 		xcols := []string{"x", "lon", "longitude", "经度"}
-		x := getColumn(xcols, names)
+		x := getColumn(xcols, headers)
 		if x == "" {
 			x = detechColumn(73, 135)
 		}
 		ycols := []string{"y", "lat", "latitude", "纬度"}
-		y := getColumn(ycols, names)
+		y := getColumn(ycols, headers)
 		if y == "" {
 			y = detechColumn(18, 54)
 		}
 
-		n := frame.Nrow()
-		if n > 7 {
-			frame = frame.Subset([]int{n / 7, 2 * n / 7, 3 * n / 7, 4 * n / 7, 5 * n / 7, 6 * n / 7, n - 1})
-		}
-		rows := frame.Records()
-		dp.Count = n
+		dp.Count = rowNum
 		dp.Lon = x
 		dp.Lat = y
 		dp.Type = "Point"
 		dp.Fields = fields
-		dp.Rows = rows[1:]
+		dp.Rows = records
 		dp.Update = false
-	case ".geojson":
-		fc, err := geojson.UnmarshalFeatureCollection(buf)
+	case ".geojson", ".json":
+		buf, err := df.getDatabuf()
 		if err != nil {
-			log.Error(err)
+			log.Errorf(`getPreview, get databuf error, details:%s`, err)
 			return dp
 		}
-		fcount := len(fc.Features)
+
+		// A FeatureCollection correlates to a GeoJSON feature collection.
+		var gjson struct {
+			Type     string            `json:"type"`
+			Features []json.RawMessage `json:"features"`
+		}
+
+		s := time.Now()
+		err = json.Unmarshal(buf, &gjson)
+		if err != nil {
+			log.Fatalln("error:", err)
+		}
+		fmt.Println(time.Since(s))
+
+		fcount := len(gjson.Features)
 		if fcount == 0 {
 			log.Error(`empty datafile`)
 			return dp
 		}
 
 		var fields []Field
-		geoType := fc.Features[0].Geometry.GeoJSONType()
-		for k, v := range fc.Features[0].Properties {
+		f, err := geojson.UnmarshalFeature(gjson.Features[0])
+		if err != nil {
+			log.Errorf(`UnmarshalFeature error, details:%s`, err)
+			return dp
+		}
+		geoType := f.Geometry.GeoJSONType()
+		for k, v := range f.Properties {
 			var t string
 			switch v.(type) {
 			case bool:
@@ -363,10 +453,20 @@ func (df *Datafile) getPreview() *DataPreview {
 		var rows [][]string
 		if fcount > 7 {
 			for _, p := range []int{fcount / 7, 2 * fcount / 7, 3 * fcount / 7, 4 * fcount / 7, 5 * fcount / 7, 6 * fcount / 7, fcount - 1} {
-				rows = append(rows, prepRow(fc.Features[p]))
+				f, err := geojson.UnmarshalFeature(gjson.Features[p])
+				if err != nil {
+					log.Errorf(`UnmarshalFeature error, details:%s`, err)
+					continue
+				}
+				rows = append(rows, prepRow(f))
 			}
 		} else {
-			for _, f := range fc.Features {
+			for _, rawf := range gjson.Features {
+				f, err := geojson.UnmarshalFeature(rawf)
+				if err != nil {
+					log.Errorf(`UnmarshalFeature error, details:%s`, err)
+					continue
+				}
 				rows = append(rows, prepRow(f))
 			}
 		}
@@ -376,117 +476,21 @@ func (df *Datafile) getPreview() *DataPreview {
 		dp.Rows = rows
 		dp.Update = false
 	case ".shp":
-
-	}
-
-	aHead := func(slc []string, cur string) []string {
-
-		if len(slc) == 0 || slc[0] == cur {
-			return slc
-		}
-		if slc[len(slc)-1] == cur {
-			slc = append([]string{cur}, slc[:len(slc)-1]...)
-			return slc
-		}
-		for p, v := range slc {
-			if v == cur {
-				slc = append([]string{cur}, append(slc[:p], slc[p+1:]...)...)
-				break
-			}
-		}
-		return slc
-	}
-
-	dp.ID = df.ID
-	dp.Name = df.Name
-	dp.Alias = df.Alias
-	dp.Tags = df.getTags()
-	dp.Encodings = aHead(Encodings, df.Encoding)
-	dp.Crss = aHead(CRSs, df.Crs)
-
-	// copy(dp.Rows, frame.Records())
-	return dp
-}
-
-//getPreview get data preview context
-func (df *Datafile) getShpPreview() *DataPreview {
-	dp := &DataPreview{}
-	if df == nil {
-		log.Errorf("datafile may not be nil")
-		return dp
-	}
-
-	unzipToDir := func(p string) string {
-		ext := filepath.Ext(p)
-		dir := strings.TrimSuffix(p, ext)
-		err := os.Mkdir(dir, os.ModePerm)
-		if err != nil {
-			log.Error(err)
-		}
-		zip, err := zip.OpenReader(p)
-		if err != nil {
-			log.Error(err)
-		}
-		defer zip.Close()
-		for _, f := range zip.File {
-			_, fn := path.Split(f.Name)
-			pn := filepath.Join(dir, fn)
-			log.Infof("Uncompress: %s -> %s", f.Name, pn)
-			w, err := os.Create(pn)
-			if err != nil {
-				log.Errorf("Cannot unzip %s: %v", p, err)
-			}
-			defer w.Close()
-			r, err := f.Open()
-			if err != nil {
-				log.Errorf("Cannot unzip %s: %v", p, err)
-			}
-			defer r.Close()
-			_, err = io.Copy(w, r)
-			if err != nil {
-				log.Errorf("Cannot unzip %s: %v", p, err)
-			}
-		}
-		return dir
-	}
-
-	dir := unzipToDir(df.Path)
-
-	getShapfiles := func(dir string) []string {
-		var shapeFiles []string
-		fileInfos, err := ioutil.ReadDir(dir)
-		if err != nil {
-			log.Error(err)
-		}
-		for _, fileInfo := range fileInfos {
-			if fileInfo.IsDir() {
-				continue
-			}
-			ext := filepath.Ext(fileInfo.Name())
-			if ".shp" == strings.ToLower(ext) {
-				shapeFiles = append(shapeFiles, filepath.Join(dir, fileInfo.Name()))
-			}
-		}
-		return shapeFiles
-	}
-	shpfiles := getShapfiles(dir)
-	for _, file := range shpfiles {
-		shape, err := shp.Open(file)
+		shape, err := shp.Open(df.Path)
 		// open a shapefile for reading
 		if err != nil {
 			log.Fatal(err)
+			return dp
 		}
 		defer shape.Close()
 
 		// fields from the attribute table (DBF)
 		shpfields := shape.Fields()
-
 		fcount := shape.AttributeCount()
 		if fcount == 0 {
 			log.Error(`empty datafile`)
 			return dp
 		}
-
 		var fields []Field
 		for _, v := range shpfields {
 			var t string
@@ -505,7 +509,10 @@ func (df *Datafile) getShpPreview() *DataPreview {
 				Type: t,
 			})
 		}
-
+		//设置默认编码为UTF-8
+		if df.Encoding == "" {
+			df.Encoding = "utf-8"
+		}
 		decoder := mahonia.NewDecoder(df.Encoding)
 
 		var rows [][]string
@@ -514,7 +521,7 @@ func (df *Datafile) getShpPreview() *DataPreview {
 				var row []string
 				for k := range fields {
 					val := shape.ReadAttribute(p, k)
-					if df.Encoding != "" && df.Encoding != "utf-8" {
+					if df.Encoding != "utf-8" {
 						row = append(row, decoder.ConvertString(val))
 					} else {
 						row = append(row, val)
@@ -527,7 +534,7 @@ func (df *Datafile) getShpPreview() *DataPreview {
 				var row []string
 				for k := range fields {
 					val := shape.Attribute(k)
-					if df.Encoding != "" && df.Encoding != "utf-8" {
+					if df.Encoding != "utf-8" {
 						row = append(row, decoder.ConvertString(val))
 					} else {
 						row = append(row, val)
@@ -553,13 +560,11 @@ func (df *Datafile) getShpPreview() *DataPreview {
 		dp.Fields = fields
 		dp.Rows = rows
 		dp.Update = false
-
-		break
 	}
 
 	aHead := func(slc []string, cur string) []string {
 
-		if len(slc) == 0 || slc[0] == cur {
+		if len(slc) == 0 || cur == "" || slc[0] == cur {
 			return slc
 		}
 		if slc[len(slc)-1] == cur {
@@ -578,7 +583,7 @@ func (df *Datafile) getShpPreview() *DataPreview {
 	dp.ID = df.ID
 	dp.Name = df.Name
 	dp.Alias = df.Alias
-	dp.Tags = df.getTags()
+	dp.Tags = aHead(df.getTags(), df.Tag)
 	dp.Encodings = aHead(Encodings, df.Encoding)
 	dp.Crss = aHead(CRSs, df.Crs)
 
@@ -586,31 +591,56 @@ func (df *Datafile) getShpPreview() *DataPreview {
 	return dp
 }
 
-//csvImport import csv data
-func (df *Datafile) dataImport() (int64, error) {
-	buf, err := df.getDatabuf()
-	if err != nil {
-		return 0, fmt.Errorf(`get databuf error`)
+//dataImport import geojson or csv data, can transform from gcj02 or bd09
+func (df *Datafile) dataImport() (*ImportTask, error) {
+	task := &ImportTask{ID: df.ID}
+	//任务队列
+	select {
+	case taskQueue <- task:
+	default:
+		log.Warningf("task queue overflow, request refused...")
+		task.State = "task queue overflow, request refused"
+		return task, fmt.Errorf("task queue overflow, request refused")
 	}
+	//任务集
+	taskSet.Store(task.ID, task)
 
-	prepHeader := func(fields []Field) string {
-		var fts []string
-		for _, v := range fields {
-			fts = append(fts, v.Name)
+	if df.Overwrite {
+		st := fmt.Sprintf(`DELETE FROM datasets WHERE id='%s';`, df.ID)
+		err := db.Exec(st).Error
+		if err != nil {
+			log.Errorf(`dataImport, delete dataset error, details:%s`, err)
 		}
-		return strings.Join(fts, ",")
+		err = db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS "%s";`, df.ID)).Error
+		if err != nil {
+			log.Errorf(`dataImport, drop table error, details:%s`, err)
+		}
+		//csv geom type is "Point"
+		err = createTable(df.ID, df.Fields, df.Type)
+		if err != nil {
+			log.Errorf(`importData, create table error, details:%s`, err)
+			return nil, err
+		}
 	}
-	header := prepHeader(df.Fields)
 
-	s := fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, header, df.ID)
-	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	prepHeader := func(fields []Field) []string {
+		var headers []string
+		for _, v := range fields {
+			headers = append(headers, v.Name)
+		}
+		return headers
+	}
+	headers := prepHeader(df.Fields)
+
+	st := fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, strings.Join(headers, ","), df.ID)
+	rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer rows.Close()
 	cols, err := rows.ColumnTypes()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	switch df.Format {
@@ -633,9 +663,13 @@ func (df *Datafile) dataImport() (int64, error) {
 			}
 			i64, err := strconv.ParseInt(v, 10, 64)
 			if err != nil {
-				return strconv.FormatInt(i64, 10)
+				f, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					return "null"
+				}
+				i64 = int64(f)
 			}
-			return "null"
+			return strconv.FormatInt(i64, 10)
 		}
 		formatFloat := func(v string) string {
 			if v == "" {
@@ -643,9 +677,9 @@ func (df *Datafile) dataImport() (int64, error) {
 			}
 			f, err := strconv.ParseFloat(v, 64)
 			if err != nil {
-				return strconv.FormatFloat(f, 'g', -1, 64)
+				return "null"
 			}
-			return "null"
+			return strconv.FormatFloat(f, 'g', -1, 64)
 		}
 		formatDate := func(v string) string {
 			if v == "" {
@@ -668,7 +702,7 @@ func (df *Datafile) dataImport() (int64, error) {
 				switch col.DatabaseTypeName() {
 				case "BOOL":
 					s = formatBool(row[i])
-				case "INT":
+				case "INT4":
 					s = formatInt(row[i])
 				case "NUMERIC": //number
 					s = formatFloat(row[i])
@@ -681,29 +715,104 @@ func (df *Datafile) dataImport() (int64, error) {
 			}
 			return strings.Join(vals, ",")
 		}
-		var vals []string
-		frame := dataframe.ReadCSV(bytes.NewReader(buf))
-		frame = frame.Select(header)
-		records := frame.Records()
-		for i, row := range records {
-			rval := prepValues(row, cols)
-			xy := frame.Subset(i).Select([]string{df.Lon, df.Lat})
-			x := xy.Elem(0, 0).Float()
-			y := xy.Elem(0, 1).Float()
-			switch df.Crs {
-			case GCJ02:
-				x, y = Gcj02ToWgs84(x, y)
-			case BD09:
-				x, y = Bd09ToWgs84(x, y)
-			default: //WGS84 & CGCS2000
-			}
-			geom := fmt.Sprintf(`ST_SetSRID(ST_Point(%f, %f),4326)`, x, y)
-			vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, geom))
+		t := time.Now()
+		buf, err := df.getDatabuf()
+		if err != nil {
+			return nil, fmt.Errorf(`get databuf error`)
 		}
-		s = fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, df.ID, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		query := db.Exec(s)
-		return query.RowsAffected, nil
-	case ".geojson":
+		csvReader := csv.NewReader(bytes.NewReader(buf))
+		csvHeaders, err := csvReader.Read()
+		if err != nil {
+			log.Errorf(`dataImport, csvReader read headers failed: %s`, err)
+			return nil, err
+		}
+		if len(headers) != len(csvHeaders) {
+			log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
+			return nil, fmt.Errorf(`dbfield len != csvheader len`)
+		}
+
+		prepIndex := func(headers []string, name string) int {
+			for i, col := range headers {
+				if col == name {
+					return i
+				}
+			}
+			return -1
+		}
+		ix := prepIndex(headers, df.Lon)
+		iy := prepIndex(headers, df.Lat)
+		isgeom := (ix != -1 && iy != -1)
+		if isgeom {
+			headers = append(headers, "geom")
+		}
+		for {
+			_, err := csvReader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				continue
+			}
+			task.Count++
+		}
+		if task.Count == 0 {
+			return nil, fmt.Errorf(`empty dataset`)
+		}
+		tt := time.Since(t)
+		log.Info(`process headers and get count, `, tt)
+		go func(task *ImportTask, buf []byte) {
+			count := 0
+			csvReader = csv.NewReader(bytes.NewReader(buf))
+			_, err = csvReader.Read()
+			var vals []string
+			task.State = "processing"
+			t = time.Now()
+			for {
+				row, err := csvReader.Read()
+				if err == io.EOF {
+					break
+				}
+				count++
+				if err != nil {
+					continue
+				}
+				rval := prepValues(row, cols)
+				if isgeom {
+					x, _ := strconv.ParseFloat(row[ix], 64)
+					y, _ := strconv.ParseFloat(row[iy], 64)
+					switch df.Crs {
+					case GCJ02:
+						x, y = Gcj02ToWgs84(x, y)
+					case BD09:
+						x, y = Bd09ToWgs84(x, y)
+					default: //WGS84 & CGCS2000
+					}
+					geom := fmt.Sprintf(`ST_SetSRID(ST_Point(%f, %f),4326)`, x, y)
+					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, geom))
+				} else {
+					vals = append(vals, fmt.Sprintf(`(%s)`, rval))
+				}
+				task.Progress = int(count / task.Count / 5)
+			}
+			fmt.Println(`csv process `, time.Since(t))
+			t = time.Now()
+			task.State = "importing"
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, df.ID, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			query := db.Exec(st)
+			err = query.Error
+			if err != nil {
+				log.Errorf(`task failed, details:%s`, err)
+				task.State = "failed"
+			}
+			fmt.Println(`csv insert `, time.Since(t))
+
+			task.Succeed = int(query.RowsAffected)
+			task.State = "finished"
+			task.save()
+
+		}(task, buf)
+		return task, nil
+	case ".geojson", ".json":
 		formatBool := func(v interface{}) string {
 			if v == nil {
 				return "null"
@@ -795,14 +904,14 @@ func (df *Datafile) dataImport() (int64, error) {
 		}
 		prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
 			var vals []string
-			for _, col := range cols {
+			for i, col := range cols {
 				// fmt.Println(i, col.DatabaseTypeName(), col.Name())
-				v := props[col.Name()]
+				v := props[headers[i]]
 				var s string
 				switch col.DatabaseTypeName() {
 				case "BOOL":
 					s = formatBool(v)
-				case "INT":
+				case "INT4":
 					s = formatInt(v)
 				case "NUMERIC":
 					s = formatFloat(v)
@@ -816,53 +925,175 @@ func (df *Datafile) dataImport() (int64, error) {
 			return strings.Join(vals, ",")
 		}
 
-		fc, err := geojson.UnmarshalFeatureCollection(buf)
+		buf, err := df.getDatabuf()
 		if err != nil {
-			log.Error(err)
-			return 0, err
-		}
-		fcount := len(fc.Features)
-		if fcount == 0 {
-			log.Error(`empty datafile`)
-			return 0, fmt.Errorf(`empty datafile`)
+			return nil, fmt.Errorf(`get databuf error`)
 		}
 
-		var vals []string
-		for _, f := range fc.Features {
-			rval := prepValues(f.Properties, cols)
-			switch df.Crs {
-			case GCJ02:
-				f.Geometry.GCJ02ToWGS84()
-			case BD09:
-				f.Geometry.BD09ToWGS84()
-			default: //WGS84 & CGCS2000
+		// A FeatureCollection correlates to a GeoJSON feature collection.
+		var gjson struct {
+			Type     string            `json:"type"`
+			Features []json.RawMessage `json:"features"`
+		}
+
+		s := time.Now()
+		err = json.Unmarshal(buf, &gjson)
+		if err != nil {
+			log.Fatalln("error:", err)
+		}
+		fmt.Println(time.Since(s))
+		count := len(gjson.Features)
+		go func(task *ImportTask, features []json.RawMessage) {
+			task.State = "processing"
+			t := time.Now()
+			var vals []string
+			for i, rawf := range gjson.Features {
+
+				f, err := geojson.UnmarshalFeature(rawf)
+				if err != nil {
+					log.Errorf(`UnmarshalFeature error, details:%s`, err)
+					continue
+				}
+				rval := prepValues(f.Properties, cols)
+				switch df.Crs {
+				case GCJ02:
+					f.Geometry.GCJ02ToWGS84()
+				case BD09:
+					f.Geometry.BD09ToWGS84()
+				default: //WGS84 & CGCS2000
+				}
+				// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
+				// err := db.Exec(s).Error
+				// if err != nil {
+				// 	log.Info(err)
+				// }
+				geom, err := geojson.NewGeometry(f.Geometry).MarshalJSON()
+				if err != nil {
+					log.Errorf(`preper geometry error, details:%s`, err)
+					continue
+				}
+				// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
+				gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
+				vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
+				task.Progress = int(i / count / 2)
 			}
-			// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
-			// err := db.Exec(s).Error
-			// if err != nil {
-			// 	log.Info(err)
-			// }
-			geom, err := geojson.NewGeometry(f.Geometry).MarshalJSON()
+			fmt.Println("geojson process ", time.Since(t))
+
+			task.State = "importing"
+			t = time.Now()
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, df.ID, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			// log.Println(st)
+			query := db.Exec(st)
+			err = query.Error
 			if err != nil {
-				return 0, err
+				task.State = "failed"
 			}
-			// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
-			gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
+			fmt.Println("geojson insert ", time.Since(t))
+			task.Count = count
+			task.Succeed = int(query.RowsAffected)
+			task.State = "finished"
+			task.save()
 
-			vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
-		}
-
-		st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, df.ID, header, strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		log.Println(st)
-		query := db.Exec(st)
-		err = query.Error
-		if err != nil {
-			return 0, err
-		}
-		return query.RowsAffected, nil
+		}(task, gjson.Features)
+		return task, nil
 	case ".shp":
 	}
-	return 0, fmt.Errorf("unkown data fromat")
+	return task, nil
+}
+
+//csvImport import csv data
+func (df *Datafile) ogrImport() (*ImportTask, error) {
+	task := &ImportTask{ID: df.ID}
+	select {
+	case taskQueue <- task:
+	default:
+		log.Warningf("task queue overflow, request refused...")
+		task.State = "task queue overflow, request refused"
+		return task, fmt.Errorf("task queue overflow, request refused")
+	}
+	taskSet.Store(task.ID, task)
+	var params []string
+	//设置数据库
+	params = append(params, []string{"-f", "PostgreSQL"}...)
+	pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
+		cfgV.GetString("db.name"), cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"))
+	params = append(params, pg)
+	//显示进度,读取outbuffer缓冲区
+	params = append(params, "-progress")
+	//跳过失败
+	params = append(params, "-skipfailures")
+	//覆盖or更新选项
+	if df.Overwrite {
+		//-overwrite not works
+		params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
+	} else {
+		params = append(params, "-update") //open in update model/用更新模式打开,而不是尝试新建
+		params = append(params, "-append")
+	}
+
+	//开启拷贝模式
+	//--config PG_USE_COPY YES
+	params = append(params, []string{"--config", "PG_USE_COPY", "YES"}...)
+	//每个事务group大小
+	// params = append(params, "-gt 65536")
+
+	switch df.Format {
+	case ".shp":
+		//数据编码选项
+		// fmt.Println(df.Encoding)
+		//客户端环境变量
+		//SET PGCLIENTENCODINUTF8G=GBK or 'SET client_encoding TO encoding_name'
+		// params = append(params, []string{"-sql", "SET client_encoding TO GBK"}...)
+		//test first select client_encoding;
+		//设置源文件编码
+		// params = append(params, []string{"--config", "SHAPE_ENCODING", "GBK"}...)
+		//PROMOTE_TO_MULTI can be used to automatically promote layers that mix polygon or multipolygons to multipolygons, and layers that mix linestrings or multilinestrings to multilinestrings. Can be useful when converting shapefiles to PostGIS and other target drivers that implement strict checks for geometry types.
+		params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
+		absPath, err := filepath.Abs(df.Path)
+		if err != nil {
+			fmt.Println(err)
+		}
+		params = append(params, absPath)
+
+		if runtime.GOOS == "windows" {
+			decoder := mahonia.NewDecoder("gbk")
+			gbk := strings.Join(params, ",")
+			gbk = decoder.ConvertString(gbk)
+			params = strings.Split(gbk, ",")
+		}
+		// go func(task *ImportTask) {
+		task.State = "importing"
+		cmd := exec.Command("ogr2ogr", params...)
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		err = cmd.Start()
+		if err != nil {
+			log.Fatalf("cmd.Start() failed with '%s'\n", err)
+		}
+
+		ticker := time.NewTicker(time.Second)
+		go func(task *ImportTask) {
+			for range ticker.C {
+				task.Progress = len(stdout.Bytes()) * 2
+			}
+		}(task)
+
+		err = cmd.Wait()
+		if err != nil {
+			log.Fatalf("cmd.Run() failed with %s\n", err)
+		}
+		ticker.Stop()
+		task.State = "finished"
+		//保存任务
+		task.save()
+		// }(task)
+
+	default:
+		log.Warningf(`ogr importing unkown format data:%s`, df.Format)
+		return nil, fmt.Errorf("unkown data format")
+	}
+
+	return task, nil
 }
 
 //getDataFrame get data preview context
@@ -880,6 +1111,21 @@ func (df *Datafile) getDatabuf() ([]byte, error) {
 	if df.Encoding == "" {
 		df.Encoding = chardet.Mostlike(buf)
 	}
+	// 去除bom
+	rmbom := func(data []byte) []byte {
+		if len(data) >= 3 {
+			if string(data[:3]) == "\xEF\xBB\xBF" {
+				return data[3:]
+			}
+		}
+		if len(data) >= 4 {
+			if string(data[:4]) == "\x84\x31\x95\x33" {
+				return data[4:]
+			}
+		}
+		return data
+	}
+	buf = rmbom(buf)
 
 	if df.Encoding != "utf-8" {
 		//converts gbk to utf-8.
@@ -907,7 +1153,7 @@ func createTable(name string, fields []Field, geoType string) error {
 			case Bool:
 				t = "BOOL"
 			case Int:
-				t = "INT"
+				t = "INT4"
 			case Float:
 				t = "NUMERIC"
 			case Date:
@@ -926,9 +1172,37 @@ func createTable(name string, fields []Field, geoType string) error {
 	return db.Exec(st).Error
 }
 
-//geojsonImport import geojson data
-func geojsonImport(df *Datafile, dp *DataPreview) (int, error) {
-	return 0, nil
+func (task *ImportTask) save() error {
+	if task == nil {
+		return fmt.Errorf("task may not be nil")
+	}
+	err := db.Create(task).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (task *ImportTask) update() error {
+	if task == nil {
+		return fmt.Errorf("task may not be nil")
+	}
+	err := db.Model(&ImportTask{}).Update(task).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (task *ImportTask) info() error {
+	if task == nil {
+		return fmt.Errorf("task may not be nil")
+	}
+	err := db.Where(`id = ? `, task.ID).First(task).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (ds *Dataset) toBind() *DatasetBind {

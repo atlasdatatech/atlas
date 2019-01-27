@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -42,6 +43,10 @@ var authMid *jwt.GinJWTMiddleware
 
 var pubSet *ServiceSet
 
+var taskQueue = make(chan *ImportTask, 32)
+
+var taskSet = new(sync.Map)
+
 var currentDB string
 
 var coreOrclIterval time.Duration
@@ -61,7 +66,7 @@ func main() {
 	} else {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
-		pg.AutoMigrate(&Datafile{}, &Dataset{})
+		pg.AutoMigrate(&Datafile{}, &ImportTask{}, &Dataset{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
@@ -281,8 +286,10 @@ func bindRouters(r *gin.Engine) {
 		dsets.GET("/info/:name/", getDatasetInfo)
 
 		dsets.POST("/upload/", fileUpload)
-		dsets.POST("/preview/:id/", dataPreview)
+		dsets.GET("/preview/:id/", dataPreview)
 		dsets.POST("/import/:id/", dataImport)
+		dsets.GET("/task/:id/", taskQuery)
+		dsets.GET("/taskstream/:id/", taskStreamQuery)
 
 		dsets.POST("/distinct/:name/", getDistinctValues)
 		dsets.GET("/geojson/:name/", getGeojson)
@@ -373,39 +380,15 @@ func initSystemUserRole() {
 	casEnf.AddPolicy(role.ID, "/roles/*", "(GET)|(POST)")
 }
 
-func initAutoHA() {
-	ha := cfgV.GetString("db.ha")
-	if ha != "on" {
-		log.Info("pg ha not enabled ~")
-		return
-	}
-	dbPingIterval := cfgV.GetDuration("db.pinginterval")
+func initImportTaskRoute() {
+	iterval := cfgV.GetDuration("import.task.interval")
 	go func() {
-		ticker := time.NewTicker(dbPingIterval * time.Millisecond)
-		continuous := 0
+		ticker := time.NewTicker(iterval * time.Millisecond)
 		for {
 			select {
 			case <-ticker.C:
-				err := db.DB().Ping()
-				if err != nil {
-					continuous++
-				} else {
-					continuous = 0
-				}
-			}
-			if continuous > 10 {
-				//db error
-				pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
-				log.Infof("atlas switching to %s", pgConnInfo)
-				pg, err := gorm.Open("postgres", pgConnInfo)
-				if err != nil {
-					log.Fatal("pg switch db error:" + err.Error())
-				} else {
-					db = pg
-					currentDB = "slave"
-					log.Infof("atlas succeed switch to %s", pgConnInfo)
-				}
-				return
+				// for task := range taskQueue {
+				// }
 			}
 		}
 	}()

@@ -23,8 +23,7 @@
 		user     = "atlas"
 		password = "atlas"
 		name   = "atlasdata"
-		pinginterval = "5m"
-
+		
 	[jwt]
 		realm="atlasmap"
 		key="salta-atad-6221"
@@ -45,6 +44,10 @@
 			host = "smtp.exmail.qq.com"
 			port = 465
 			ssl = true
+
+	[import]
+	[import.task]
+		interval = "1s"
 
 	[buffers]
 		prefix = "block_"

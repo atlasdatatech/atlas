@@ -17,7 +17,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
 	"github.com/jinzhu/gorm"
-	_ "github.com/mattn/go-oci8"
 	"github.com/teris-io/shortid"
 )
 
