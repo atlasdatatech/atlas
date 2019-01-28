@@ -224,7 +224,7 @@ func bindRouters(r *gin.Engine) {
 		maproute.GET("/:id/perms/", getMapPerms)
 		maproute.GET("/:id/export/", exportMap)
 		maproute.POST("/", createMap)
-		maproute.POST("/:id/", updInsetMap)
+		maproute.POST("/:id/", updInsertMap)
 		maproute.POST("/:id/del/", deleteMap)
 	}
 
@@ -263,6 +263,21 @@ func bindRouters(r *gin.Engine) {
 		fonts.GET("/:fontstack/:range", getGlyphs) //get glyph pbfs
 	}
 
+	ts := r.Group("/ts")
+	// tilesets.Use(authMid.MiddlewareFunc())
+	{
+		// > tilesets
+		ts.GET("/", listTilesets)
+		// ts.GET("/", listLayers)
+		ts.POST("/", uploadTileset)
+		ts.GET("/json/:mid", getTilejson) //tilejson
+		// ts.GET("/map/:mid/:lid/", getTile)
+		// ts.POST("/map/:mid/:lid/", getTile)
+		ts.GET("/map/:mid/:z/:x/:y", getTile)
+		// ts.POST("/merge/:mid1/:mid2/", viewTile) //view
+		ts.GET("/view/:mid/", viewTile) //view
+	}
+
 	tilesets := r.Group("/tilesets")
 	// tilesets.Use(authMid.MiddlewareFunc())
 	{
@@ -274,34 +289,23 @@ func bindRouters(r *gin.Engine) {
 		tilesets.GET("/:tid/:z/:x/:y", getTile)
 	}
 
-	dsets := r.Group("/dsets")
-	dsets.Use(authMid.MiddlewareFunc())
+	ds := r.Group("/ds")
+	ds.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
-		dsets.GET("/", listDatasets)
-		dsets.GET("/crs/", crsList)
-		dsets.GET("/encoding/", encodingList)
-		dsets.GET("/ftype/", fieldTypeList)
+		ds.GET("/", listDatasets)
+		ds.GET("/crs/", crsList)
+		ds.GET("/encoding/", encodingList)
+		ds.GET("/ftype/", fieldTypeList)
 
-		dsets.GET("/info/:name/", getDatasetInfo)
+		ds.GET("/info/:name/", getDatasetInfo)
 
-		dsets.POST("/upload/", fileUpload)
-		dsets.GET("/preview/:id/", dataPreview)
-		dsets.POST("/import/:id/", dataImport)
-		dsets.GET("/task/:id/", taskQuery)
-		dsets.GET("/taskstream/:id/", taskStreamQuery)
+		ds.POST("/upload/", fileUpload)
+		ds.GET("/preview/:id/", dataPreview)
+		ds.POST("/import/:id/", dataImport)
+		ds.GET("/task/:id/", taskQuery)
+		ds.GET("/taskstream/:id/", taskStreamQuery)
 
-		dsets.POST("/distinct/:name/", getDistinctValues)
-		dsets.GET("/geojson/:name/", getGeojson)
-		dsets.POST("/query/:name/", queryGeojson)
-		dsets.POST("/cube/:name/", cubeQuery)
-		dsets.POST("/common/:name/", queryExec)
-		dsets.GET("/business/:name/", queryBusiness)
-		dsets.GET("/buffers/:name/", getBuffers)
-		dsets.GET("/models/:name/", getModels)
-		dsets.GET("/geos/:name/", searchGeos)
-		dsets.POST("/update/:name//", updateInsertData)
-		dsets.POST("/delete/:name/", deleteData)
 	}
 	datasets := r.Group("/datasets")
 	// datasets.Use(authMid.MiddlewareFunc())
