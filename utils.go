@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -216,14 +217,17 @@ func generateToken(n int) []byte {
 }
 
 func createPaths(name string) {
-	styles := cfgV.GetString("assets.styles")
-	fonts := cfgV.GetString("assets.fonts")
-	tilesets := cfgV.GetString("assets.tilesets")
-	datasets := cfgV.GetString("assets.datasets")
-	os.MkdirAll(styles, os.ModePerm)
-	os.MkdirAll(tilesets, os.ModePerm)
-	os.MkdirAll(datasets, os.ModePerm)
-	os.MkdirAll(fonts, os.ModePerm)
+	if name == "atlas" {
+		os.MkdirAll("styles", os.ModePerm)
+		os.MkdirAll("tilesets", os.ModePerm)
+		os.MkdirAll("datasets", os.ModePerm)
+		os.MkdirAll("fonts", os.ModePerm)
+	} else {
+		os.MkdirAll(filepath.Join("users", name, "styles"), os.ModePerm)
+		os.MkdirAll(filepath.Join("users", name, "tilesets"), os.ModePerm)
+		os.MkdirAll(filepath.Join("users", name, "datasets"), os.ModePerm)
+		os.MkdirAll(filepath.Join("users", name, "fonts"), os.ModePerm)
+	}
 }
 
 func checkUser(uid string) int {

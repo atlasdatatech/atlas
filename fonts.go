@@ -39,7 +39,7 @@ func (s *ServiceSet) AddFont(fontName string, fontID string) error {
 		URL:   fontName,
 		State: true,
 	}
-	s.Fonts[fontID] = out
+	s.F.Store(fontID, out)
 	return nil
 }
 
@@ -66,18 +66,24 @@ func (s *ServiceSet) ServeFonts(baseDir string) (err error) {
 			log.Errorf("ServeFonts, add font %q error: %v", fontName, err)
 		}
 	}
-	log.Infof("ServeFonts, loading %d fonts-> %v ", len(s.Fonts), s.Fonts)
+	length := 0
+	s.F.Range(func(_, _ interface{}) bool {
+		length++
+		return true
+	})
+
+	log.Infof("ServeFonts, loading %d ~", length)
 	return nil
 }
 
 //reportFont if has large number of fonts ,should only serve for these reported
 func (s *ServiceSet) reportFont(font string) {
 	//set a array ServeFonts should serve only
-	for k, v := range s.Fonts {
-		if k == font && !v.State {
-			// s.ServeFont(font) //simply set State to true
-		}
-	}
+	length := 0
+	s.F.Range(func(_, _ interface{}) bool {
+		length++
+		return true
+	})
 }
 
 func getFontsPBF(fontPath string, fontstack string, fontrange string, fallbacks []string) []byte {

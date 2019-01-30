@@ -41,11 +41,14 @@ var casEnf *casbin.Enforcer
 
 var authMid *jwt.GinJWTMiddleware
 
-var pubSet *ServiceSet
+//ATLAS public user
+var ATLAS = "atlas"
+var pubSet = &ServiceSet{}
+var userSet sync.Map
 
-var taskQueue = make(chan *ImportTask, 32)
+var taskQueue = make(chan *Task, 32)
 
-var taskSet = new(sync.Map)
+var taskSet sync.Map
 
 var currentDB string
 
@@ -66,7 +69,7 @@ func main() {
 	} else {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
-		pg.AutoMigrate(&Datafile{}, &ImportTask{}, &Dataset{})
+		pg.AutoMigrate(&Dsfile{}, &Task{}, &Dataset{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
@@ -87,13 +90,10 @@ func main() {
 
 	initSystemUserRole()
 
-	createPaths("pub")
-
-	if ss, err := LoadServiceSet(); err != nil {
+	createPaths(ATLAS)
+	err = pubSet.LoadServiceSet()
+	if err != nil {
 		log.Errorf("loading public service set error: %s", err.Error())
-	} else {
-		pubSet = ss
-		log.Infof("load public service set successed!")
 	}
 
 	r := gin.Default()
