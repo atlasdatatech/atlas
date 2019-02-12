@@ -340,7 +340,7 @@ func updateDatasetInfo(did string) error {
 		return err
 	}
 	//更新服务
-	err = pubSet.AddDatasetService(ds)
+	err = pubSet.AddDataService(ds)
 	if err != nil {
 		return err
 	}

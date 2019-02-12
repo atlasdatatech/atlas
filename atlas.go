@@ -69,7 +69,7 @@ func main() {
 	} else {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
-		pg.AutoMigrate(&Dsfile{}, &Task{}, &Dataset{})
+		pg.AutoMigrate(&Datafile{}, &Task{}, &Dataset{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
