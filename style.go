@@ -44,6 +44,7 @@ type StyleService struct {
 	Data        interface{} `form:"data" json:"data"`
 }
 
+//转为存储
 func (ss *StyleService) toStyle() *Style {
 	out := &Style{
 		ID:         ss.ID,
@@ -67,6 +68,7 @@ func (ss *StyleService) toStyle() *Style {
 	return out
 }
 
+//转为服务
 func (s *Style) toService() *StyleService {
 	out := &StyleService{
 		ID:         s.ID,
@@ -85,6 +87,20 @@ func (s *Style) toService() *StyleService {
 	err = json.Unmarshal(s.Data, &out.Data)
 	if err != nil {
 		log.Errorf("unmarshal style json error, details:%s", err)
+	}
+	return out
+}
+
+//服务拷贝
+func (ss *StyleService) copy() *StyleService {
+	out := &StyleService{
+		ID:          ss.ID,
+		Name:        ss.Name,
+		SpritePNG:   ss.SpritePNG,
+		SpriteJSON:  ss.SpriteJSON,
+		SpritePNG2:  ss.SpritePNG2,
+		SpriteJSON2: ss.SpriteJSON2,
+		Data:        ss.Data,
 	}
 	return out
 }
@@ -224,7 +240,7 @@ func LoadStyle(styleFile string) (*Style, error) {
 
 }
 
-//UpInsert 创建更新样式服务
+//UpInsert 创建更新样式存储
 //create or update upload data file info into database
 func (s *Style) UpInsert() error {
 	if s == nil {

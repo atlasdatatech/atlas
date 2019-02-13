@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+//listFonts 获取字体服务列表
 func listFonts(c *gin.Context) {
 	res := NewRes()
 	var fonts []*FontService
@@ -21,7 +22,7 @@ func listFonts(c *gin.Context) {
 	res.DoneData(c, fonts)
 }
 
-//getGlyphs get glyph pbf
+//getGlyphs 获取字体pbf,需区别于数据pbf,开启gzip压缩以加快传输,get glyph pbf.
 func getGlyphs(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)

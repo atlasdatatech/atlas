@@ -134,73 +134,111 @@ func (s *ServiceSet) ServeStyles(owner string) error {
 	return nil
 }
 
-// AddFont interprets filename as mbtiles file which is opened and which will be
-// served under "/services/<urlPath>" by Handler(). The parameter urlPath may not be
-// nil, otherwise an error is returned. In case the DB cannot be opened the returned
-// error is non-nil.
-func (s *ServiceSet) AddFont(fontName string, fontID string) error {
-	var err error
-	if fontName == "" {
-		log.Errorf("fontName may not be empty")
-		return err
+// AddFonts 添加fonts目录下未入库的字体
+func (s *ServiceSet) AddFonts(dir string) error {
+
+	isValid := func(pbfonts string) bool {
+		pbfFile := filepath.Join(pbfonts, "0-255.pbf")
+		if _, err := os.Stat(pbfFile); os.IsNotExist(err) {
+			log.Error(pbfFile, " not exists~")
+			return false
+		}
+		pbfFile = filepath.Join(pbfonts, "65280-65535.pbf")
+		if _, err := os.Stat(pbfFile); os.IsNotExist(err) {
+			log.Error(pbfFile, " not exists~")
+			return false
+		}
+		return true
 	}
 
-	pbfFile := fontName + "/" + "0-255.pbf" //use 0-255.pbf test the font can be service
-	if _, err := os.Stat(pbfFile); os.IsNotExist(err) {
-		log.Error(pbfFile, "not exists~")
-		return err
-	}
-	// exists and not has errors
-	out := &FontService{
-		ID:    fontID,
-		URL:   fontName,
-		State: true,
-	}
-	s.F.Store(fontID, out)
-	return nil
-}
-
-// ServeFonts returns a StyleService map that combines all style.json files under
-// the public directory at baseDir. The styles will all be served under their relative paths
-// to baseDir.
-func (s *ServiceSet) ServeFonts(baseDir string) (err error) {
-	var fontNames []string
-	dirs, err := ioutil.ReadDir(baseDir)
+	//遍历目录下所有fonts
+	files := make(map[string]string)
+	items, err := ioutil.ReadDir(dir)
 	if err != nil {
-		log.Error("ServeFonts, read fonts baseDir error:", err)
+		log.Error(err)
 	}
-	for _, dir := range dirs {
-		if dir.IsDir() {
-			fontDir := filepath.Join(baseDir, dir.Name())
-			fontNames = append(fontNames, fontDir)
+	for _, item := range items {
+		//zip & ttf current not support
+		if item.IsDir() {
+			path := filepath.Join(dir, item.Name())
+			if isValid(path) {
+				files[item.Name()] = path
+			}
 		}
 	}
 
-	for _, fontName := range fontNames {
-		fontID := filepath.Base(fontName)
-		err = s.AddFont(fontName, fontID)
-		if err != nil {
-			log.Errorf("ServeFonts, add font %q error: %v", fontName, err)
+	//获取数据库中已有服务
+	owner := ATLAS
+	if filepath.HasPrefix(dir, "users") {
+		paths := filepath.SplitList(dir)
+		if len(paths) == 3 {
+			owner = paths[1] //user id
 		}
 	}
-	length := 0
-	s.F.Range(func(_, _ interface{}) bool {
-		length++
-		return true
-	})
+	var fonts []Font
+	err = db.Where("owner = ?", owner).Find(&fonts).Error
+	if err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			return err
+		}
+	}
+	//借助map加速对比
+	quickmap := make(map[string]bool)
+	for _, font := range fonts {
+		quickmap[font.ID] = true
+	}
+	//diff 对比
+	count := 0
+	for id, file := range files {
+		_, ok := quickmap[id]
+		if !ok { //如果服务不存在
+			//加载文件
+			font, err := LoadFont(file)
+			if err != nil {
+				log.Errorf("AddFonts, could not load font %s, details: %s", font.ID, err)
+			}
+			//入库
+			err = font.UpInsert()
+			if err != nil {
+				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, font.ID, err)
+			}
+			//加载服务,todo 用户服务无需预加载
+			if true {
+				fs := font.toService()
+				s.F.Store(fs.ID, fs)
+			}
+			count++
+		}
+	}
 
-	log.Infof("ServeFonts, loading %d ~", length)
+	log.Infof("AddFonts, append %d fonts ~", count)
 	return nil
 }
 
-//reportFont if has large number of fonts ,should only serve for these reported
-func (s *ServiceSet) reportFont(font string) {
-	//set a array ServeFonts should serve only
-	length := 0
-	s.F.Range(func(_, _ interface{}) bool {
-		length++
-		return true
-	})
+// ServeFont 从加载字体服务，load font service
+func (s *ServiceSet) ServeFont(id string) error {
+	font := Font{}
+	err := db.Where("id = ?", id).First(font).Error
+	if err != nil {
+		return err
+	}
+	fs := font.toService()
+	s.F.Store(fs.ID, fs)
+	return nil
+}
+
+// ServeFonts 加载用户样式服务
+func (s *ServiceSet) ServeFonts(owner string) error {
+	var fonts []Font
+	err := db.Where("owner = ?", owner).Find(&fonts).Error
+	if err != nil {
+		return err
+	}
+	for _, font := range fonts {
+		fs := font.toService()
+		s.F.Store(fs.ID, fs)
+	}
+	return nil
 }
 
 // AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者tilemap配置文件
