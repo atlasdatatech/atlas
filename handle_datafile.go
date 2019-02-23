@@ -1,7 +1,6 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"database/sql"
 	"encoding/csv"
@@ -9,13 +8,11 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/axgle/mahonia"
 	"github.com/jinzhu/gorm"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
@@ -81,49 +78,6 @@ func fileUpload(c *gin.Context) {
 
 	var dtfiles []Datafile
 	if lext == ".zip" {
-		unzipToDir := func(zipfile string) string {
-			ext := filepath.Ext(zipfile)
-			dir := strings.TrimSuffix(zipfile, ext)
-			err := os.Mkdir(dir, os.ModePerm)
-			if err != nil {
-				log.Error(err)
-			}
-			zr, err := zip.OpenReader(zipfile)
-			if err != nil {
-				log.Error(err)
-			}
-			defer zr.Close()
-			decoder := mahonia.NewDecoder("gbk")
-
-			for _, f := range zr.File {
-				name := f.Name
-				// fmt.Println(chardet.Possible([]byte(name)))
-				// encoding := chardet.Mostlike([]byte(name))
-				//处理文件名
-				// if encoding != "" && encoding != "utf-8" {
-				// decoder := mahonia.NewDecoder(encoding)
-				name = decoder.ConvertString(name)
-				// }
-				_, fn := path.Split(name)
-				pn := filepath.Join(dir, fn)
-				log.Infof("Uncompress: %s -> %s", name, pn)
-				w, err := os.Create(pn)
-				if err != nil {
-					log.Errorf("Cannot unzip %s: %v", zipfile, err)
-				}
-				defer w.Close()
-				r, err := f.Open()
-				if err != nil {
-					log.Errorf("Cannot unzip %s: %v", zipfile, err)
-				}
-				defer r.Close()
-				_, err = io.Copy(w, r)
-				if err != nil {
-					log.Errorf("Cannot unzip %s: %v", zipfile, err)
-				}
-			}
-			return dir
-		}
 		getDatafiles := func(dir string) map[string]int64 {
 			files := make(map[string]int64)
 			fileInfos, err := ioutil.ReadDir(dir)
@@ -184,7 +138,7 @@ func fileUpload(c *gin.Context) {
 			}
 			return files
 		}
-		subdir := unzipToDir(dst)
+		subdir := UnZipToDir(dst)
 		zipDatafiles := getDatafiles(subdir)
 		for datafile, size := range zipDatafiles {
 			newName := strings.TrimSuffix(filepath.Base(datafile), filepath.Ext(datafile))
@@ -199,7 +153,7 @@ func fileUpload(c *gin.Context) {
 				Size:    size,
 				Type:    t,
 			}
-			err = df.upInsert()
+			err = df.UpInsert()
 			if err != nil {
 				log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 				res.FailErr(c, err)
@@ -218,7 +172,7 @@ func fileUpload(c *gin.Context) {
 			Size:    file.Size,
 			Type:    t,
 		}
-		err = df.upInsert()
+		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 			res.FailErr(c, err)
@@ -266,9 +220,7 @@ func dataPreview(c *gin.Context) {
 
 func dataImport(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString(identityKey)
-	log.Println(user)
-	// id := c.Param("id")
+	uid := c.GetString(identityKey)
 	dp := &DatafileBind{}
 	err := c.Bind(&dp)
 	if err != nil {
@@ -319,7 +271,7 @@ func dataImport(c *gin.Context) {
 			return
 		}
 	case ".mbtiles":
-		task, err = df.serveMBTiles()
+		task, err = df.serveMBTiles(uid)
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
@@ -334,7 +286,7 @@ func dataImport(c *gin.Context) {
 		return
 	}
 
-	err = df.upInsert()
+	err = df.UpInsert()
 	if err != nil {
 		log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
 		res.FailErr(c, err)

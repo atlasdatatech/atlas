@@ -105,9 +105,9 @@ type Task struct {
 	State    string `json:"state"`
 }
 
-//upInsert 创建更新上传数据文件信息
+//UpInsert 更新/创建上传数据文件信息
 //create or update upload data file info into database
-func (df *Datafile) upInsert() error {
+func (df *Datafile) UpInsert() error {
 	if df == nil {
 		return fmt.Errorf("datafile may not be nil")
 	}
@@ -1045,7 +1045,7 @@ func (df *Datafile) ogrImport() (*Task, error) {
 }
 
 //csvImport import csv data
-func (df *Datafile) serveMBTiles() (*Task, error) {
+func (df *Datafile) serveMBTiles(uid string) (*Task, error) {
 	task := &Task{
 		ID:   df.ID,
 		Type: "tsprocess",
@@ -1067,8 +1067,10 @@ func (df *Datafile) serveMBTiles() (*Task, error) {
 			log.Errorf(`load mbtiles error, details:%s`, err)
 			return nil, fmt.Errorf("unkown data format")
 		}
-
-		pubSet.T.Store(df.ID, mbs)
+		is, ok := pubSet.Load(uid)
+		if ok {
+			is.(*ServiceSet).T.Store(df.ID, mbs)
+		}
 		task.Progress = 100
 		task.State = "finished"
 		//保存任务

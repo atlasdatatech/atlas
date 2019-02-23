@@ -81,15 +81,21 @@ func renderMapsImport(c *gin.Context) {
 }
 
 func studioIndex(c *gin.Context) {
-
-	var styles []*Style
-	pubSet.S.Range(func(_, v interface{}) bool {
-		styles = append(styles, v.(*Style))
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
+	uset := is.(*ServiceSet)
+	var styles []*StyleService
+	uset.S.Range(func(_, v interface{}) bool {
+		styles = append(styles, v.(*StyleService))
 		return true
 	})
-
 	var tilesets []*TileService
-	pubSet.S.Range(func(_, v interface{}) bool {
+	uset.T.Range(func(_, v interface{}) bool {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
@@ -105,24 +111,28 @@ func studioIndex(c *gin.Context) {
 
 func studioEditer(c *gin.Context) {
 	//public
-	id := c.GetString(identityKey) //for user privite tiles
-	log.Debug(id)
-	user := c.Param("user")
-
-	var styles []*Style
-	pubSet.S.Range(func(_, v interface{}) bool {
-		styles = append(styles, v.(*Style))
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
+	uset := is.(*ServiceSet)
+	var styles []*StyleService
+	uset.S.Range(func(_, v interface{}) bool {
+		styles = append(styles, v.(*StyleService))
 		return true
 	})
 
 	var tilesets []*TileService
-	pubSet.S.Range(func(_, v interface{}) bool {
+	uset.T.Range(func(_, v interface{}) bool {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
 	c.HTML(http.StatusOK, "editor.html", gin.H{
 		"Title":    "Creater",
-		"User":     user,
+		"User":     uid,
 		"Styles":   styles,
 		"Tilesets": tilesets,
 	})

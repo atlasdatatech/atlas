@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 
+	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	// "github.com/paulmach/orb/encoding/wkb"
 )
@@ -78,6 +80,29 @@ func (ds *Dataset) toService() *DataService {
 	}
 	json.Unmarshal(ds.Fields, &out.Fields)
 	return out
+}
+
+//UpInsert 更新/创建数据集概要
+func (ds *Dataset) UpInsert() error {
+	if ds == nil {
+		return fmt.Errorf("datafile may not be nil")
+	}
+	tmp := &Dataset{}
+	err := db.Where("id = ?", ds.ID).First(tmp).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = db.Create(ds).Error
+			if err != nil {
+				return err
+			}
+		}
+		return err
+	}
+	err = db.Model(&Dataset{}).Update(ds).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetGeoJSON reads a data in the database

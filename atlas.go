@@ -43,8 +43,7 @@ var authMid *jwt.GinJWTMiddleware
 
 //ATLAS public user
 var ATLAS = "atlas"
-var pubSet = &ServiceSet{}
-var userSet sync.Map
+var pubSet sync.Map
 
 var taskQueue = make(chan *Task, 32)
 
@@ -69,7 +68,7 @@ func main() {
 	} else {
 		log.Info("Successfully connected!")
 		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
-		pg.AutoMigrate(&Datafile{}, &Task{}, &Dataset{})
+		pg.AutoMigrate(&Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
 		//业务数据表
 		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
 		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
@@ -91,10 +90,12 @@ func main() {
 	initSystemUserRole()
 
 	createPaths(ATLAS)
-	err = pubSet.LoadServiceSet()
+	pubs := &ServiceSet{User: ATLAS}
+	err = pubs.LoadServiceSet()
 	if err != nil {
 		log.Errorf("loading public service set error: %s", err.Error())
 	}
+	pubSet.Store(pubs.User, pubs)
 
 	r := gin.Default()
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -249,11 +250,10 @@ func bindRouters(r *gin.Engine) {
 		// > styles
 		styles.GET("/", listStyles)
 		styles.POST("/", uploadStyle)
-		styles.GET("/:sid", getStyle)              //style.json
-		styles.GET("/:sid/", viewStyle)            //view map style
-		styles.POST("/:sid/", upSaveStyle)         //updateStyle
-		styles.GET("/:sid/sprite:fmt", getSprite)  //style.json
-		styles.POST("/:sid/sprite/", uploadSprite) //style.json
+		styles.GET("/:sid", getStyle)             //style.json
+		styles.GET("/:sid/", viewStyle)           //view map style
+		styles.POST("/:sid/", updateStyle)        //updateStyle
+		styles.GET("/:sid/sprite:fmt", getSprite) //sprite.json/png
 	}
 	fonts := r.Group("/fonts")
 	// fonts.Use(authMid.MiddlewareFunc())

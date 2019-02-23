@@ -15,8 +15,14 @@ import (
 //listTilesets list user's tilesets
 func listTilesets(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
 	var tilesets []*TileService
-	pubSet.S.Range(func(_, v interface{}) bool {
+	is.(*ServiceSet).T.Range(func(_, v interface{}) bool {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
@@ -26,11 +32,16 @@ func listTilesets(c *gin.Context) {
 //uploadTileset list user's tilesets
 func uploadTileset(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, id)
+		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, uid)
 		res.Fail(c, 4046)
 		return
 	}
@@ -42,13 +53,13 @@ func uploadTileset(c *gin.Context) {
 	dst := filepath.Join(tilesets, tid+ext)
 
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, id)
+		log.Errorf(`uploadTileset, upload file: %s; user: %s`, err, uid)
 		res.Fail(c, 5002)
 		return
 	}
 
 	//更新服务
-	err = pubSet.ServeTileset(dst)
+	err = is.(*ServiceSet).ServeTileset(dst)
 	if err != nil {
 		log.Errorf(`uploadTileset, add mbtiles: %s ^^`, err)
 	}
@@ -61,9 +72,14 @@ func uploadTileset(c *gin.Context) {
 //getTilejson get tilejson
 func getTilejson(c *gin.Context) {
 	res := NewRes()
-	// id := c.GetString(identityKey)
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
 	tid := c.Param("tid")
-	tileService, ok := pubSet.T.Load(tid)
+	tileService, ok := is.(*ServiceSet).T.Load(tid)
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
 		res.Fail(c, 4044)
@@ -115,8 +131,14 @@ func getTilejson(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(identityKey)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
 	tid := c.Param("tid")
-	tileService, ok := pubSet.T.Load(tid)
+	tileService, ok := is.(*ServiceSet).T.Load(tid)
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
 		res.Fail(c, 4044)

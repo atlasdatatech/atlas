@@ -21,21 +21,33 @@ func listDatasets(c *gin.Context) {
 	res := NewRes()
 
 	var dss []*DataService
-	pubSet.D.Range(func(_, v interface{}) bool {
-		dss = append(dss, v.(*DataService))
-		return true
-	})
+	uid := c.GetString(identityKey)
+
+	is, ok := pubSet.Load(uid)
+	if ok {
+		is.(*ServiceSet).D.Range(func(_, v interface{}) bool {
+			dss = append(dss, v.(*DataService))
+			return true
+		})
+	}
+
 	res.DoneData(c, dss)
 }
 
 func getDatasetInfo(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(identityKey)
 	name := c.Param("name")
 	if code := checkDataset(name); code != 200 {
 		res.Fail(c, code)
 		return
 	}
-	ds, ok := pubSet.D.Load(name)
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		res.Fail(c, 4044)
+		return
+	}
+	ds, ok := is.(*ServiceSet).D.Load(name)
 	if !ok {
 		res.Fail(c, 4045)
 		return
