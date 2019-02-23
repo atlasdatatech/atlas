@@ -31,7 +31,7 @@ type MBTiles struct {
 
 // TileType returns the tileset type.
 func (mt MBTiles) TileType() string {
-	return "mbtiles"
+	return ".mbtiles"
 }
 
 // TileFormat returns the tileset type.

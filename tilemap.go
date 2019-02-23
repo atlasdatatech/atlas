@@ -77,7 +77,7 @@ func (l *TileLayer) MVTName() string {
 
 // TileType returns the tileset type.
 func (tm TileMap) TileType() string {
-	return "tilemap"
+	return ".tilemap"
 }
 
 // TileFormat returns the TileFormat of the DB.

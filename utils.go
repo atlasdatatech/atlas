@@ -333,7 +333,6 @@ func updateDatasetInfo(did string) error {
 	ds := &Dataset{
 		ID:     did,
 		Name:   did,
-		Label:  did,
 		Type:   Polygon,
 		Fields: jfs,
 	}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
+	log "github.com/sirupsen/logrus"
+	"github.com/teris-io/shortid"
 )
 
 // TilesetI is an interface that represents the shared attributes
@@ -112,7 +114,8 @@ type Tileset struct {
 	Name      string `json:"name"`
 	Owner     string `json:"owner" gorm:"index"`
 	Type      string `json:"type"`
-	Size      string `json:"size"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
 	Layers    []byte `json:"data" gorm:"type:json"`
 	JSON      []byte `json:"json" gorm:"column:json,type:json"`
 	CreatedAt time.Time
@@ -132,6 +135,63 @@ type TileService struct {
 	Type    string
 	State   bool     // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
 	Tileset TilesetI // database connection for mbtiles file
+}
+
+//LoadTileset 创建更新瓦片集服务
+//create or update upload data file info into database
+func LoadTileset(tileset string) (*Tileset, error) {
+	fStat, err := os.Stat(tileset)
+	if err != nil {
+		log.Errorf(`LoadStyle, read style file info error, details: %s`, err)
+		return nil, err
+	}
+	base := filepath.Base(tileset)
+	ext := filepath.Ext(tileset)
+	name := strings.TrimSuffix(base, ext)
+	id, _ := shortid.Generate()
+
+	out := &Tileset{
+		ID:        name + "." + id,
+		Version:   "8",
+		Name:      name,
+		Owner:     ATLAS,
+		Type:      ext,
+		Path:      tileset,
+		Size:      fStat.Size(),
+		UpdatedAt: fStat.ModTime(),
+		Layers:    nil,
+		JSON:      nil,
+	}
+	switch ext {
+	case ".mbtiles":
+		// mb, err := LoadMBTiles(tileset)
+		// out.JSON = mb.TileJSON()
+	case ".tilemap":
+		// tm, err := LoadTilemap(tileset)
+		// out.JSON = tm.TileJSON()
+	}
+
+	return out, nil
+}
+
+// CreateTileService creates a new StyleService instance.
+// Connection is closed by runtime on application termination or by calling
+// its Close() method.
+func (ts *Tileset) toService() *TileService {
+	out := &TileService{
+		ID:   ts.ID,
+		Name: ts.Name,
+		URL:  ts.Path, //should not add / at the end
+	}
+	its, err := ts.LoadService()
+	if err != nil {
+		return out
+	}
+
+	out.Type = its.TileFormat().String()
+	out.Tileset = its
+	out.State = true
+	return out
 }
 
 //UpInsert 创建更新瓦片集服务
@@ -158,35 +218,31 @@ func (ts *Tileset) UpInsert() error {
 	return nil
 }
 
-// CreateTileService creates a new StyleService instance.
-// Connection is closed by runtime on application termination or by calling
-// its Close() method.
-func CreateTileService(filePathName string, tileID string) (*TileService, error) {
-
-	if filePathName == "" || tileID == "" {
-		return nil, fmt.Errorf("path parameter may not be empty")
+//LoadService 创建更新瓦片集服务
+//create or update upload data file info into database
+func (ts *Tileset) LoadService() (TilesetI, error) {
+	if ts == nil {
+		return nil, fmt.Errorf("datafile may not be nil")
 	}
-	mbtiles, err := LoadMBTiles(filePathName)
-	if err != nil {
-		return nil, fmt.Errorf("could not open mbtiles file %q: %v", filePathName, err)
+	switch ts.Type {
+	case ".mbtiles":
+		mb, err := LoadMBTiles(ts.Path)
+		if err != nil {
+			return nil, err
+		}
+		return mb, nil
+		// out.JSON = mb.TileJSON()
+	case ".tilemap":
+		// tm, err := LoadTilemap(ts.Path)
+		// out.JSON = tm.TileJSON()
 	}
-
-	out := &TileService{
-		ID:      tileID,
-		URL:     filePathName, //should not add / at the end
-		Type:    mbtiles.TileFormat().String(),
-		Hash:    mbtiles.GetHash(),
-		State:   true,
-		Tileset: mbtiles,
-	}
-	return out, nil
+	return nil, fmt.Errorf("未知文件类型")
 }
 
 // LoadMBTiles creates a new MBTiles instance.
 // Connection is closed by runtime on application termination or by calling
 // its Close() method.
 func LoadMBTiles(pathfile string) (*MBTiles, error) {
-
 	//Saves last modified mbtiles time for setting Last-Modified header
 	fStat, err := os.Stat(pathfile)
 	if err != nil {
@@ -253,6 +309,22 @@ func LoadMBTiles(pathfile string) (*MBTiles, error) {
 		}
 	}
 
+	return &out, nil
+
+}
+
+// LoadTileMap creates a new MBTiles instance.
+// Connection is closed by runtime on application termination or by calling
+// its Close() method.
+func LoadTileMap(pathfile string) (*TileMap, error) {
+	//Saves last modified mbtiles time for setting Last-Modified header
+	// fStat, err := os.Stat(pathfile)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", pathfile)
+	// }
+	out := TileMap{
+		Name: pathfile,
+	}
 	return &out, nil
 
 }

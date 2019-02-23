@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -41,16 +40,32 @@ func (s *ServiceSet) LoadServiceSet() error {
 	//serve all altas fonts
 	err = s.ServeFonts(ATLAS)
 	if err != nil {
-		log.Errorf("ServeStyles, serve %s's styles error, details:%s", ATLAS, err)
+		log.Errorf("ServeFonts, serve %s's fonts error, details:%s", ATLAS, err)
 	}
-	s.AddTilesets("tilesets")   //服务启动时，检测未入服务集(mbtiles,pbflayers)
+	//diff tileset dir and append new tileset
+	s.AddTilesets("tilesets") //服务启动时，检测未入服务集(mbtiles,pbflayers)
+	if err != nil {
+		log.Errorf("AddTilesets, add new tileset error, details:%s", err)
+	}
+	//serve all altas tilesets
 	s.ServeTilesets("tilesets") //服务启动时，创建服务集
-	s.AddDatasets("tilesets")   //服务启动时，检测未入库数据集
+	if err != nil {
+		log.Errorf("ServeTilesets, serve %s's tileset error, details:%s", ATLAS, err)
+	}
+	//diff tileset dir and append new dataset
+	s.AddDatasets("tilesets") //服务启动时，检测未入库数据集
+	if err != nil {
+		log.Errorf("AddDatasets, add new dataset error, details:%s", err)
+	}
+	//serve all altas datasets
 	s.ServeDatasets("tilesets") //服务启动时，创建数据集
+	if err != nil {
+		log.Errorf("ServeDatasets, serve %s's dataset error, details:%s", ATLAS, err)
+	}
 	return nil
 }
 
-// AddStyles 添加styles目录下未入库的style样式
+// AddStyles 添加styles目录下未入库的样式
 func (s *ServiceSet) AddStyles(dir string) error {
 	//遍历目录下所有styles
 	files := make(map[string]string)
@@ -111,11 +126,6 @@ func (s *ServiceSet) AddStyles(dir string) error {
 			if err != nil {
 				log.Errorf(`AddStyles, upinsert style %s error, details: %s`, style.ID, err)
 			}
-			//此处不加入服务,todo 用户服务无需预加载
-			if false {
-				ss := style.toService()
-				s.S.Store(ss.ID, ss)
-			}
 			count++
 		}
 	}
@@ -124,7 +134,7 @@ func (s *ServiceSet) AddStyles(dir string) error {
 	return nil
 }
 
-// ServeStyle 从样式目录加载样式服务，load style service
+// ServeStyle 加载启动指定样式服务，load style service
 func (s *ServiceSet) ServeStyle(id string) error {
 	style := Style{}
 	err := db.Where("id = ?", id).First(style).Error
@@ -136,7 +146,7 @@ func (s *ServiceSet) ServeStyle(id string) error {
 	return nil
 }
 
-// ServeStyles 加载用户样式服务
+// ServeStyles 加载启动指定用户的全部样式服务
 func (s *ServiceSet) ServeStyles(owner string) error {
 	var styles []Style
 	err := db.Where("owner = ?", owner).Find(&styles).Error
@@ -218,11 +228,6 @@ func (s *ServiceSet) AddFonts(dir string) error {
 			if err != nil {
 				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, font.ID, err)
 			}
-			//加载服务,todo 用户服务无需预加载
-			if true {
-				fs := font.toService()
-				s.F.Store(fs.ID, fs)
-			}
 			count++
 		}
 	}
@@ -231,7 +236,7 @@ func (s *ServiceSet) AddFonts(dir string) error {
 	return nil
 }
 
-// ServeFont 从字体目录库加载字体服务，load font service
+// ServeFont 加载启动指定字体服务，load font service
 func (s *ServiceSet) ServeFont(id string) error {
 	font := Font{}
 	err := db.Where("id = ?", id).First(font).Error
@@ -243,7 +248,7 @@ func (s *ServiceSet) ServeFont(id string) error {
 	return nil
 }
 
-// ServeFonts 加载用户字体服务，当前默认加载公共字体
+// ServeFonts 加载启动指定用户的字体服务，当前默认加载公共字体
 func (s *ServiceSet) ServeFonts(owner string) error {
 	var fonts []Font
 	err := db.Where("owner = ?", owner).Find(&fonts).Error
@@ -295,10 +300,15 @@ func (s *ServiceSet) AddTilesets(dir string) error {
 	for id, file := range files {
 		_, ok := quickmap[id]
 		if !ok {
-			//如果服务不存在，则添加
-			err := s.ServeTileset(file)
+			//加载文件
+			tileset, err := LoadTileset(file)
 			if err != nil {
-				continue
+				log.Errorf("AddFonts, could not load font %s, details: %s", tileset.ID, err)
+			}
+			//入库
+			err = tileset.UpInsert()
+			if err != nil {
+				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, tileset.ID, err)
 			}
 			count++
 		}
@@ -310,73 +320,27 @@ func (s *ServiceSet) AddTilesets(dir string) error {
 
 // ServeTileset 从瓦片集目录库里加载tilesets服务集
 func (s *ServiceSet) ServeTileset(id string) error {
-
-	// // LoadMBTiles(pathfile)
-	// mb, err := LoadMBTiles(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, LoadMBTiles error, details: %s`, err)
-	// }
-
-	// base := filepath.Base(pathfile)
-	// ext := filepath.Ext(pathfile)
-	// id := strings.TrimSuffix(base, ext)
-	// name := strings.Split(id, ".")[0]
-
-	// ts := &Tileset{
-	// 	ID:      id,
-	// 	Name:    name,
-	// 	URL:     pathfile, //should not add / at the end
-	// 	Type:    mb.TileFormat().String(),
-	// 	Hash:    mb.GetHash(),
-	// 	State:   true,
-	// 	Size:    fStat.Size(),
-	// 	Tileset: mb,
-	// }
-
-	// err = ts.UpInsert()
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, upinsert dtfile error, details: %s`, err)
-	// 	return err
-	// }
-	// pubSet.T.Store(id, ts)
+	ts := Tileset{}
+	err := db.Where("id = ?", id).First(ts).Error
+	if err != nil {
+		return err
+	}
+	tss := ts.toService()
+	s.T.Store(tss.ID, tss)
 	return nil
 }
 
 // ServeTilesets 加载用户tilesets服务集
 func (s *ServiceSet) ServeTilesets(owner string) error {
-	// fStat, err := os.Stat(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, read file stat info error, details: %s`, err)
-	// 	return err
-	// }
-	// // LoadMBTiles(pathfile)
-	// mb, err := LoadMBTiles(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, LoadMBTiles error, details: %s`, err)
-	// }
-
-	// base := filepath.Base(pathfile)
-	// ext := filepath.Ext(pathfile)
-	// id := strings.TrimSuffix(base, ext)
-	// name := strings.Split(id, ".")[0]
-
-	// ts := &Tileset{
-	// 	ID:      id,
-	// 	Name:    name,
-	// 	URL:     pathfile, //should not add / at the end
-	// 	Type:    mb.TileFormat().String(),
-	// 	Hash:    mb.GetHash(),
-	// 	State:   true,
-	// 	Size:    fStat.Size(),
-	// 	Tileset: mb,
-	// }
-
-	// err = ts.UpInsert()
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, upinsert dtfile error, details: %s`, err)
-	// 	return err
-	// }
-	// pubSet.T.Store(id, ts)
+	var tilesets []Tileset
+	err := db.Where("owner = ?", owner).Find(&tilesets).Error
+	if err != nil {
+		return err
+	}
+	for _, tileset := range tilesets {
+		tss := tileset.toService()
+		s.T.Store(tss.ID, tss)
+	}
 	return nil
 }
 
@@ -418,10 +382,15 @@ func (s *ServiceSet) AddDatasets(dir string) error {
 	for id, file := range files {
 		_, ok := quickmap[id]
 		if !ok {
-			//如果服务不存在，则添加
-			err := s.ServeDataset(file)
+			//加载文件
+			dataset, err := LoadDataset(file)
 			if err != nil {
-				continue
+				log.Errorf("AddFonts, could not load font %s, details: %s", dataset.ID, err)
+			}
+			//入库
+			err = dataset.UpInsert()
+			if err != nil {
+				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, dataset.ID, err)
 			}
 			count++
 		}
@@ -433,123 +402,26 @@ func (s *ServiceSet) AddDatasets(dir string) error {
 
 // ServeDataset 从数据集目录库里加载数据集服务
 func (s *ServiceSet) ServeDataset(id string) error {
-
-	// // LoadMBTiles(pathfile)
-	// mb, err := LoadMBTiles(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, LoadMBTiles error, details: %s`, err)
-	// }
-
-	// base := filepath.Base(pathfile)
-	// ext := filepath.Ext(pathfile)
-	// id := strings.TrimSuffix(base, ext)
-	// name := strings.Split(id, ".")[0]
-
-	// ts := &Tileset{
-	// 	ID:      id,
-	// 	Name:    name,
-	// 	URL:     pathfile, //should not add / at the end
-	// 	Type:    mb.TileFormat().String(),
-	// 	Hash:    mb.GetHash(),
-	// 	State:   true,
-	// 	Size:    fStat.Size(),
-	// 	Tileset: mb,
-	// }
-
-	// err = ts.UpInsert()
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, upinsert dtfile error, details: %s`, err)
-	// 	return err
-	// }
-	// pubSet.T.Store(id, ts)
+	ds := Dataset{}
+	err := db.Where("id = ?", id).First(ds).Error
+	if err != nil {
+		return err
+	}
+	dss := ds.toService()
+	s.D.Store(dss.ID, dss)
 	return nil
 }
 
 // ServeDatasets 加载用户数据集服务
 func (s *ServiceSet) ServeDatasets(owner string) error {
-	// fStat, err := os.Stat(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, read file stat info error, details: %s`, err)
-	// 	return err
-	// }
-	// // LoadMBTiles(pathfile)
-	// mb, err := LoadMBTiles(pathfile)
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, LoadMBTiles error, details: %s`, err)
-	// }
-
-	// base := filepath.Base(pathfile)
-	// ext := filepath.Ext(pathfile)
-	// id := strings.TrimSuffix(base, ext)
-	// name := strings.Split(id, ".")[0]
-
-	// ts := &Tileset{
-	// 	ID:      id,
-	// 	Name:    name,
-	// 	URL:     pathfile, //should not add / at the end
-	// 	Type:    mb.TileFormat().String(),
-	// 	Hash:    mb.GetHash(),
-	// 	State:   true,
-	// 	Size:    fStat.Size(),
-	// 	Tileset: mb,
-	// }
-
-	// err = ts.UpInsert()
-	// if err != nil {
-	// 	log.Errorf(`AddMBTile, upinsert dtfile error, details: %s`, err)
-	// 	return err
-	// }
-	// pubSet.T.Store(id, ts)
-	return nil
-}
-
-// AddDatasetService interprets filename as mbtiles file which is opened and which will be
-// served under "/services/<urlPath>" by Handler(). The parameter urlPath may not be
-// nil, otherwise an error is returned. In case the DB cannot be opened the returned
-// error is non-nil.
-func (s *ServiceSet) AddDatasetService(dataset *Dataset) error {
-	if dataset == nil {
-		return fmt.Errorf("dataset may not be nil")
-	}
-	out := dataset.toService()
-	out.Hash = "#"
-	out.State = true
-	s.D.Store(dataset.ID, out)
-	// s.Datasets[dataset.Name] = out
-	return nil
-}
-
-// LoadDatasetServices setServices returns a ServiceSet that combines all .mbtiles files under
-// the directory at baseDir. The DBs will all be served under their relative paths
-// to baseDir.
-func (s *ServiceSet) LoadDatasetServices() (err error) {
-	// 获取所有记录
 	var datasets []Dataset
-	err = db.Find(&datasets).Error
+	err := db.Where("owner = ?", owner).Find(&datasets).Error
 	if err != nil {
-		log.Errorf(`ServeDatasets, query datasets: %s ^^`, err)
+		return err
 	}
-	//clear service
-	//erase map
-	s.D.Range(func(key interface{}, value interface{}) bool {
-		s.D.Delete(key)
-		return true
-	})
-
-	// for k := range s.D {
-	// 	delete(s.Datasets, k)
-	// }
-	for _, ds := range datasets {
-		err = s.AddDatasetService(&ds)
-		if err != nil {
-			log.Errorf(`ServeDatasets, add dataset: %s ^^`, err)
-		}
+	for _, dataset := range datasets {
+		dss := dataset.toService()
+		s.D.Store(dss.ID, dss)
 	}
-	length := 0
-	s.D.Range(func(_, _ interface{}) bool {
-		length++
-		return true
-	})
-	log.Infof("ServeDatasets, loaded %d dataset ~", length)
 	return nil
 }

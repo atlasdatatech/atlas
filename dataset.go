@@ -3,9 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
+	log "github.com/sirupsen/logrus"
+	"github.com/teris-io/shortid"
 	// "github.com/paulmach/orb/encoding/wkb"
 )
 
@@ -40,18 +46,22 @@ type Fields []Field
 
 // Dataset 数据集定义-后台
 type Dataset struct {
-	ID     string `json:"id"`                      //字段列表
-	Name   string `json:"name"`                    //字段列表// 数据集名称,现用于更方便的ID
-	Label  string `json:"label"`                   //字段列表// 显示标签
-	Type   string `json:"type"`                    //字段列表
-	Fields []byte `json:"fields" gorm:"type:json"` //字段列表
+	ID        string `json:"id"`   //字段列表
+	Name      string `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
+	Owner     string `json:"owner"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	Type      string `json:"type"`                    //字段列表
+	Fields    []byte `json:"fields" gorm:"type:json"` //字段列表
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // DataService 数据集定义-接口
 type DataService struct {
 	ID     string      `form:"id" json:"id"`         //字段列表
 	Name   string      `form:"name" json:"name"`     //字段列表// 数据集名称,现用于更方便的ID
-	Label  string      `form:"label" json:"label"`   //字段列表// 显示标签
+	Owner  string      `form:"owner" json:"owner"`   //字段列表// 显示标签
 	Type   string      `form:"type" json:"type"`     //字段列表
 	Fields interface{} `form:"fields" json:"fields"` //字段列表
 
@@ -64,18 +74,56 @@ func (dss *DataService) toDataset() *Dataset {
 	out := &Dataset{
 		ID:    dss.ID,
 		Name:  dss.Name,
-		Label: dss.Label,
+		Owner: dss.Owner,
+		Path:  dss.URL,
 		Type:  dss.Type,
 	}
 	out.Fields, _ = json.Marshal(dss.Fields)
 	return out
 }
 
+// LoadDataset setServices returns a ServiceSet that combines all .mbtiles files under
+// the directory at baseDir. The DBs will all be served under their relative paths
+// to baseDir.
+func LoadDataset(dataset string) (*Dataset, error) {
+	// 获取所有记录
+	fStat, err := os.Stat(dataset)
+	if err != nil {
+		log.Errorf(`LoadStyle, read style file info error, details: %s`, err)
+		return nil, err
+	}
+	base := filepath.Base(dataset)
+	ext := filepath.Ext(dataset)
+	name := strings.TrimSuffix(base, ext)
+	id, _ := shortid.Generate()
+
+	out := &Dataset{
+		ID:        name + "." + id,
+		Name:      name,
+		Owner:     ATLAS,
+		Type:      ext,
+		Path:      dataset,
+		Size:      fStat.Size(),
+		UpdatedAt: fStat.ModTime(),
+		Fields:    nil,
+	}
+	switch ext {
+	case ".geojson":
+		// mb, err := LoadMBTiles(tileset)
+		// out.JSON = mb.TileJSON()
+	case ".zip":
+		// tm, err := LoadTilemap(tileset)
+		// out.JSON = tm.TileJSON()
+	}
+
+	return out, nil
+}
+
 func (ds *Dataset) toService() *DataService {
 	out := &DataService{
 		ID:    ds.ID,
 		Name:  ds.Name,
-		Label: ds.Label,
+		Owner: ds.Owner,
 		Type:  ds.Type,
 	}
 	json.Unmarshal(ds.Fields, &out.Fields)
