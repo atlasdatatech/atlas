@@ -19,27 +19,30 @@ import (
 	"github.com/go-spatial/tegola/provider"
 	"github.com/go-spatial/tegola/provider/debug"
 	proto "github.com/golang/protobuf/proto"
-	"github.com/paulmach/orb"
 
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
 )
 
+//TileBuffer 瓦片缓冲区大小
+var TileBuffer float64 = tegola.DefaultTileBuffer
+
 //TileMap 瓦片数据集
 type TileMap struct {
-	ID   string
-	Name string
+	ID   string `json:"id"`
+	Name string `json:"name"`
 	// Contains an attribution to be displayed when the map is shown to a user.
 	// 	This string is sanatized so it can't be abused as a vector for XSS or beacon tracking.
-	Attribution string
+	Attribution string `json:"attribution"`
 	// The maximum extent of available map tiles in WGS:84
 	// latitude and longitude values, in the order left, bottom, right, top.
 	// Default: [-180, -85, 180, 85]
-	Bound *orb.Bound
+	Bounds *geom.Extent
+
 	// The first value is the longitude, the second is latitude (both in
 	// WGS:84 values), the third value is the zoom level.
-	Center [3]float64
-	Layers []TileLayer
+	Center [3]float64  `json:"center"`
+	Layers []TileLayer `json:"layers"`
 
 	SRID uint64
 	// MVT output values
@@ -52,18 +55,18 @@ type TileMap struct {
 //TileLayer tile layer
 type TileLayer struct {
 	// optional. if not set, the ProviderLayerName will be used
-	Name              string
-	ProviderLayerName string
-	MinZoom           uint
-	MaxZoom           uint
+	Name              string `json:"name"`
+	ProviderLayerName string `json:"provider_layer"`
+	MinZoom           uint   `json:"min_zoom"`
+	MaxZoom           uint   `json:"max_zoom"`
 	// instantiated provider
 	Provider provider.Tiler
 	// default tags to include when encoding the layer. provider tags take precedence
-	DefaultTags map[string]interface{}
+	DefaultTags map[string]interface{} `json:"default_tags"`
 	GeomType    geom.Geometry
 	// DontSimplify indicates wheather feature simplification should be applied.
 	// We use a negative in the name so the default is to simplify
-	DontSimplify bool
+	DontSimplify bool `json:"dont_simplify"`
 }
 
 // MVTName will return the value that will be encoded in the Name field when the layer is encoded as MVT
@@ -92,8 +95,34 @@ func (tm TileMap) TileJSON() TileJSON {
 }
 
 //Tile 获取瓦片
-func (tm TileMap) Tile(z uint8, x uint, y uint) ([]byte, error) {
-	return nil, nil
+func (tm TileMap) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error) {
+	tile := slippy.NewTile(uint(z), x, y, TileBuffer, tegola.WebMercator)
+	{
+		// Check to see that the zxy is within the bounds of the map.
+		textent := geom.Extent(tile.Bounds())
+		if !tm.Bounds.Contains(&textent) {
+			return nil, fmt.Errorf("not contains")
+		}
+	}
+
+	// check for the debug query string
+	if true {
+		tm = tm.AddDebugLayers()
+	}
+	pbyte, err := tm.Encode(ctx, tile)
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			// TODO: add debug logs
+			return nil, err
+		default:
+			errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+			log.Error(errMsg)
+			return nil, err
+		}
+	}
+
+	return pbyte, nil
 }
 
 // AddDebugLayers returns a copy of a Map with the debug layers appended to the layer list

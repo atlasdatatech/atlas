@@ -2,27 +2,32 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-spatial/tegola/provider"
+	_ "github.com/go-spatial/tegola/provider/postgis"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
 )
 
-// TilesetI is an interface that represents the shared attributes
+// Tileseter is an interface that represents the shared attributes
 // of a tileset.
-type TilesetI interface {
+type Tileseter interface {
 	TileType() string
 	TileFormat() TileFormat
-	Tile(z uint8, x uint, y uint) ([]byte, error)
+	Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error)
 	TileJSON() TileJSON
 
 	// requiring because sub package type switch over all possible types.
@@ -31,8 +36,8 @@ type TilesetI interface {
 
 // compile time checks
 var (
-	_ TilesetI = MBTiles{}
-	_ TilesetI = TileMap{}
+	_ Tileseter = MBTiles{}
+	_ Tileseter = TileMap{}
 )
 
 func (tm TileMap) private() {}
@@ -41,7 +46,7 @@ func (mt MBTiles) private() {}
 // AllTilesets lists all possible types and values that a tileset
 // interface can be. It should be used only for testing to verify
 // functions that accept a Geometry will work in all cases.
-var AllTilesets = []TilesetI{
+var AllTilesets = []Tileseter{
 	nil,
 	MBTiles{},
 	TileMap{},
@@ -133,8 +138,8 @@ type TileService struct {
 	URL     string // tile format: PNG, JPG, PBF, WEBP
 	Hash    string
 	Type    string
-	State   bool     // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
-	Tileset TilesetI // database connection for mbtiles file
+	State   bool      // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	Tileset Tileseter // database connection for mbtiles file
 }
 
 //LoadTileset 创建更新瓦片集服务
@@ -220,7 +225,7 @@ func (ts *Tileset) UpInsert() error {
 
 //LoadService 创建更新瓦片集服务
 //create or update upload data file info into database
-func (ts *Tileset) LoadService() (TilesetI, error) {
+func (ts *Tileset) LoadService() (Tileseter, error) {
 	if ts == nil {
 		return nil, fmt.Errorf("datafile may not be nil")
 	}
@@ -233,7 +238,11 @@ func (ts *Tileset) LoadService() (TilesetI, error) {
 		return mb, nil
 		// out.JSON = mb.TileJSON()
 	case ".tilemap":
-		// tm, err := LoadTilemap(ts.Path)
+		tm, err := LoadTileMap(ts.Path)
+		if err != nil {
+			return nil, err
+		}
+		return tm, nil
 		// out.JSON = tm.TileJSON()
 	}
 	return nil, fmt.Errorf("未知文件类型")
@@ -313,8 +322,32 @@ func LoadMBTiles(pathfile string) (*MBTiles, error) {
 
 }
 
+//InitProvider 初始化数据库驱动
+func InitProvider() (provider.Tiler, error) {
+	type prov struct {
+		ID   string
+		Name string
+		Type string
+	}
+	p := &prov{
+		ID:   "123",
+		Name: "test",
+		Type: "postgis",
+	}
+
+	switch p.Type {
+	case "postgis":
+	case "gpkg":
+	}
+	provd, err := provider.For(p.Type, nil)
+	if err != nil {
+		return nil, err
+	}
+	return provd, nil
+}
+
 // LoadTileMap creates a new MBTiles instance.
-// Connection is closed by runtime on application termination or by calling
+// Co123456789nnection is closed by runtime on application termination or by calling
 // its Close() method.
 func LoadTileMap(pathfile string) (*TileMap, error) {
 	//Saves last modified mbtiles time for setting Last-Modified header
@@ -322,11 +355,47 @@ func LoadTileMap(pathfile string) (*TileMap, error) {
 	// if err != nil {
 	// 	return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", pathfile)
 	// }
-	out := TileMap{
-		Name: pathfile,
+	// check the conf file exists
+	if _, err := os.Stat(pathfile); os.IsNotExist(err) {
+		return nil, fmt.Errorf("config file %v not found", pathfile)
 	}
-	return &out, nil
 
+	buf, err := ioutil.ReadFile(pathfile)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &TileMap{}
+	json.Unmarshal(buf, &out)
+
+	for i := range out.Layers {
+		provd.Layers()
+		out.Layers[i].Provider = provd
+	}
+
+	return out, nil
+}
+
+//SaveTileMap 保存配置文件
+func SaveTileMap(pathfile string) error {
+	var layers []TileLayer
+	layer := TileLayer{
+		Name:              "places_a",
+		ProviderLayerName: "osm_places_a",
+		MinZoom:           5,
+		MaxZoom:           20,
+	}
+	layers = append(layers, layer)
+	out := &TileMap{
+		Name:   pathfile,
+		Layers: layers,
+	}
+	buf, err := json.Marshal(out)
+	err = ioutil.WriteFile(pathfile, buf, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // detectFileFormat inspects the first few bytes of byte array to determine tile
@@ -364,4 +433,57 @@ func stringToFloats(str string) ([]float64, error) {
 		out = append(out, value)
 	}
 	return out, nil
+}
+
+type tileCoord struct {
+	z    uint8
+	x, y uint
+}
+
+// tileCoordFromString parses and returns tileCoord coordinates and an optional
+// extension from the three parameters. The parameter z is interpreted as the
+// web mercator zoom level, it is supposed to be an unsigned integer that will
+// fit into 8 bit. The parameters x and y are interpreted as longitude and
+// latitude tile indices for that zoom level, both are supposed be integers in
+// the integer interval [0,2^z). Additionally, y may also have an optional
+// filename extension (e.g. "42.png") which is removed before parsing the
+// number, and returned, too. In case an error occured during parsing or if the
+// values are not in the expected interval, the returned error is non-nil.
+func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
+	var z64 uint64
+	if z64, err = strconv.ParseUint(z, 10, 8); err != nil {
+		err = fmt.Errorf("cannot parse zoom level: %v", err)
+		return
+	}
+	tc.z = uint8(z64)
+	const (
+		errMsgParse = "cannot parse %s coordinate axis: %v"
+		errMsgOOB   = "%s coordinate (%d) is out of bounds for zoom level %d"
+	)
+	ux, err := strconv.ParseUint(x, 10, 32)
+	if err != nil {
+		err = fmt.Errorf(errMsgParse, "first", err)
+		return
+	}
+	if ux >= (1 << z64) {
+		err = fmt.Errorf(errMsgOOB, "x", tc.x, tc.z)
+		return
+	}
+	tc.x = uint(ux)
+	s := y
+	if l := strings.LastIndex(s, "."); l >= 0 {
+		s, ext = s[:l], s[l:]
+	}
+	uy, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		err = fmt.Errorf(errMsgParse, "y", err)
+		return
+	}
+
+	if uy >= (1 << z64) {
+		err = fmt.Errorf(errMsgOOB, "y", tc.y, tc.z)
+		return
+	}
+	tc.y = uint(uy)
+	return
 }

@@ -13,8 +13,8 @@
 		verification = true
 
 	[statics]
-		home = "assets/statics/"
-		templates = "assets/statics/templates/*"
+		home = "statics/"
+		templates = "statics/templates/*"
 
 	[db]
 		ha = "on"#on开启pg高可用,off关闭pg高可用

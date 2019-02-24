@@ -353,7 +353,7 @@ func importFiles(c *gin.Context) {
 		return
 	}
 
-	dir := cfgV.GetString("assets.datasets")
+	dir := cfgV.GetString("datasets")
 	filename := file.Filename
 	ext := filepath.Ext(filename)
 	name := strings.TrimSuffix(filename, ext)

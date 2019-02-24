@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -47,7 +48,7 @@ func (mt MBTiles) TileJSON() TileJSON {
 
 // Tile reads a tile with tile identifiers z, x, y into provided *[]byte.
 // data will be nil if the tile does not exist in the database
-func (mt MBTiles) Tile(z uint8, x uint, y uint) ([]byte, error) {
+func (mt MBTiles) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error) {
 	var data []byte
 	err := mt.db.QueryRow("select tile_data from tiles where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(&data)
 	if err != nil {

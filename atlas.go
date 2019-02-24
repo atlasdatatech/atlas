@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/go-spatial/tegola/provider"
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
@@ -54,12 +54,13 @@ var currentDB string
 var coreOrclIterval time.Duration
 var coreOrclChan chan struct{}
 
+var provd provider.Tiler
+
 func main() {
 	log.SetLevel(log.DebugLevel)
 	cfgV = viper.New()
 	InitConf(cfgV)
 	identityKey = cfgV.GetString("jwt.identityKey")
-
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
@@ -77,18 +78,14 @@ func main() {
 		currentDB = "master"
 	}
 	defer pg.Close()
-
 	//Init casbin
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
-
 	authMid, err = jwt.New(JWTMidHandler())
 	if err != nil {
 		log.Fatal("JWT Error:" + err.Error())
 	}
-
 	initSystemUserRole()
-
 	createPaths(ATLAS)
 	pubs := &ServiceSet{User: ATLAS}
 	err = pubs.LoadServiceSet()
@@ -96,7 +93,10 @@ func main() {
 		log.Errorf("loading public service set error: %s", err.Error())
 	}
 	pubSet.Store(pubs.User, pubs)
-
+	provd, err = InitProvider()
+	if err != nil {
+		log.Errorf("init provider error: %s", err.Error())
+	}
 	r := gin.Default()
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 	config := cors.DefaultConfig()
@@ -105,16 +105,12 @@ func main() {
 	config.AllowWildcard = true
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
-
 	r.Use(static.Serve("/", static.LocalFile("./public", true)))
-
-	staticsHome := cfgV.GetString("assets.statics")
+	staticsHome := cfgV.GetString("statics.home")
 	r.Static("/statics", staticsHome)
-	templatesPath := filepath.Join(staticsHome, "/templates/*")
+	templatesPath := cfgV.GetString("statics.templates") //filepath.Join(staticsHome, "templates/*")
 	r.LoadHTMLGlob(templatesPath)
-
 	bindRouters(r) // --> cmd/go-getting-started/routers.go
-
 	r.Run(":" + cfgV.GetString("app.port"))
 	// https
 	// put path to cert instead of CONF.TLS.CERT
@@ -141,7 +137,6 @@ func bindRouters(r *gin.Engine) {
 
 	r.GET("/", index)
 	r.GET("/ping/", ping)
-
 	sign := r.Group("/sign")
 	// Create a limiter
 	limiter := tollbooth.NewLimiter(10, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Second})
@@ -175,12 +170,10 @@ func bindRouters(r *gin.Engine) {
 		user.POST("/:id/del/", deleteUser)
 		user.GET("/:id/refresh/", jwtRefresh)
 		user.POST("/:id/password/", changePassword)
-
 		user.GET("/:id/roles/", getUserRoles)        //该用户拥有哪些角色
 		user.POST("/:id/roles/", addUserRole)        //添加用户角色
 		user.POST("/:id/roles/del/", deleteUserRole) //删除用户角色
-
-		user.GET("/:id/maps/", getUserMaps) //该用户拥有哪些权限（含资源与操作）
+		user.GET("/:id/maps/", getUserMaps)          //该用户拥有哪些权限（含资源与操作）
 		user.POST("/:id/maps/", addUserMap)
 		user.POST("/:id/maps/del/", deleteUserMap)
 	}
@@ -194,18 +187,15 @@ func bindRouters(r *gin.Engine) {
 		role.POST("/", createRole)
 		role.POST("/:id/del/", deleteRole)
 		role.GET("/:id/users/", getRoleUsers) //该角色包含哪些用户
-
-		role.GET("/:id/maps/", getRoleMaps) //该用户拥有哪些权限（含资源与操作）
+		role.GET("/:id/maps/", getRoleMaps)   //该用户拥有哪些权限（含资源与操作）
 		role.POST("/:id/maps/", addRoleMap)
 		role.POST("/:id/maps/del/", deleteRoleMap)
-		//authn > assets
 	}
 	//account
 	account := r.Group("/account")
 	account.Use(authMid.MiddlewareFunc())
 	{
 		account.GET("/index/", renderAccount)
-
 		account.GET("/", getUser)
 		account.GET("/signout/", signout)
 		account.GET("/verify/", sendVerification)
@@ -231,7 +221,7 @@ func bindRouters(r *gin.Engine) {
 
 	//studio
 	studio := r.Group("/studio")
-	// studio.Use(authMid.MiddlewareFunc())
+	studio.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		studio.GET("/", studioIndex)
@@ -297,9 +287,7 @@ func bindRouters(r *gin.Engine) {
 		ds.GET("/crs/", crsList)
 		ds.GET("/encoding/", encodingList)
 		ds.GET("/ftype/", fieldTypeList)
-
 		ds.GET("/info/:name/", getDatasetInfo)
-
 		ds.POST("/upload/", fileUpload)
 		ds.GET("/preview/:id/", dataPreview)
 		ds.POST("/import/:id/", dataImport)

@@ -2,8 +2,7 @@ datasets
 fonts
 styles
 tilesets
-users
 /*.exe
-/assets/public
+/public
 /vendor/*/
 /debug

@@ -48,10 +48,10 @@ func InitConf(v *viper.Viper) {
 
 	v.SetDefault("casbin.config", "./auth.conf")
 
-	v.SetDefault("assets.statics", "assets/statics/")
-	v.SetDefault("assets.styles", "assets/styles/")
-	v.SetDefault("assets.fonts", "assets/fonts/")
-	v.SetDefault("assets.tilesets", "assets/tilesets/")
-	v.SetDefault("assets.datasets", "assets/datasets/")
+	v.SetDefault("statics", "statics/")
+	v.SetDefault("styles", "styles/")
+	v.SetDefault("fonts", "fonts/")
+	v.SetDefault("tilesets", "tilesets/")
+	v.SetDefault("datasets", "datasets/")
 
 }

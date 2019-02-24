@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/render"
 	"github.com/teris-io/shortid"
 )
 
@@ -45,7 +46,7 @@ func uploadTileset(c *gin.Context) {
 		res.Fail(c, 4046)
 		return
 	}
-	tilesets := cfgV.GetString("assets.tilesets")
+	tilesets := cfgV.GetString("tilesets")
 	ext := filepath.Ext(file.Filename)
 	name := strings.TrimSuffix(file.Filename, ext)
 	tid, _ := shortid.Generate()
@@ -67,6 +68,18 @@ func uploadTileset(c *gin.Context) {
 	res.DoneData(c, gin.H{
 		"tid": tid,
 	})
+}
+func getTileService(uid, tid string) *TileService {
+	is, ok := pubSet.Load(uid)
+	if !ok {
+		return nil
+	}
+	tileService, ok := is.(*ServiceSet).T.Load(tid)
+	if !ok {
+		log.Errorf("tilesets id(%s) not exist in the service", tid)
+		return nil
+	}
+	return tileService.(*TileService)
 }
 
 //getTilejson get tilejson
@@ -132,20 +145,12 @@ func getTilejson(c *gin.Context) {
 func viewTile(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	is, ok := pubSet.Load(uid)
-	if !ok {
-		res.Fail(c, 4044)
-		return
-	}
 	tid := c.Param("tid")
-	tileService, ok := is.(*ServiceSet).T.Load(tid)
-	if !ok {
-		log.Errorf("tilesets id(%s) not exist in the service", tid)
+	tss := getTileService(uid, tid)
+	if tss == nil {
 		res.Fail(c, 4044)
 		return
 	}
-	tss := tileService.(*TileService)
-
 	c.HTML(http.StatusOK, "data.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
@@ -156,6 +161,7 @@ func viewTile(c *gin.Context) {
 
 func getTile(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(identityKey)
 	// split path components to extract tile coordinates x, y and z
 	pcs := strings.Split(c.Request.URL.Path[1:], "/")
 	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
@@ -164,77 +170,76 @@ func getTile(c *gin.Context) {
 		res.Fail(c, 4003)
 		return
 	}
-	// tid := c.Param("tid")
-	// tileService, ok := pubSet.Tilesets[tid]
-	// if !ok {
-	// 	log.Errorf("tilesets id(%s) not exist in the service", tid)
-	// 	res.Fail(c, 4044)
-	// 	return
-	// }
+	tid := c.Param("tid")
+	tss := getTileService(uid, tid)
+	if tss == nil {
+		res.Fail(c, 4044)
+		return
+	}
 
-	// tileset := tileService.Tileset
+	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
+	tc, ext, err := tileCoordFromString(z, x, y)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4003)
+		return
+	}
 
-	// z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
-	// tc, ext, err := tileCoordFromString(z, x, y)
-	// if err != nil {
-	// 	log.Error(err)
-	// 	res.Fail(c, 4003)
-	// 	return
-	// }
 	var data []byte
-	// // flip y to match the spec
-	// tc.y = (1 << uint64(tc.z)) - 1 - tc.y
-	// isGrid := ext == ".json"
-	// switch {
-	// case !isGrid:
-	// 	data, err = tileset.Tile(tc.z, tc.x, tc.y)
-	// case isGrid && tileset.HasUTFGrid():
-	// 	err = tileset.GetGrid(tc.z, tc.x, tc.y, &data)
-	// default:
-	// 	err = fmt.Errorf("no grid supplied by tile database")
-	// }
-	// if err != nil {
-	// 	// augment error info
-	// 	t := "tile"
-	// 	if isGrid {
-	// 		t = "grid"
-	// 	}
-	// 	err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
-	// 	log.Error(err)
-	// 	res.Fail(c, 5004)
-	// 	return
-	// }
-	// if data == nil || len(data) <= 1 {
-	// 	switch tileset.TileFormat() {
-	// 	case PNG, JPG, WEBP:
-	// 		// Return blank PNG for all image types
-	// 		c.Render(
-	// 			http.StatusOK, render.Data{
-	// 				ContentType: "image/png",
-	// 				Data:        BlankPNG(),
-	// 			})
-	// 	case PBF:
-	// 		// Return 204
-	// 		c.Writer.WriteHeader(http.StatusNoContent)
-	// 	default:
-	// 		c.Writer.Header().Set("Content-Type", "application/json")
-	// 		c.Writer.WriteHeader(http.StatusNotFound)
-	// 		fmt.Fprint(c.Writer, `{"message": "Tile does not exist"}`)
-	// 	}
-	// }
+	// flip y to match the spec
+	tc.y = (1 << uint64(tc.z)) - 1 - tc.y
+	isGrid := ext == ".json"
+	switch {
+	case !isGrid:
+		data, err = tss.Tileset.Tile(c.Request.Context(), tc.z, tc.x, tc.y)
+	// case isGrid && tss.Tileset.HasUTFGrid():
+	// 	err = tss.Tileset.GetGrid(tc.z, tc.x, tc.y, &data)
+	default:
+		err = fmt.Errorf("no grid supplied by tile database")
+	}
+	if err != nil {
+		// augment error info
+		t := "tile"
+		if isGrid {
+			t = "grid"
+		}
+		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
+		log.Error(err)
+		res.Fail(c, 5004)
+		return
+	}
+	tss.Tileset.TileFormat()
+	if data == nil || len(data) <= 1 {
+		switch tss.Tileset.TileFormat() {
+		case PNG, JPG, WEBP:
+			// Return blank PNG for all image types
+			c.Render(
+				http.StatusOK, render.Data{
+					ContentType: "image/png",
+					Data:        BlankPNG(),
+				})
+		case PBF:
+			// Return 204
+			c.Writer.WriteHeader(http.StatusNoContent)
+		default:
+			c.Writer.Header().Set("Content-Type", "application/json")
+			c.Writer.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(c.Writer, `{"message": "Tile does not exist"}`)
+		}
+	}
 
-	// if isGrid {
-	// 	c.Writer.Header().Set("Content-Type", "application/json")
-	// 	if tileset.UTFGridCompression() == ZLIB {
-	// 		c.Writer.Header().Set("Content-Encoding", "deflate")
-	// 	} else {
-	// 		c.Writer.Header().Set("Content-Encoding", "gzip")
-	// 	}
-	// } else {
-	// 	c.Writer.Header().Set("Content-Type", tileset.ContentType())
-	// 	if tileset.TileFormat() == PBF {
-	// 		c.Writer.Header().Set("Content-Encoding", "gzip")
-	// 	}
-	// }
+	if isGrid {
+		// c.Writer.Header().Set("Content-Type", "application/json")
+		// if tileset.UTFGridCompression() == ZLIB {
+		// 	c.Writer.Header().Set("Content-Encoding", "deflate")
+		// } else {
+		// 	c.Writer.Header().Set("Content-Encoding", "gzip")
+		// }
+	} else {
+		c.Writer.Header().Set("Content-Type", tss.Tileset.TileFormat().ContentType())
+		if tss.Tileset.TileFormat() == PBF {
+			c.Writer.Header().Set("Content-Encoding", "gzip")
+		}
+	}
 	c.Writer.Write(data)
 }
