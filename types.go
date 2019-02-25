@@ -1,4 +1,4 @@
-package atlas
+package main
 
 // A list of the datasets types that are currently supported.
 const (

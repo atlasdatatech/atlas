@@ -1,4 +1,4 @@
-package atlas
+package main
 
 // BlankPNG returns bytes of a blank PNG, for the request handlers to return
 // when an image tile is not available.

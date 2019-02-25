@@ -37,6 +37,12 @@
 			"revisionTime": "2018-11-09T21:58:47Z"
 		},
 		{
+			"checksumSHA1": "C90ZcP+pqCeWHG2Y/TZ6ponPc1E=",
+			"path": "github.com/antonfisher/nested-logrus-formatter",
+			"revision": "dbaddd473223d8c46a07b579d2f130320a245179",
+			"revisionTime": "2019-01-26T22:25:25Z"
+		},
+		{
 			"checksumSHA1": "abuoAb9rPLwI15emOBt7dM/Lw1I=",
 			"path": "github.com/appleboy/gin-jwt",
 			"revision": "a4d85f559a8daf618d7925dc6d896524d7d7777a",
@@ -294,6 +300,13 @@
 			"path": "github.com/casbin/gorm-adapter",
 			"revision": "e56c6daebd5e8c657caf3bdf3a647803cf7b242d",
 			"revisionTime": "2017-10-06T09:35:45Z"
+		},
+		{
+			"checksumSHA1": "Lps/+JqMRVlrXgO/+cazYcfsglg=",
+			"origin": "github.com/stretchr/testify/vendor/github.com/davecgh/go-spew/spew",
+			"path": "github.com/davecgh/go-spew/spew",
+			"revision": "8019298d9fa5a04fc2ad10ae03349df3483096a6",
+			"revisionTime": "2018-10-28T12:27:15Z"
 		},
 		{
 			"checksumSHA1": "q3w0WrlEQQS2rDFKOsA5xfNa54U=",
@@ -832,6 +845,12 @@
 			"revisionTime": "2018-04-23T16:19:20Z"
 		},
 		{
+			"checksumSHA1": "0Hvy6LfJa1y54UxQ2zQtcMd6ZKU=",
+			"path": "github.com/konsorten/go-windows-terminal-sequences",
+			"revision": "5c8c8bd35d3832f5d134ae1e1e375b69a4d25242",
+			"revisionTime": "2018-10-04T22:41:46Z"
+		},
+		{
 			"checksumSHA1": "j+vBozuP9t1baDRdfEykQSP4AGw=",
 			"path": "github.com/lib/pq",
 			"revision": "4ded0e9383f75c197b3a2aaa6d590ac52df6fd79",
@@ -856,6 +875,12 @@
 			"revisionTime": "2018-04-02T19:47:14Z"
 		},
 		{
+			"checksumSHA1": "AtXpiR7Gtq5cF+6eUAH+LzupMts=",
+			"path": "github.com/mattn/go-colorable",
+			"revision": "efa589957cd060542a26d2dd7832fd6a6c6c3ade",
+			"revisionTime": "2018-03-10T13:32:14Z"
+		},
+		{
 			"checksumSHA1": "LkbotKu3JQxXEZZ9P40yhnFOycY=",
 			"path": "github.com/mattn/go-isatty",
 			"revision": "3fb116b820352b7f0c281308a4d6250c22d94e27",
@@ -866,6 +891,12 @@
 			"path": "github.com/mattn/go-sqlite3",
 			"revision": "0a88db3545c4089ce0f555f496bfc78c491699e5",
 			"revisionTime": "2018-09-26T09:02:20Z"
+		},
+		{
+			"checksumSHA1": "10Ond+ReURGlXajUa3AZEA6h8A0=",
+			"path": "github.com/mgutz/ansi",
+			"revision": "9520e82c474b0a04dd04f8a40959027271bab992",
+			"revisionTime": "2017-02-06T15:57:36Z"
 		},
 		{
 			"checksumSHA1": "+asIW03FCCzivqxj6un9rNn8jHM=",
@@ -924,6 +955,13 @@
 			"revisionTime": "2018-10-23T23:59:46Z"
 		},
 		{
+			"checksumSHA1": "R3yk3OJzuq4MVfVGX5AhkkYv1ko=",
+			"origin": "github.com/stretchr/testify/vendor/github.com/pmezard/go-difflib/difflib",
+			"path": "github.com/pmezard/go-difflib/difflib",
+			"revision": "8019298d9fa5a04fc2ad10ae03349df3483096a6",
+			"revisionTime": "2018-10-28T12:27:15Z"
+		},
+		{
 			"checksumSHA1": "vUkCXzz1g+JkC28QaurRU/Q+whI=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "f3df9aeffda7c12bd9f5a03f9251d75d35993165",
@@ -966,6 +1004,12 @@
 			"revisionTime": "2018-09-07T13:06:02Z"
 		},
 		{
+			"checksumSHA1": "6GJ7mGI1Dvsd9yFpj3ekYipMieo=",
+			"path": "github.com/stretchr/testify/assert",
+			"revision": "8019298d9fa5a04fc2ad10ae03349df3483096a6",
+			"revisionTime": "2018-10-28T12:27:15Z"
+		},
+		{
 			"checksumSHA1": "kLHYIzYvvehYJIC5a8+4a74+a1E=",
 			"path": "github.com/teris-io/shortid",
 			"revision": "771a37caa5cf0c81f585d7b6df4dfc77e0615b5c",
@@ -982,6 +1026,12 @@
 			"path": "github.com/ugorji/go/codec",
 			"revision": "0165389f8c9118d6cbc1d7e120fda75c692827de",
 			"revisionTime": "2018-11-19T22:07:52Z"
+		},
+		{
+			"checksumSHA1": "g/KG3T7mo3ltI05pqqiIPqhRGDA=",
+			"path": "github.com/x-cray/logrus-prefixed-formatter",
+			"revision": "bb2702d423886830dee131692131d35648c382e2",
+			"revisionTime": "2017-07-31T09:11:26Z"
 		},
 		{
 			"checksumSHA1": "/pfkYB22L5MtzxrfIHQ0tWylnZw=",

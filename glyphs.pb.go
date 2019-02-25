@@ -3,7 +3,7 @@
 
 // Protocol Version 1
 
-package atlas
+package main
 
 import (
 	fmt "fmt"

@@ -1,4 +1,4 @@
-package atlas
+package main
 
 import (
 	"net/http"
@@ -102,36 +102,16 @@ func unauthorized(c *gin.Context, code int, message string) {
 
 //EnforceMidHandler returns the authorizer, uses a Casbin enforcer as input
 func EnforceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
-	a := &BasicAuthorizer{enforcer: e}
-
 	return func(c *gin.Context) {
-		if !a.CheckPermission(c) {
-			a.RequirePermission(c)
+		uid := c.GetString(identityKey)
+		if !e.Enforce(uid, c.Request.URL.Path, c.Request.Method) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"code": 403,
+				"msg":  "you don't have permission to access this resource",
+			})
+			c.Abort()
 		}
 	}
-}
-
-// BasicAuthorizer stores the casbin handler
-type BasicAuthorizer struct {
-	enforcer *casbin.Enforcer
-}
-
-// CheckPermission checks the user/method/path combination from the request.
-// Returns true (permission granted) or false (permission forbidden)
-func (a *BasicAuthorizer) CheckPermission(c *gin.Context) bool {
-	user := c.GetString(identityKey)
-	method := c.Request.Method
-	path := c.Request.URL.Path
-	return a.enforcer.Enforce(user, path, method)
-}
-
-// RequirePermission returns the 403 Forbidden to the client
-func (a *BasicAuthorizer) RequirePermission(c *gin.Context) {
-	c.JSON(http.StatusForbidden, gin.H{
-		"code": 403,
-		"msg":  "you don't have permission to access this resource",
-	})
-	c.Abort()
 }
 
 //LimitMidHandler Rate-limiter

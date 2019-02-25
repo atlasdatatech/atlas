@@ -1,4 +1,4 @@
-package atlas
+package main
 
 import (
 	"fmt"
@@ -101,7 +101,7 @@ func signup(c *gin.Context) {
 			log.Errorf(`signup, sending verify email error, user: %s, details: '%s' ~`, body.Name, err)
 		}
 	}()
-	createPaths(user.Name)
+	CreatePaths(user.Name)
 
 	casEnf.LoadPolicy()
 	casEnf.AddGroupingPolicy(user.Name, user.Group)

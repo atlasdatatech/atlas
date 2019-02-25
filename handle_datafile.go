@@ -1,4 +1,4 @@
-package atlas
+package main
 
 import (
 	"bytes"
@@ -39,7 +39,7 @@ func fieldTypeList(c *gin.Context) {
 
 func fileUpload(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString(identityKey)
+	user := c.GetString("id")
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
@@ -221,7 +221,7 @@ func dataPreview(c *gin.Context) {
 
 func dataImport(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString("id")
 	dp := &DatafileBind{}
 	err := c.Bind(&dp)
 	if err != nil {
@@ -298,7 +298,7 @@ func dataImport(c *gin.Context) {
 
 func taskQuery(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString(identityKey)
+	user := c.GetString("id")
 	log.Println(user)
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)

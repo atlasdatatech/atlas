@@ -1,4 +1,4 @@
-package atlas
+package main
 
 import (
 	"bytes"
@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-spatial/tegola/provider"
 	_ "github.com/go-spatial/tegola/provider/postgis"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
@@ -320,30 +319,6 @@ func LoadMBTiles(pathfile string) (*MBTiles, error) {
 
 	return &out, nil
 
-}
-
-//InitProvider 初始化数据库驱动
-func InitProvider() (provider.Tiler, error) {
-	type prov struct {
-		ID   string
-		Name string
-		Type string
-	}
-	p := &prov{
-		ID:   "123",
-		Name: "test",
-		Type: "postgis",
-	}
-
-	switch p.Type {
-	case "postgis":
-	case "gpkg":
-	}
-	provd, err := provider.For(p.Type, nil)
-	if err != nil {
-		return nil, err
-	}
-	return provd, nil
 }
 
 // LoadTileMap creates a new MBTiles instance.

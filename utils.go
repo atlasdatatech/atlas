@@ -1,4 +1,4 @@
-package atlas
+package main
 
 import (
 	"archive/zip"
@@ -220,18 +220,12 @@ func generateToken(n int) []byte {
 	return token
 }
 
-func createPaths(name string) {
-	if name == "atlas" {
-		os.MkdirAll("styles", os.ModePerm)
-		os.MkdirAll("tilesets", os.ModePerm)
-		os.MkdirAll("datasets", os.ModePerm)
-		os.MkdirAll("fonts", os.ModePerm)
-	} else {
-		os.MkdirAll(filepath.Join("users", name, "styles"), os.ModePerm)
-		os.MkdirAll(filepath.Join("users", name, "tilesets"), os.ModePerm)
-		os.MkdirAll(filepath.Join("users", name, "datasets"), os.ModePerm)
-		os.MkdirAll(filepath.Join("users", name, "fonts"), os.ModePerm)
-	}
+//CreatePaths 创建用户目录
+func CreatePaths(name string) {
+	os.MkdirAll(filepath.Join("styles", name), os.ModePerm)
+	os.MkdirAll(filepath.Join("tilesets", name), os.ModePerm)
+	os.MkdirAll(filepath.Join("datasets", name), os.ModePerm)
+	os.MkdirAll(filepath.Join("fonts", name), os.ModePerm)
 }
 
 func checkUser(uid string) int {
