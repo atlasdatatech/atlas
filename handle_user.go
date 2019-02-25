@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
@@ -62,7 +63,7 @@ func signup(c *gin.Context) {
 	user.Search = []string{body.Name, body.Email}
 	// createAccount
 	var verifyURL string
-	if cfgV.GetBool("user.verification") {
+	if viper.GetBool("user.verification") {
 		user.Verification = "no"
 		//Create a verification token
 		token := generateToken(21)
@@ -91,10 +92,10 @@ func signup(c *gin.Context) {
 			"Email":        body.Email,
 			"Name":         body.Name,
 		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
+		mailConf.From = viper.GetString("smtp.from.name") + " <" + viper.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "地图云-用户注册邮件"
 		mailConf.ReplyTo = body.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/signup.html"
+		mailConf.HTMLPath = viper.GetString("statics.home") + "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf(`signup, sending verify email error, user: %s, details: '%s' ~`, body.Name, err)
@@ -181,7 +182,7 @@ func signin(c *gin.Context) {
 	IPCountChan := make(chan int)
 	IPUserCountChan := make(chan int)
 	clientIP := c.ClientIP()
-	ttl := time.Now().Add(cfgV.GetDuration("user.attemptsExpiration"))
+	ttl := time.Now().Add(viper.GetDuration("user.attemptsExpiration"))
 	go func(c chan int) {
 		var cnt int
 		db.Model(&Attempt{}).Where("ip = ? AND created_at > ?", clientIP, ttl).Count(&cnt)
@@ -194,7 +195,7 @@ func signin(c *gin.Context) {
 	}(IPUserCountChan)
 	IPCount := <-IPCountChan
 	IPUserCount := <-IPUserCountChan
-	if IPCount > cfgV.GetInt("app.ips") || IPUserCount > cfgV.GetInt("user.attempts") {
+	if IPCount > viper.GetInt("app.ips") || IPUserCount > viper.GetInt("user.attempts") {
 		res.Fail(c, 4002)
 		return
 	}
@@ -260,7 +261,7 @@ func sendReset(c *gin.Context) {
 	}
 
 	user.ResetToken = string(hash)
-	user.ResetExpires = time.Now().Add(cfgV.GetDuration("user.resetExpiration"))
+	user.ResetExpires = time.Now().Add(viper.GetDuration("user.resetExpiration"))
 
 	if err := db.Save(&user).Error; err != nil {
 		log.Errorf("sendReset, update reset token error, details: %s; email: %s", err, body.Email)
@@ -276,10 +277,10 @@ func sendReset(c *gin.Context) {
 			"ResetURL": resetURL,
 			"Name":     user.Name,
 		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
+		mailConf.From = viper.GetString("smtp.from.name") + " <" + viper.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "地图云-重置密码邮件"
 		mailConf.ReplyTo = body.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/reset.html"
+		mailConf.HTMLPath = viper.GetString("statics.home") + "email/reset.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf("sendReset,sending rest password email error, details: %s; user: %s ^^", err.Error(), user.Name)
@@ -408,10 +409,10 @@ func sendVerification(c *gin.Context) {
 		mailConf.Data = gin.H{
 			"VerifyURL": verifyURL,
 		}
-		mailConf.From = cfgV.GetString("smtp.from.name") + " <" + cfgV.GetString("smtp.from.address") + ">"
+		mailConf.From = viper.GetString("smtp.from.name") + " <" + viper.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "地图云-账号验证邮件"
 		mailConf.ReplyTo = user.Email
-		mailConf.HTMLPath = cfgV.GetString("statics.home") + "email/verification.html"
+		mailConf.HTMLPath = viper.GetString("statics.home") + "email/verification.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf(`SendMail, sending verification email error, user: %s, details: '%s' ~`, id, err)
@@ -854,7 +855,7 @@ func deleteRole(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	group := cfgV.GetString("user.group")
+	group := viper.GetString("user.group")
 	if rid == group {
 		res.FailMsg(c, "unable to system group")
 		return

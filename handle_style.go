@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"encoding/json"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/fogleman/gg"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/teris-io/shortid"
@@ -334,8 +335,8 @@ func updateStyle(c *gin.Context) {
 		res.Fail(c, 5003)
 		return
 	}
-	home := cfgV.GetString("users.home")
-	styles := cfgV.GetString("users.styles")
+	home := viper.GetString("users.home")
+	styles := viper.GetString("users.styles")
 	dst := filepath.Join(home, user, styles, sid, "style.json")
 	out := make(map[string]interface{})
 	json.Unmarshal(body, &out)

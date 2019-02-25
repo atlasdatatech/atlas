@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"archive/zip"
@@ -28,6 +28,7 @@ import (
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -200,7 +201,7 @@ func (conf *MailConfig) SendMail() (err error) {
 		return template.Must(template.ParseFiles(conf.HTMLPath)).Execute(w, conf.Data)
 	})
 
-	d := gomail.NewDialer(cfgV.GetString("smtp.credentials.host"), cfgV.GetInt("smtp.credentials.port"), cfgV.GetString("smtp.credentials.user"), cfgV.GetString("smtp.credentials.password"))
+	d := gomail.NewDialer(viper.GetString("smtp.credentials.host"), viper.GetInt("smtp.credentials.port"), viper.GetString("smtp.credentials.user"), viper.GetString("smtp.credentials.password"))
 	return d.DialAndSend(m)
 }
 
@@ -350,11 +351,11 @@ func updateDatasetInfo(did string) error {
 }
 
 func buffering(name string, r float64) int {
-	bblocks := cfgV.GetString("buffers.blocks")
-	bprefix := cfgV.GetString("buffers.prefix")
-	bsuffix := cfgV.GetString("buffers.suffix")
-	bscales := cfgV.GetString("buffers.scales")
-	btype := cfgV.GetString("buffers.scaleType")
+	bblocks := viper.GetString("buffers.blocks")
+	bprefix := viper.GetString("buffers.prefix")
+	bsuffix := viper.GetString("buffers.suffix")
+	bscales := viper.GetString("buffers.scales")
+	btype := viper.GetString("buffers.scaleType")
 	bname := name + bsuffix
 	fname := bprefix + bname
 
@@ -437,8 +438,8 @@ func calcM1() error {
 }
 
 func calcM2() error {
-	weights := cfgV.GetString("models.m2.weights")
-	cvar := cfgV.GetString("models.m2.const")
+	weights := viper.GetString("models.m2.weights")
+	cvar := viper.GetString("models.m2.const")
 	st := fmt.Sprintf(`SELECT "field", "weight" FROM  %s`, weights)
 	rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
 	if err != nil {
@@ -486,8 +487,8 @@ func calcM2() error {
 }
 
 func calcM3() error {
-	bprefix := cfgV.GetString("buffers.prefix")
-	bsuffix := cfgV.GetString("buffers.suffix")
+	bprefix := viper.GetString("buffers.prefix")
+	bsuffix := viper.GetString("buffers.suffix")
 	bname := "banks" + bsuffix
 	fname := bprefix + bname
 	var tcnt int
@@ -495,7 +496,7 @@ func calcM3() error {
 	fcnt := float32(tcnt) // / 100.0
 
 	if !db.HasTable(fname) {
-		radius := cfgV.GetFloat64("buffers.radius")
+		radius := viper.GetFloat64("buffers.radius")
 		if code := buffering("banks", radius); code != 200 {
 			return fmt.Errorf("buffering error")
 		}
@@ -553,21 +554,21 @@ func calcM3() error {
 }
 
 func calcM4() error {
-	bprefix := cfgV.GetString("buffers.prefix")
-	bsuffix := cfgV.GetString("buffers.suffix")
+	bprefix := viper.GetString("buffers.prefix")
+	bsuffix := viper.GetString("buffers.suffix")
 	bname := "banks" + bsuffix
 	fname := bprefix + bname
 
 	if !db.HasTable(fname) {
-		radius := cfgV.GetFloat64("buffers.radius")
+		radius := viper.GetFloat64("buffers.radius")
 		if code := buffering("banks", radius); code != 200 {
 			return fmt.Errorf("buffering error")
 		}
 	}
 
-	weights := cfgV.GetString("models.m4.weights")
+	weights := viper.GetString("models.m4.weights")
 
-	scales := cfgV.GetString("models.m4.scales")
+	scales := viper.GetString("models.m4.scales")
 
 	db.Exec(`TRUNCATE TABLE m4;`)
 
@@ -596,8 +597,8 @@ func calcM4() error {
 }
 
 func calcM5() error {
-	field := cfgV.GetString("models.m5.field")
-	values := cfgV.GetStringSlice("models.m5.values")
+	field := viper.GetString("models.m5.field")
+	values := viper.GetStringSlice("models.m5.values")
 	instr := strings.Join(values, "','")
 	var bcnt, ocnt int
 	db.Raw(`SELECT count(*) FROM banks;`).Row().Scan(&bcnt)

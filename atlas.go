@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"fmt"
@@ -33,9 +33,6 @@ var identityKey = "id"
 //定义一个内部全局的 db 指针用来进行认证，数据校验
 var db *gorm.DB
 
-//定义一个内部全局的 viper 指针用来进行配置读取
-var cfgV *viper.Viper
-
 //定义一个内部全局的 casbin.Enforcer 指针用来进行权限校验
 var casEnf *casbin.Enforcer
 
@@ -49,38 +46,32 @@ var taskQueue = make(chan *Task, 32)
 
 var taskSet sync.Map
 
-var currentDB string
-
-var coreOrclIterval time.Duration
-var coreOrclChan chan struct{}
-
 var provd provider.Tiler
 
-func main() {
+//Run 启动服务
+func Run() {
+	//设置日志级别
 	log.SetLevel(log.DebugLevel)
-	cfgV = viper.New()
-	InitConf(cfgV)
-	identityKey = cfgV.GetString("jwt.identityKey")
-	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"), cfgV.GetString("db.name"))
+	//处理配置文件
+	identityKey = viper.GetString("jwt.identityKey")
+	//处理数据库
+	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.name"))
 	log.Info(pgConnInfo)
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
 		log.Fatal("gorm pg Error:" + err.Error())
 	} else {
 		log.Info("Successfully connected!")
-		pg.AutoMigrate(&User{}, &Attempt{}, &Role{}, &Map{})
-		pg.AutoMigrate(&Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
-		//业务数据表
-		pg.AutoMigrate(&Bank{}, &Saving{}, &Other{}, &Poi{}, &Plan{}, &M1{}, &M2{}, &M3{}, &M4{}, &M5{})
-		pg.AutoMigrate(&BufferScale{}, &M2Weight{}, &M4Weight{}, &M4Scale{})
-		pg.AutoMigrate(&BranchInfo{}, &SaveInfo{}, &LoanInfo{}, &ProfitInfo{})
+		//用户
+		pg.AutoMigrate(&User{}, &Attempt{}, &Role{})
+		//管理
+		pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
 		db = pg
-		currentDB = "master"
 	}
 	defer pg.Close()
-	//Init casbin
+	//初始化资源访问控制
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
-	casEnf = casbin.NewEnforcer(cfgV.GetString("casbin.config"), casbinAdapter)
+	casEnf = casbin.NewEnforcer("./auth.conf", casbinAdapter)
 	authMid, err = jwt.New(JWTMidHandler())
 	if err != nil {
 		log.Fatal("JWT Error:" + err.Error())
@@ -106,12 +97,12 @@ func main() {
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
 	r.Use(static.Serve("/", static.LocalFile("./public", true)))
-	staticsHome := cfgV.GetString("statics.home")
+	staticsHome := viper.GetString("statics.home")
 	r.Static("/statics", staticsHome)
-	templatesPath := cfgV.GetString("statics.templates") //filepath.Join(staticsHome, "templates/*")
+	templatesPath := viper.GetString("statics.templates") //filepath.Join(staticsHome, "templates/*")
 	r.LoadHTMLGlob(templatesPath)
 	bindRouters(r) // --> cmd/go-getting-started/routers.go
-	r.Run(":" + cfgV.GetString("app.port"))
+	r.Run(":" + viper.GetString("app.port"))
 	// https
 	// put path to cert instead of CONF.TLS.CERT
 	// put path to key instead of CONF.TLS.KEY
@@ -322,23 +313,12 @@ func bindRouters(r *gin.Engine) {
 		utilroute.GET("/export/maps/", exportMaps)
 		utilroute.POST("/import/maps/", importMaps)
 	}
-
-	orclCore := r.Group("/orcl")
-	orclCore.Use(authMid.MiddlewareFunc())
-	{
-		// > utils
-		orclCore.GET("/sync/", coreOrclQuery)
-		orclCore.POST("/sync/", setOrclAutoInterval)
-		orclCore.GET("/info/", coreOrclInfo)
-	}
-	//route not found
-	// router.NoRoute(renderStatus404)
 }
 
 func initSystemUserRole() {
-	name := cfgV.GetString("user.root")
-	password := cfgV.GetString("user.password")
-	group := cfgV.GetString("user.group")
+	name := viper.GetString("user.root")
+	password := viper.GetString("user.password")
+	group := viper.GetString("user.group")
 	role := Role{ID: group, Name: "管理员"}
 	user := User{}
 	db.Where("name = ?", name).First(&user)
@@ -373,7 +353,7 @@ func initSystemUserRole() {
 }
 
 func initImportTaskRoute() {
-	iterval := cfgV.GetDuration("import.task.interval")
+	iterval := viper.GetDuration("import.task.interval")
 	go func() {
 		ticker := time.NewTicker(iterval * time.Millisecond)
 		for {
@@ -384,27 +364,4 @@ func initImportTaskRoute() {
 			}
 		}
 	}()
-}
-
-func initAutoOrcl() {
-	syn := cfgV.GetString("core-orcl.sync")
-	if syn != "on" {
-		log.Info("atlas turn down sync from core orcl ~")
-		return
-	}
-	coreOrclIterval = cfgV.GetDuration("core-orcl.interval")
-	coreOrclChan = make(chan struct{})
-	go orclSyncer()
-}
-
-func orclSyncer() {
-	ticker := time.NewTicker(coreOrclIterval * time.Millisecond)
-	for {
-		select {
-		case <-ticker.C:
-			//同步orcl数据至pg
-		case <-coreOrclChan:
-			return //退出
-		}
-	}
 }

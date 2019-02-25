@@ -1,10 +1,12 @@
-package main
+package atlas
 
 import (
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/viper"
 
 	log "github.com/sirupsen/logrus"
 
@@ -46,7 +48,7 @@ func uploadTileset(c *gin.Context) {
 		res.Fail(c, 4046)
 		return
 	}
-	tilesets := cfgV.GetString("tilesets")
+	tilesets := viper.GetString("tilesets")
 	ext := filepath.Ext(file.Filename)
 	name := strings.TrimSuffix(file.Filename, ext)
 	tid, _ := shortid.Generate()

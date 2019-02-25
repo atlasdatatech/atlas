@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"bytes"
@@ -20,6 +20,7 @@ import (
 	"github.com/axgle/mahonia"
 	"github.com/jinzhu/gorm"
 	shp "github.com/jonas-p/go-shp"
+	"github.com/spf13/viper"
 
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	// "github.com/paulmach/orb/encoding/wkb"
@@ -965,7 +966,7 @@ func (df *Datafile) ogrImport() (*Task, error) {
 	//设置数据库
 	params = append(params, []string{"-f", "PostgreSQL"}...)
 	pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
-		cfgV.GetString("db.name"), cfgV.GetString("db.host"), cfgV.GetString("db.port"), cfgV.GetString("db.user"), cfgV.GetString("db.password"))
+		viper.GetString("db.name"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
 	params = append(params, pg)
 	//显示进度,读取outbuffer缓冲区
 	params = append(params, "-progress")

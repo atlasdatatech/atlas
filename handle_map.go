@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
@@ -106,7 +107,7 @@ func getMap(c *gin.Context) {
 func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	group := cfgV.GetString("user.group")
+	group := viper.GetString("user.group")
 	if id == "root" || casEnf.HasRoleForUser(id, group) {
 		body := &MapBind{}
 		err := c.Bind(&body)
@@ -300,7 +301,7 @@ func exportMaps(c *gin.Context) {
 func importMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	group := cfgV.GetString("user.group")
+	group := viper.GetString("user.group")
 	if id == "root" || casEnf.HasRoleForUser(id, group) {
 		file, err := c.FormFile("file")
 		if err != nil {

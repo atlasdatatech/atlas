@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/teris-io/shortid"
@@ -353,7 +354,7 @@ func importFiles(c *gin.Context) {
 		return
 	}
 
-	dir := cfgV.GetString("datasets")
+	dir := viper.GetString("datasets")
 	filename := file.Filename
 	ext := filepath.Ext(filename)
 	name := strings.TrimSuffix(filename, ext)

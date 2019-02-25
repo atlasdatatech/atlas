@@ -1,4 +1,4 @@
-package main
+package atlas
 
 import (
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 //JWTMidHandler 定义JWT中间件，从相应的配置文件读取默认值
@@ -17,19 +18,19 @@ func JWTMidHandler() *jwt.GinJWTMiddleware {
 	return &jwt.GinJWTMiddleware{
 		//Realm name to display to the user. Required.
 		//必要项，显示给用户看的域
-		Realm: cfgV.GetString("jwt.realm"),
+		Realm: viper.GetString("jwt.realm"),
 		//Secret key used for signing. Required.
 		//用来进行签名的密钥，就是加盐用的
-		Key: []byte(cfgV.GetString("jwt.key")),
+		Key: []byte(viper.GetString("jwt.key")),
 		//Duration that a jwt token is valid. Optional, defaults to one hour
 		//JWT 的有效时间，默认为30天
-		Timeout: cfgV.GetDuration("jwt.timeOut"),
+		Timeout: viper.GetDuration("jwt.timeOut"),
 		// This field allows clients to refresh their token until MaxRefresh has passed.
 		// Note that clients can refresh their token in the last moment of MaxRefresh.
 		// This means that the maximum validity timespan for a token is MaxRefresh + Timeout.
 		// Optional, defaults to 0 meaning not refreshable.
 		//最长的刷新时间，用来给客户端自己刷新 token 用的，设置为3个月
-		MaxRefresh:  cfgV.GetDuration("jwt.timeMax"),
+		MaxRefresh:  viper.GetDuration("jwt.timeMax"),
 		IdentityKey: identityKey,
 		PayloadFunc: payload,
 		// Callback function that should perform the authentication of the user based on userID and
@@ -53,12 +54,12 @@ func JWTMidHandler() *jwt.GinJWTMiddleware {
 		// - "query:<name>"
 		// - "cookie:<name>"
 		//这个变量定义了从请求中解析 token 的位置和格式
-		TokenLookup: cfgV.GetString("jwt.lookup"),
+		TokenLookup: viper.GetString("jwt.lookup"),
 		// TokenLookup: "query:token",
 		// TokenLookup: "cookie:token",
 		// TokenHeadName is a string in the header. Default value is "Bearer"
 		//TokenHeadName 是一个头部信息中的字符串
-		TokenHeadName: cfgV.GetString("jwt.headName"),
+		TokenHeadName: viper.GetString("jwt.headName"),
 		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
 		//这个指定了提供当前时间的函数，也可以自定义
 		TimeFunc: time.Now,
