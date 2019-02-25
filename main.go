@@ -259,7 +259,7 @@ func setupRouter() *gin.Engine {
 	authMid = jwtmid
 
 	r.GET("/", index)
-	r.GET("/ping/", ping)
+	r.GET("/ping", ping)
 	sign := r.Group("/sign")
 
 	// Create a limiter, 每IP每秒3次, 触发等待5分钟

@@ -13,14 +13,12 @@ import (
 
 func debugSetup() *gin.Engine {
 
-	initConf("config.toml")
-
+	initConf("conf.toml")
 	var err error
 	db, err = initDb()
 	if err != nil {
 		log.Fatalf("init db error, details: %s", err)
 	}
-	defer db.Close()
 
 	provd, err = initProvider()
 	if err != nil {
@@ -39,6 +37,7 @@ func debugSetup() *gin.Engine {
 	return setupRouter()
 }
 
+// defer db.Close()
 func TestPingRoute(t *testing.T) {
 	router := debugSetup()
 
