@@ -11,7 +11,6 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
-	"github.com/teris-io/shortid"
 	// "github.com/paulmach/orb/encoding/wkb"
 )
 
@@ -95,10 +94,10 @@ func LoadDataset(dataset string) (*Dataset, error) {
 	base := filepath.Base(dataset)
 	ext := filepath.Ext(dataset)
 	name := strings.TrimSuffix(base, ext)
-	id, _ := shortid.Generate()
+	// id, _ := shortid.Generate()
 
 	out := &Dataset{
-		ID:        name + "." + id,
+		ID:        name,
 		Name:      name,
 		Owner:     ATLAS,
 		Type:      ext,

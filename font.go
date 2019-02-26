@@ -11,23 +11,22 @@ import (
 	"sync"
 
 	"github.com/jinzhu/gorm"
-	"github.com/teris-io/shortid"
 
 	proto "github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 )
 
-// PBEXT pbf fonts package format
-const PBEXT = ".pbfonts"
+// PBFONTEXT pbf fonts package format
+const PBFONTEXT = ".pbfonts"
 
 // DEFAULTFONT 默认字体
 const DEFAULTFONT = "Noto Sans Regular"
 
 //Font struct for pbf font save
 type Font struct {
-	ID          string
-	Name        string
-	Owner       string
+	ID          string `json:"id" gorm:"primary_key"`
+	Name        string `json:"name" gorm:"unique;not null;unique_index"`
+	Owner       string `json:"owner" gorm:"index"`
 	Path        string
 	Size        int64
 	Compression bool
@@ -46,12 +45,12 @@ type FontService struct {
 func LoadFont(path string) (*Font, error) {
 	ext := filepath.Ext(path)
 	lext := strings.ToLower(ext)
-	if lext != PBEXT {
+	if lext != PBFONTEXT {
 		err := packPBFonts(path)
 		if err != nil {
 			return nil, err
 		}
-		path = strings.TrimSuffix(path, ext) + PBEXT
+		path = strings.TrimSuffix(path, ext) + PBFONTEXT
 	}
 	fStat, err := os.Stat(path)
 	if err != nil {
@@ -61,9 +60,9 @@ func LoadFont(path string) (*Font, error) {
 	ext = filepath.Ext(path)
 	base := filepath.Base(path)
 	name := strings.TrimSuffix(base, ext)
-	id, _ := shortid.Generate()
+	// id, _ := shortid.Generate()
 	out := &Font{
-		ID:          id,
+		ID:          name,
 		Name:        name,
 		Owner:       ATLAS,
 		Path:        path,
@@ -92,7 +91,7 @@ func packPBFonts(path string) error {
 		return fmt.Errorf("not support format ~")
 	}
 	//create .pbfonts
-	db, err := sql.Open("sqlite3", path+PBEXT)
+	db, err := sql.Open("sqlite3", path+PBFONTEXT)
 	if err != nil {
 		return err
 	}

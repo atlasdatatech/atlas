@@ -25,7 +25,7 @@ import (
 )
 
 //TileBuffer 瓦片缓冲区大小
-var TileBuffer float64 = tegola.DefaultTileBuffer
+var TileBuffer = tegola.DefaultTileBuffer
 
 //TileMap 瓦片数据集
 type TileMap struct {

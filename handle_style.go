@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -22,25 +22,6 @@ import (
 )
 
 //listStyles list user style
-func publicStyles(c *gin.Context) {
-	res := NewRes()
-	iv, ok := pubSet.Load(ATLAS)
-	if !ok {
-		res.Fail(c, 4044)
-		return
-	}
-	var styles []*StyleService
-	iv.(*ServiceSet).S.Range(func(_, v interface{}) bool {
-		s, ok := v.(*StyleService)
-		if ok {
-			styles = append(styles, s.Simplify())
-		}
-		return true
-	})
-	res.DoneData(c, styles)
-}
-
-//listStyles list user style
 func listStyles(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -54,6 +35,19 @@ func listStyles(c *gin.Context) {
 			}
 			return true
 		})
+	}
+	if uid != ATLAS && "true" == c.Query("public") {
+		iv, ok := pubSet.Load(ATLAS)
+		if ok {
+			iv.(*ServiceSet).S.Range(func(_, v interface{}) bool {
+				s, ok := v.(*StyleService)
+				if ok {
+					styles = append(styles, s.Simplify())
+				}
+				return true
+			})
+		}
+
 	}
 	res.DoneData(c, styles)
 }
@@ -71,16 +65,14 @@ func uploadStyle(c *gin.Context) {
 	}
 	ext := filepath.Ext(file.Filename)
 	if ".zip" != strings.ToLower(ext) {
-		log.Errorf(`uploadStyle, not .zip format: %s; user: %s`, err, uid)
-		res.FailMsg(c, "格式错误,请上传zip压缩包格式")
+		log.Errorf(`uploadStyle, style upload format error, details: %s; user: %s`, file.Filename, uid)
+		res.FailMsg(c, "样式上传格式错误,请上传zip压缩包格式")
 		return
 	}
-	udir := filepath.Join("styles", uid)
-	os.MkdirAll(udir, os.ModePerm)
 	name := strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
-	fileid := name + "." + id
-	dst := filepath.Join(udir, fileid+".zip")
+	styleid := name + "." + id
+	dst := filepath.Join("styles", uid, styleid+".zip")
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadStyle, upload file: %s; user: %s`, err, id)
 		res.Fail(c, 5002)
@@ -91,7 +83,9 @@ func uploadStyle(c *gin.Context) {
 	//更新服务
 	style, err := LoadStyle(styledir)
 	if err != nil {
-		log.Errorf("AddStyles, could not load style %s, details: %s", style.ID, err)
+		log.Errorf("AddStyles, could not load style %s, details: %s", styledir, err)
+		res.FailErr(c, err)
+		return
 	}
 	//入库
 	go func() {
@@ -108,7 +102,9 @@ func uploadStyle(c *gin.Context) {
 			is.(*ServiceSet).S.Store(ss.ID, ss)
 		}
 	}
-	res.Done(c, "")
+	res.DoneData(c, gin.H{
+		"id": style.ID,
+	})
 }
 
 //downloadStyle 下载样式
@@ -120,26 +116,24 @@ func downloadStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	iv, ok := is.(*ServiceSet).S.Load(sid)
 	if !ok {
 		res.Fail(c, 4044)
 		return
 	}
 	reader := iv.(*StyleService).PackStyle()
-	contentLength := reader.Len()
-	contentType := "application/octet-stream"
-	extraHeaders := map[string]string{
-		"Content-Disposition": fmt.Sprintf(`attachment; filename="%s"`, iv.(*StyleService).ID),
-	}
-	c.DataFromReader(http.StatusOK, int64(contentLength), contentType, reader, extraHeaders)
+	c.Header("Content-type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename= "+iv.(*StyleService).ID+".zip")
+	io.Copy(c.Writer, reader)
+	return
 }
 
 //uploadStyle 上传新样式
 func uploadIcons(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	// Multipart form
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -170,7 +164,7 @@ func getIcon(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	iv, ok := is.(*ServiceSet).S.Load(sid)
 	if !ok {
 		log.Errorf("getSprite, style not exist in the service, sid: %s ^^", sid)
@@ -194,7 +188,7 @@ func getIcon(c *gin.Context) {
 func deleteIcons(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	dir := filepath.Join("styles", uid, sid, "icons")
 	name := c.Param("name")
 	names := strings.Split(name, ",")
@@ -209,7 +203,7 @@ func deleteIcons(c *gin.Context) {
 func updateSprite(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	fmt := c.Param("fmt")
 	sprite := "sprite" + fmt
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
@@ -282,7 +276,7 @@ func updateSprite(c *gin.Context) {
 func getSprite(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	fmt := c.Param("fmt")
 	sprite := "sprite" + fmt
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
@@ -328,7 +322,7 @@ func updateStyle(c *gin.Context) {
 		return
 	}
 	user := c.Param("user")
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Errorf(`updateStyle, get form: %s; user: %s`, err, uid)
@@ -371,22 +365,15 @@ func getStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	style, ok := is.(*ServiceSet).S.Load(sid)
 	if !ok {
 		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
 		res.Fail(c, 4044)
 		return
 	}
-
-	switch c.Query("option") {
-	case "download":
-		downloadStyle(c)
-		return
-	}
-
-	var out map[string]interface{}
-	json.Unmarshal(style.(*Style).Data, &out)
+	// var out map[string]interface{}
+	// json.Unmarshal(style.(*StyleService).Data, &out)
 
 	protoScheme := scheme(c.Request)
 	fixURL := func(url string) string {
@@ -394,6 +381,13 @@ func getStyle(c *gin.Context) {
 			return url
 		}
 		return strings.Replace(url, "atlas://", protoScheme+"://"+c.Request.Host+"/", -1)
+	}
+
+	out, ok := style.(*StyleService).Data.(map[string]interface{})
+	if !ok {
+		log.Errorf("getStyle, style json error, sid: %s ^^", sid)
+		res.FailMsg(c, "style json error")
+		return
 	}
 
 	for k, v := range out {
@@ -435,7 +429,7 @@ func viewStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	sid := c.Param("sid")
+	sid := c.Param("id")
 	_, ok = is.(*ServiceSet).S.Load(sid)
 	if !ok {
 		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)

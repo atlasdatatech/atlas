@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/teris-io/shortid"
-
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 )
@@ -21,7 +19,7 @@ import (
 type Style struct {
 	ID        string `json:"id" gorm:"primary_key"`
 	Version   string `json:"version"`
-	Name      string `json:"name"`
+	Name      string `json:"name" gorm:"unique;not null;unique_index"`
 	Summary   string `json:"summary"`
 	Owner     string `json:"owner" gorm:"index"`
 	BaseID    string `json:"baseID" gorm:"index"`
@@ -122,31 +120,30 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 
 	dir := filepath.Join(ss.Path, "icons")
 	items, err := ioutil.ReadDir(dir)
-	if err != nil {
+	if err == nil {
+		for _, item := range items {
+			if item.IsDir() {
+				continue
+			}
+			file := item.Name()
+			buf, err := ioutil.ReadFile(filepath.Join(dir, file))
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			f, err := w.Create(filepath.Join("icons", file))
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+
+			_, err = f.Write(buf)
+			if err != nil {
+				log.Error(err)
+			}
+		}
+	} else {
 		log.Error(err)
-		return buf
-	}
-	for _, item := range items {
-		if item.IsDir() {
-			continue
-		}
-		file := item.Name()
-		buf, err := ioutil.ReadFile(filepath.Join(dir, file))
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		f, err := w.Create(filepath.Join("icons", file))
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-
-		_, err = f.Write(buf)
-		if err != nil {
-			log.Error(err)
-		}
-
 	}
 
 	// Make sure to check the error on Close.
@@ -177,9 +174,9 @@ func LoadStyle(styleDir string) (*Style, error) {
 	}
 
 	name := filepath.Base(styleDir)
-	id, _ := shortid.Generate()
+	// id, _ := shortid.Generate()
 	out := &Style{
-		ID:        id,
+		ID:        name, //id==name
 		Version:   "8",
 		Name:      name,
 		Owner:     ATLAS,
@@ -201,7 +198,6 @@ func (s *Style) toService() *StyleService {
 		Summary: s.Summary,
 		Owner:   s.Owner,
 		Path:    s.Path,
-		State:   true,
 	}
 
 	if len(s.Data) > 0 {
@@ -258,7 +254,7 @@ func (s *Style) toService() *StyleService {
 			out.SpriteJSON2 = buf
 		}
 	}
-
+	out.State = true
 	return out
 }
 

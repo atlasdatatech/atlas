@@ -17,9 +17,9 @@ import (
 func signup(c *gin.Context) {
 	res := NewRes()
 	var body struct {
-		Name     string `form:"name" binding:"required"`
-		Email    string `form:"email" binding:"required"`
-		Password string `form:"password" binding:"required"`
+		Name     string `json:"name" form:"name" binding:"required"`
+		Email    string `json:"email" form:"email" binding:"required"`
+		Password string `json:"password" form:"password" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -59,9 +59,6 @@ func signup(c *gin.Context) {
 
 	user.Group = defaultGroup
 	user.Activation = "yes"
-
-	user.Search = []string{body.Name, body.Email}
-	// createAccount
 	var verifyURL string
 	if viper.GetBool("user.verification") {
 		user.Verification = "no"
@@ -102,21 +99,22 @@ func signup(c *gin.Context) {
 		}
 	}()
 	CreatePaths(user.Name)
-
-	casEnf.LoadPolicy()
-	casEnf.AddGroupingPolicy(user.Name, user.Group)
-	casEnf.SavePolicy()
-
+	if casEnf != nil {
+		casEnf.LoadPolicy()
+		casEnf.AddGroupingPolicy(user.Name, user.Group)
+		casEnf.SavePolicy()
+	}
 	res.DoneCode(c, 201)
 }
 
 func addUser(c *gin.Context) {
 	res := NewRes()
 	var body struct {
-		Name       string `form:"name" json:"name" binding:"required"`
-		Password   string `form:"password" json:"password" binding:"required"`
-		Phone      string `form:"phone" json:"phone"`
-		Department string `form:"department" json:"department"`
+		Name       string `json:"name" form:"name" binding:"required"`
+		Password   string `json:"password" form:"password" binding:"required"`
+		Phone      string ` json:"phone" form:"phone"`
+		Department string `json:"department" form:"department"`
+		Company    string `json:"company" form:"company"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -142,6 +140,7 @@ func addUser(c *gin.Context) {
 	user.Password = string(hashedPassword)
 	user.Phone = body.Phone
 	user.Department = body.Department
+	user.Company = body.Company
 	//No verification required
 	user.JWT, user.JWTExpires, err = authMid.TokenGenerator(&user)
 	if err != nil {
@@ -150,10 +149,9 @@ func addUser(c *gin.Context) {
 		return
 	}
 
+	user.Email = user.ID //"cloud@atlasdata.cn"
 	user.Activation = "yes"
 	user.Verification = "yes"
-	user.Search = []string{body.Name, body.Phone, body.Department}
-	// insertUserInfo
 	err = db.Create(&user).Error
 	if err != nil {
 		log.Errorf(`addUser, create user error, details: '%s' ~`, err)
@@ -167,8 +165,8 @@ func addUser(c *gin.Context) {
 func signin(c *gin.Context) {
 	res := NewRes()
 	var body struct {
-		Name     string `form:"name" binding:"required"`
-		Password string `form:"password" binding:"required"`
+		Name     string `json:"name" form:"name" binding:"required"`
+		Password string `json:"password" form:"password" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -178,27 +176,7 @@ func signin(c *gin.Context) {
 	}
 
 	body.Name = strings.ToLower(body.Name)
-	// abuseFilter
-	IPCountChan := make(chan int)
-	IPUserCountChan := make(chan int)
-	clientIP := c.ClientIP()
-	ttl := time.Now().Add(viper.GetDuration("user.attemptsExpiration"))
-	go func(c chan int) {
-		var cnt int
-		db.Model(&Attempt{}).Where("ip = ? AND created_at > ?", clientIP, ttl).Count(&cnt)
-		c <- cnt
-	}(IPCountChan)
-	go func(c chan int) {
-		var cnt int
-		db.Model(&Attempt{}).Where("ip = ? AND name = ? AND created_at > ?", clientIP, body.Name, ttl).Count(&cnt)
-		c <- cnt
-	}(IPUserCountChan)
-	IPCount := <-IPCountChan
-	IPUserCount := <-IPUserCountChan
-	if IPCount > viper.GetInt("app.ips") || IPUserCount > viper.GetInt("user.attempts") {
-		res.Fail(c, 4002)
-		return
-	}
+
 	// attemptLogin
 	user := User{}
 	if db.Where("name = ?", body.Name).Or("email = ?", body.Name).First(&user).RecordNotFound() {
@@ -207,7 +185,7 @@ func signin(c *gin.Context) {
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 	if err != nil {
-		attempt := Attempt{IP: clientIP, Name: body.Name}
+		attempt := Attempt{IP: c.ClientIP(), Name: body.Name}
 		db.Create(&attempt)
 		res.Fail(c, 4011)
 		return
@@ -236,7 +214,7 @@ func signin(c *gin.Context) {
 func sendReset(c *gin.Context) {
 	res := NewRes()
 	var body struct {
-		Email string `form:"email" binding:"required"`
+		Email string `json:"email" form:"email" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -442,13 +420,14 @@ func getUser(c *gin.Context) {
 
 func updateUser(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("id")
-	if name == "" {
-		name = c.GetString(identityKey)
+	uid := c.Param("id")
+	if uid == "" {
+		uid = c.GetString(identityKey)
 	}
 	var body struct {
-		Phone      string `form:"phone" json:"phone"`
-		Department string `form:"department" json:"department"`
+		Phone      string `json:"phone" form:"phone"`
+		Department string `json:"department" form:"department"`
+		Company    string `json:"company" form:"company"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -456,16 +435,7 @@ func updateUser(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	user := &User{}
-	db.Select("search").Where("name=?", name).First(user)
-	if body.Phone == "" && len(user.Search) == 3 {
-		body.Phone = user.Search[1]
-	}
-	if body.Department == "" && len(user.Search) == 3 {
-		body.Department = user.Search[2]
-	}
-	search := []string{name, body.Phone, body.Department} //更新搜索字段
-	err = db.Model(&User{}).Where("name = ?", name).Update(User{Phone: body.Phone, Department: body.Department, Search: search}).Error
+	err = db.Model(&User{}).Where("name = ?", uid).Update(User{Phone: body.Phone, Department: body.Department, Company: body.Company}).Error
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 5001)
@@ -476,9 +446,9 @@ func updateUser(c *gin.Context) {
 
 func jwtRefresh(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
-	if id == "" {
-		id = c.GetString(identityKey)
+	uid := c.Param("id")
+	if uid == "" {
+		uid = c.GetString(identityKey)
 	}
 	tokenString, expire, err := authMid.RefreshToken(c)
 	if err != nil {
@@ -486,14 +456,14 @@ func jwtRefresh(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	if err := db.Model(&User{}).Where("name = ?", id).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
+	if err := db.Model(&User{}).Where("name = ?", uid).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
 		log.Error(err)
 		res.Fail(c, 5001)
 		return
 	}
 	_, err = c.Cookie("Token")
 	if err != nil {
-		log.Errorf("jwtRefresh, test cookie set: %s; user: %s", err, id)
+		log.Errorf("jwtRefresh, test cookie set: %s; user: %s", err, uid)
 	}
 
 	res.DoneData(c, gin.H{
@@ -504,14 +474,11 @@ func jwtRefresh(c *gin.Context) {
 
 func changePassword(c *gin.Context) {
 	res := NewRes()
-	id := c.Param("id")
-	if id == "" {
-		id = c.GetString(identityKey)
-	}
 
 	var body struct {
-		Password string `form:"password" binding:"required,gt=3"`
-		Confirm  string `form:"confirm" binding:"required,eqfield=Password"`
+		Password    string `json:"password" form:"password"`
+		NewPassword string `json:"newpassword" form:"newpassword" binding:"required,gt=3"`
+		NewConfirm  string `json:"newconfirm" form:"newconfirm" binding:"required,eqfield=NewPassword"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -519,12 +486,27 @@ func changePassword(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
+	uid := c.Param("id")
+	if uid == "" {
+		uid = c.GetString(identityKey)
+		user := User{}
+		if db.Where("name = ?", uid).First(&user).RecordNotFound() {
+			res.Fail(c, 4041)
+			return
+		}
+		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 4011)
+			return
+		}
+	}
 
 	// user.setPassword(body.Password)
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
-	err = db.Model(&User{}).Where("name = ?", id).Update(User{Password: string(hashedPassword)}).Error
+	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
+	err = db.Model(&User{}).Where("name = ?", uid).Update(User{Password: string(hashedPassword)}).Error
 	if err != nil {
-		log.Errorf("changePassword, update password: %s; user: %s", err, id)
+		log.Errorf("changePassword, update password: %s; user: %s", err, uid)
 		res.Fail(c, 5001)
 		return
 	}
@@ -839,13 +821,23 @@ func createRole(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	err = db.Create(&role).Error
-	if err != nil {
-		log.Error(err)
+	tmp := &Role{}
+	if err := db.Where("id = ?", role.ID).First(&tmp).Error; err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = db.Create(&role).Error
+			if err != nil {
+				log.Error(err)
+				res.Fail(c, 5001)
+				return
+			}
+			res.DoneCode(c, 201)
+			return
+		}
 		res.Fail(c, 5001)
 		return
 	}
-	res.DoneCode(c, 201)
+	res.FailMsg(c, "角色ID已存在")
+	return
 }
 
 func deleteRole(c *gin.Context) {

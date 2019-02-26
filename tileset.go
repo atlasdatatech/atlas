@@ -18,7 +18,6 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
-	"github.com/teris-io/shortid"
 )
 
 // Tileseter is an interface that represents the shared attributes
@@ -115,13 +114,13 @@ func (t TileFormat) ContentType() string {
 type Tileset struct {
 	ID        string `json:"id" gorm:"primary_key"`
 	Version   string `json:"version"`
-	Name      string `json:"name"`
+	Name      string `json:"name" gorm:"unique;not null;unique_index"`
 	Owner     string `json:"owner" gorm:"index"`
 	Type      string `json:"type"`
 	Path      string `json:"path"`
 	Size      int64  `json:"size"`
-	Layers    []byte `json:"data" gorm:"type:json"`
-	JSON      []byte `json:"json" gorm:"column:json,type:json"`
+	Layers    []byte `json:"data" ` //gorm:"type:json"
+	JSON      []byte `json:"json" ` //gorm:"column:json;type:json"
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -152,10 +151,10 @@ func LoadTileset(tileset string) (*Tileset, error) {
 	base := filepath.Base(tileset)
 	ext := filepath.Ext(tileset)
 	name := strings.TrimSuffix(base, ext)
-	id, _ := shortid.Generate()
+	// id, _ := shortid.Generate()
 
 	out := &Tileset{
-		ID:        name + "." + id,
+		ID:        name,
 		Version:   "8",
 		Name:      name,
 		Owner:     ATLAS,

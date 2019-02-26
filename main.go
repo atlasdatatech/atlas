@@ -8,7 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/didip/tollbooth"
+	"github.com/didip/tollbooth/limiter"
 	"github.com/go-spatial/tegola/provider"
+	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
@@ -17,8 +20,6 @@ import (
 	jwt "github.com/appleboy/gin-jwt"
 	"github.com/casbin/casbin"
 	"github.com/casbin/gorm-adapter"
-	"github.com/didip/tollbooth"
-	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/contrib/gzip"
 	"github.com/gin-gonic/contrib/static"
@@ -61,9 +62,19 @@ func init() {
 	flag.Usage = usage
 	//InitLog 初始化日志
 	log.SetFormatter(&nested.Formatter{
-		HideKeys:    true,
-		FieldsOrder: []string{"component", "category"},
+		HideKeys:        true,
+		ShowFullLevel:   true,
+		TimestampFormat: "2006-01-02 15:04:05.000",
+		// FieldsOrder: []string{"component", "category"},
 	})
+
+	// // force colors on for TextFormatter
+	// log.Formatter = &logrus.TextFormatter{
+	//     ForceColors: true,
+	// }
+	// then wrap the log output with it
+	log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
+
 	log.SetLevel(log.DebugLevel)
 }
 func usage() {
@@ -127,7 +138,7 @@ func initDb() (*gorm.DB, error) {
 
 	log.Info("init gorm pg successfully")
 	//gorm自动构建用户表
-	pg.AutoMigrate(&User{}, &Attempt{}, &Role{})
+	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
 	return pg, nil
@@ -157,6 +168,14 @@ func initProvider() (provider.Tiler, error) {
 	return provd, nil
 }
 
+func initJWT() (*jwt.GinJWTMiddleware, error) {
+	jwtmid, err := jwt.New(JWTMidHandler())
+	if err != nil {
+		return nil, err
+	}
+	return jwtmid, nil
+}
+
 //initEnforcer 初始化资源访问控制
 func initEnforcer() (*casbin.Enforcer, error) {
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -184,7 +203,12 @@ func initSystemUser() {
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Department = "system"
+	user.Group = group
+	user.Email = "cloud@atlasdata.cn"
+	user.Phone = "17714211819"
+	user.Department = "cloud"
+	user.Company = "atlasdata"
+	user.Verification = "yes"
 	//No verification required
 	user.JWT, user.JWTExpires, _ = authMid.TokenGenerator(&user)
 	user.Activation = "yes"
@@ -196,7 +220,7 @@ func initSystemUser() {
 	}
 
 	if err := db.Create(&role).Error; err != nil {
-		log.Fatal("admin group create error")
+		log.Fatal("admin@group role create error")
 		return
 	}
 	if casEnf != nil {
@@ -224,16 +248,18 @@ func initTaskRouter() {
 
 //loadPubServices 加载ATLAS公共服务
 func loadPubServices() {
-	pubs := &ServiceSet{User: ATLAS}
+	pubs := &ServiceSet{Owner: ATLAS}
 	err := pubs.LoadServiceSet()
 	if err != nil {
-		log.Fatalf("loading public service set error: %s", err.Error())
+		log.Errorf("loading public service set error: %s", err.Error())
 	}
-	pubSet.Store(pubs.User, pubs)
+	pubSet.Store(pubs.Owner, pubs)
 }
 
 //setupRouter 初始化GIN引擎并配置路由
 func setupRouter() *gin.Engine {
+	// gin.SetMode(gin.ReleaseMode)
+	// r := gin.New()
 	r := gin.Default()
 	//gzip
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -252,19 +278,17 @@ func setupRouter() *gin.Engine {
 	//template
 	templates := viper.GetString("statics.templates") //filepath.Join(statics, "templates/*")
 	r.LoadHTMLGlob(templates)
-	jwtmid, err := jwt.New(JWTMidHandler())
-	if err != nil {
-		log.Fatalf("JWT Error:" + err.Error())
-	}
-	authMid = jwtmid
 
 	r.GET("/", index)
 	r.GET("/ping", ping)
-	sign := r.Group("/sign")
 
-	// Create a limiter, 每IP每秒3次, 触发等待5分钟
-	limiter := tollbooth.NewLimiter(3, &limiter.ExpirableOptions{DefaultExpirationTTL: 300 * time.Second})
-	sign.Use(LimitMidHandler(limiter))
+	sign := r.Group("/sign")
+	// Create a limiter, 每IP每秒3次, 每小时回收Bruck
+	lter := tollbooth.NewLimiter(3, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+	sign.Use(LimitMidHandler(lter))
+	lter2 := tollbooth.NewLimiter(1.0/60.0, &limiter.ExpirableOptions{DefaultExpirationTTL: 300 * time.Second})
+	lter2.SetBurst(10)
+	sign.Use(LimitMidHandler(lter2))
 	{
 		//render
 		sign.GET("/up/", renderSignup)
@@ -278,7 +302,22 @@ func setupRouter() *gin.Engine {
 		sign.POST("/reset/:user/:token/", resetPassword)
 		sign.GET("/verify/:user/:token/", verify)
 	}
-
+	//account
+	account := r.Group("/account")
+	account.Use(authMid.MiddlewareFunc())
+	{
+		//render
+		account.GET("/index/", renderAccount)
+		account.GET("/update/", renderUpdateUser)
+		account.GET("/password/", renderChangePassword)
+		//api
+		account.GET("/", getUser)
+		account.GET("/logout/", signout)
+		account.GET("/verify/", sendVerification)
+		account.POST("/update/", updateUser)
+		account.GET("/refresh/", jwtRefresh)
+		account.POST("/password/", changePassword)
+	}
 	//users
 	user := r.Group("/users")
 	user.Use(authMid.MiddlewareFunc())
@@ -313,20 +352,7 @@ func setupRouter() *gin.Engine {
 		role.POST("/:id/maps/", addRoleMap)
 		role.POST("/:id/maps/del/", deleteRoleMap)
 	}
-	//account
-	account := r.Group("/account")
-	account.Use(authMid.MiddlewareFunc())
-	{
-		account.GET("/index/", renderAccount)
-		account.GET("/", getUser)
-		account.GET("/signout/", signout)
-		account.GET("/verify/", sendVerification)
-		account.GET("/update/", renderUpdateUser)
-		account.POST("/update/", updateUser)
-		account.GET("/refresh/", jwtRefresh)
-		account.GET("/password/", renderChangePassword)
-		account.POST("/password/", changePassword)
-	}
+
 	//maproute
 	maproute := r.Group("/maps")
 	maproute.Use(authMid.MiddlewareFunc())
@@ -347,9 +373,9 @@ func setupRouter() *gin.Engine {
 	{
 		// > styles
 		studio.GET("/", studioIndex)
-		studio.GET("/editor/:sid", studioEditer)
+		studio.GET("/editor/:id", studioEditer)
 		studio.GET("/styles/upload/", renderStyleUpload)
-		studio.GET("/styles/upload/:sid/", renderSpriteUpload)
+		studio.GET("/styles/upload/:id/", renderSpriteUpload)
 		studio.GET("/tilesets/upload/", renderTilesetsUpload)
 		studio.GET("/datasets/upload/", renderDatasetsUpload)
 		studio.GET("/maps/import/", renderMapsImport)
@@ -357,15 +383,17 @@ func setupRouter() *gin.Engine {
 	}
 
 	styles := r.Group("/styles")
-	// styles.Use(authMid.MiddlewareFunc())
+	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
 		styles.GET("/", listStyles)
 		styles.POST("/", uploadStyle)
-		styles.GET("/:sid", getStyle)             //style.json
-		styles.GET("/:sid/", viewStyle)           //view map style
-		styles.POST("/:sid/", updateStyle)        //updateStyle
-		styles.GET("/:sid/sprite:fmt", getSprite) //sprite.json/png
+		styles.GET("/:id/", getStyle)               //style.json
+		styles.GET("/:id/download/", downloadStyle) //style.json
+		styles.GET("/:id/sprite:fmt", getSprite)    //sprite.json/png
+		styles.GET("/:id/view/", viewStyle)         //view map style
+		styles.POST("/:id/edit/", updateStyle)      //updateStyle
+		styles.POST("/:id/update/", updateStyle)    //updateStyle
 	}
 	fonts := r.Group("/fonts")
 	// fonts.Use(authMid.MiddlewareFunc())
@@ -375,30 +403,16 @@ func setupRouter() *gin.Engine {
 		fonts.GET("/:fontstack/:range", getGlyphs) //get glyph pbfs
 	}
 
-	ts := r.Group("/ts")
-	// tilesets.Use(authMid.MiddlewareFunc())
-	{
-		// > tilesets
-		ts.GET("/", listTilesets)
-		// ts.GET("/", listLayers)
-		ts.POST("/", uploadTileset)
-		ts.GET("/json/:mid", getTilejson) //tilejson
-		// ts.GET("/map/:mid/:lid/", getTile)
-		// ts.POST("/map/:mid/:lid/", getTile)
-		ts.GET("/map/:mid/:z/:x/:y", getTile)
-		// ts.POST("/merge/:mid1/:mid2/", viewTile) //view
-		ts.GET("/view/:mid/", viewTile) //view
-	}
-
 	tilesets := r.Group("/tilesets")
 	// tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
 		tilesets.POST("/", uploadTileset)
-		tilesets.GET("/:tid", getTilejson) //tilejson
-		tilesets.GET("/:tid/", viewTile)   //view
-		tilesets.GET("/:tid/:z/:x/:y", getTile)
+		tilesets.GET("/:id/tilejson/", getTilejson) //tilejson
+		tilesets.GET("/:id/view/", viewTile)        //view
+		tilesets.GET("/:id/map:layers/:z/:x/:y", getTile)
+		tilesets.GET("/:id/merge/:tids/", getTile)
 	}
 
 	ds := r.Group("/ds")
@@ -409,7 +423,7 @@ func setupRouter() *gin.Engine {
 		ds.GET("/crs/", crsList)
 		ds.GET("/encoding/", encodingList)
 		ds.GET("/ftype/", fieldTypeList)
-		ds.GET("/info/:name/", getDatasetInfo)
+		ds.GET("/info/:id/", getDatasetInfo)
 		ds.POST("/upload/", fileUpload)
 		ds.GET("/preview/:id/", dataPreview)
 		ds.POST("/import/:id/", dataImport)
@@ -422,19 +436,19 @@ func setupRouter() *gin.Engine {
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
-		datasets.GET("/:name/", getDatasetInfo)
-		datasets.POST("/:name/distinct/", getDistinctValues)
-		datasets.GET("/:name/geojson/", getGeojson)
-		datasets.POST("/:name/import/", importFiles)
-		datasets.POST("/:name/query/", queryGeojson)
-		datasets.POST("/:name/cube/", cubeQuery)
-		datasets.POST("/:name/common/", queryExec)
-		datasets.GET("/:name/business/", queryBusiness)
-		datasets.GET("/:name/buffers/", getBuffers)
-		datasets.GET("/:name/models/", getModels)
-		datasets.GET("/:name/geos/", searchGeos)
-		datasets.POST("/:name/update/", updateInsertData)
-		datasets.POST("/:name/delete/", deleteData)
+		datasets.GET("/:id/", getDatasetInfo)
+		datasets.POST("/:id/distinct/", getDistinctValues)
+		datasets.GET("/:id/geojson/", getGeojson)
+		datasets.POST("/:id/import/", importFiles)
+		datasets.POST("/:id/query/", queryGeojson)
+		datasets.POST("/:id/cube/", cubeQuery)
+		datasets.POST("/:id/common/", queryExec)
+		datasets.GET("/:id/business/", queryBusiness)
+		datasets.GET("/:id/buffers/", getBuffers)
+		datasets.GET("/:id/models/", getModels)
+		datasets.GET("/:id/geos/", searchGeos)
+		datasets.POST("/:id/update/", updateInsertData)
+		datasets.POST("/:id/delete/", deleteData)
 	}
 	//utilroute
 	utilroute := r.Group("/util")
@@ -447,9 +461,7 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-// force redirect to https from http
-// necessary only if you use https directly
-// put your domain name instead of CONF.ORIGIN
+// force redirect to https from http// necessary only if you use https directly// put your domain name instead of CONF.ORIGIN
 func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
 	//http.Redirect(w, req, "https://" + CONF.ORIGIN + req.RequestURI, http.StatusMovedPermanently)
 }
@@ -476,12 +488,17 @@ func main() {
 		log.Fatalf("init provider error: %s", err)
 	}
 
+	authMid, err = initJWT()
+	if err != nil {
+		log.Fatalf("init jwt error: %s", err)
+	}
+
 	casEnf, err = initEnforcer()
 	if err != nil {
 		log.Fatalf("init enforcer error: %s", err)
 	}
+	initSystemUser()
 	if initf {
-		initSystemUser()
 		return
 	}
 	initTaskRouter()
@@ -489,6 +506,7 @@ func main() {
 
 	r := setupRouter()
 
+	// log.Infof("Listening and serving HTTP on %s\n", viper.GetString("app.port"))
 	r.Run(":" + viper.GetString("app.port"))
 	// https
 	// put path to cert instead of CONF.TLS.CERT

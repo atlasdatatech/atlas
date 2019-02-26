@@ -35,8 +35,8 @@ func listDatasets(c *gin.Context) {
 func getDatasetInfo(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	name := c.Param("name")
-	if code := checkDataset(name); code != 200 {
+	did := c.Param("id")
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -45,7 +45,7 @@ func getDatasetInfo(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	ds, ok := is.(*ServiceSet).D.Load(name)
+	ds, ok := is.(*ServiceSet).D.Load(did)
 	if !ok {
 		res.Fail(c, 4045)
 		return
@@ -55,8 +55,8 @@ func getDatasetInfo(c *gin.Context) {
 
 func getDistinctValues(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
-	if code := checkDataset(name); code != 200 {
+	did := c.Param("id")
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -69,7 +69,7 @@ func getDistinctValues(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	s := fmt.Sprintf(`SELECT distinct(%s) as val,count(*) as cnt FROM "%s" GROUP BY %s;`, body.Field, name, body.Field)
+	s := fmt.Sprintf(`SELECT distinct(%s) as val,count(*) as cnt FROM "%s" GROUP BY %s;`, body.Field, did, body.Field)
 	fmt.Println(s)
 	rows, err := db.Raw(s).Rows()
 	if err != nil {
@@ -95,11 +95,11 @@ func getDistinctValues(c *gin.Context) {
 
 func getGeojson(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 	fields := c.Query("fields")
 	filter := c.Query("filter")
 
-	if code := checkDataset(name); code != 200 {
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -112,7 +112,7 @@ func getGeojson(c *gin.Context) {
 	if "" != filter {
 		whr = " WHERE " + filter
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, name, whr)
+	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, did, whr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -179,7 +179,7 @@ func getGeojson(c *gin.Context) {
 		fc.Append(f)
 	}
 	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, name, whr)
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, did, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
@@ -196,7 +196,7 @@ func getGeojson(c *gin.Context) {
 
 func queryGeojson(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 
 	var body struct {
 		Geom   string `form:"geom" json:"geom"`
@@ -225,7 +225,7 @@ func queryGeojson(c *gin.Context) {
 		}
 	}
 
-	s := fmt.Sprintf(`SELECT %s FROM %s  %s;`, selStr, name, whrStr)
+	s := fmt.Sprintf(`SELECT %s FROM %s  %s;`, selStr, did, whrStr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -418,27 +418,27 @@ func queryExec(c *gin.Context) {
 
 func queryBusiness(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 	var linkTables []string
-	if name != "banks" {
+	if did != "banks" {
 		res.DoneData(c, gin.H{
-			name: linkTables,
+			did: linkTables,
 		})
 		return
 	}
 	linkTables = viper.GetStringSlice("business.banks.linked")
 	res.DoneData(c, gin.H{
-		name: linkTables,
+		did: linkTables,
 	})
 }
 
 func getBuffers(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 	rs := c.Query("radius")
 	t := c.Query("type")
 	bsuffix := viper.GetString("buffers.suffix")
-	tbname := name + bsuffix //circle
+	tbname := did + bsuffix //circle
 	switch t {
 	case "circle":
 	case "block", "":
@@ -454,7 +454,7 @@ func getBuffers(c *gin.Context) {
 		res.FailMsg(c, "invalid radius value")
 		return
 	}
-	if code := buffering(name, r); code != 200 {
+	if code := buffering(did, r); code != 200 {
 		log.Error(codes[code])
 		res.Fail(c, code)
 		return
@@ -482,7 +482,7 @@ func getBuffers(c *gin.Context) {
 		whr = strings.Replace(whr, " (geom", " (a.geom ", -1)
 		whr = strings.Replace(whr, "geom) ", " a.geom) ", -1)
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, name, tbname, whr)
+	s := fmt.Sprintf(`SELECT %s FROM %s as a, %s as b %s;`, selStr, did, tbname, whr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -550,7 +550,7 @@ func getBuffers(c *gin.Context) {
 		fc.Append(f)
 	}
 	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(b.geom)) as extent FROM %s as a,%s as b %s;`, name, tbname, whr)
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(b.geom)) as extent FROM %s as a,%s as b %s;`, did, tbname, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
@@ -567,17 +567,17 @@ func getBuffers(c *gin.Context) {
 
 func getModels(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 	fields := c.Query("fields")
 	filter := c.Query("filter")
 	needCacl := c.Query("cacl")
 
-	if code := checkDataset(name); code != 200 {
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 	if needCacl != "" {
-		switch name {
+		switch did {
 		case "m1":
 			err := calcM1()
 			if err != nil {
@@ -625,7 +625,7 @@ func getModels(c *gin.Context) {
 		filter = " WHERE " + filter
 	}
 
-	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, fields, name, filter)
+	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, fields, did, filter)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -793,9 +793,9 @@ func searchGeos(c *gin.Context) {
 
 func updateInsertData(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 
-	if code := checkDataset(name); code != 200 {
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -810,10 +810,10 @@ func updateInsertData(c *gin.Context) {
 
 	bank.Search = []string{bank.No, bank.Name, bank.Region, bank.Type, bank.Manager}
 
-	if db.Table(name).Where("id = ?", bank.ID).First(&Bank{}).RecordNotFound() {
+	if db.Table(did).Where("id = ?", bank.ID).First(&Bank{}).RecordNotFound() {
 		db.Omit("geom").Create(bank)
 	} else {
-		err := db.Table(name).Where("id = ?", bank.ID).Update(bank).Error
+		err := db.Table(did).Where("id = ?", bank.ID).Update(bank).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
@@ -826,10 +826,10 @@ func updateInsertData(c *gin.Context) {
 		res.FailMsg(c, "x, y must be reasonable values")
 		return
 	}
-	stgeo := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326) WHERE id=%d;`, name, bank.ID)
+	stgeo := fmt.Sprintf(`UPDATE %s SET geom = ST_GeomFromText('POINT(' || x || ' ' || y || ')',4326) WHERE id=%d;`, did, bank.ID)
 	result := db.Exec(stgeo)
 	if result.Error != nil {
-		log.Errorf("update %s create geom error:%s", name, result.Error.Error())
+		log.Errorf("update %s create geom error:%s", did, result.Error.Error())
 		res.Fail(c, 5001)
 		return
 	}
@@ -841,9 +841,9 @@ func updateInsertData(c *gin.Context) {
 
 func deleteData(c *gin.Context) {
 	res := NewRes()
-	name := c.Param("name")
+	did := c.Param("id")
 
-	if code := checkDataset(name); code != 200 {
+	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
 		return
 	}

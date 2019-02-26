@@ -147,7 +147,7 @@ func renderStyleUpload(c *gin.Context) {
 func renderSpriteUpload(c *gin.Context) {
 	c.HTML(http.StatusOK, "upload-ss.html", gin.H{
 		"Title": "AtlasMap",
-		"sid":   c.Param("sid"),
+		"id":   c.Param("id"),
 	})
 }
 

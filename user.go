@@ -42,21 +42,19 @@ type User struct {
 	Verification      string    `json:"verification"`
 	VerificationToken string    `json:"-"`
 
-	Search pq.StringArray `json:"search" gorm:"type:varchar[];index"`
-
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 //Role 角色表
 type Role struct {
-	ID   string `form:"id" json:"id" gorm:"unique;index" binding:"required"`
-	Name string `form:"name" json:"name" gorm:"unique" binding:"required"`
+	ID   string `json:"id" form:"id" gorm:"unique;index" binding:"required"`
+	Name string `json:"name" form:"name" binding:"required"`
 }
 
 //Attempt 登录记录表
 type Attempt struct {
-	ID        string `gorm:"primary_key"`
+	ID        int    `gorm:"primary_key"`
 	IP        string `gorm:"index"`
 	Name      string `gorm:"index"`
 	CreatedAt time.Time

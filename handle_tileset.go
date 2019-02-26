@@ -68,7 +68,7 @@ func uploadTileset(c *gin.Context) {
 	}
 
 	res.DoneData(c, gin.H{
-		"tid": tid,
+		"id": tid,
 	})
 }
 func getTileService(uid, tid string) *TileService {
@@ -93,7 +93,7 @@ func getTilejson(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	tid := c.Param("tid")
+	tid := c.Param("id")
 	tileService, ok := is.(*ServiceSet).T.Load(tid)
 	if !ok {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
@@ -147,7 +147,7 @@ func getTilejson(c *gin.Context) {
 func viewTile(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	tid := c.Param("tid")
+	tid := c.Param("id")
 	tss := getTileService(uid, tid)
 	if tss == nil {
 		res.Fail(c, 4044)
@@ -172,7 +172,7 @@ func getTile(c *gin.Context) {
 		res.Fail(c, 4003)
 		return
 	}
-	tid := c.Param("tid")
+	tid := c.Param("id")
 	tss := getTileService(uid, tid)
 	if tss == nil {
 		res.Fail(c, 4044)
