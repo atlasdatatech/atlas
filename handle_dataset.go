@@ -4,36 +4,45 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/jinzhu/gorm"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/teris-io/shortid"
 
 	"github.com/gin-gonic/gin"
 )
 
 func listDatasets(c *gin.Context) {
 	res := NewRes()
-
-	var dss []*DataService
-	uid := c.GetString(identityKey)
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
 	set := userSet.service(uid)
-	if set != nil {
-		set.D.Range(func(_, v interface{}) bool {
-			dss = append(dss, v.(*DataService))
-			return true
-		})
-	}
+	if set == nil {
+		res.Fail(c, 4044)
+		return
 
+	}
+	var dss []*DataService
+	set.D.Range(func(_, v interface{}) bool {
+		dss = append(dss, v.(*DataService))
+		return true
+	})
 	res.DoneData(c, dss)
 }
 
 func getDatasetInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
 	did := c.Param("id")
 	if code := checkDataset(did); code != 200 {
 		res.Fail(c, code)
@@ -46,6 +55,319 @@ func getDatasetInfo(c *gin.Context) {
 		return
 	}
 	res.DoneData(c, ds)
+}
+
+func oneClickImport(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
+		res.Fail(c, 4046)
+		return
+	}
+	filename := file.Filename
+	ext := filepath.Ext(filename)
+	lext := strings.ToLower(ext)
+	switch lext {
+	case ".csv", ".geojson", ".json", ".zip":
+	default:
+		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
+		return
+	}
+	name := strings.TrimSuffix(filename, ext)
+	id, _ := shortid.Generate()
+	dst := filepath.Join("datasets", uid, name+"."+id+lext)
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
+		res.Fail(c, 5002)
+		return
+	}
+	dtfiles, err := LoadDatafile(dst)
+	if err != nil {
+		log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+	var tasks []*Task
+	for _, df := range dtfiles {
+		err = df.UpInsert()
+		if err != nil {
+			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+		}
+		dfb := df.getPreview()
+		df.Update(dfb)
+		task, err := df.dataImport()
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		//todo goroute 导入，以下事务需在task完成后处理
+		ds, err := df.toDataset()
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
+
+		err = ds.UpInsert()
+		if err != nil {
+			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+			res.FailErr(c, err)
+			return
+		}
+
+		if true {
+			dss := ds.toService()
+			set.D.Store(dss.ID, dss)
+		}
+
+		tasks = append(tasks, task)
+	}
+	res.DoneData(c, tasks)
+}
+
+func uploadFile(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
+		res.Fail(c, 4046)
+		return
+	}
+	filename := file.Filename
+	ext := filepath.Ext(filename)
+	lext := strings.ToLower(ext)
+	switch lext {
+	case ".csv", ".geojson", ".json", ".zip":
+	default:
+		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
+		return
+	}
+	name := strings.TrimSuffix(filename, ext)
+	id, _ := shortid.Generate()
+	dst := filepath.Join("datasets", uid, name+"."+id+lext)
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
+		res.Fail(c, 5002)
+		return
+	}
+	dtfiles, err := LoadDatafile(dst)
+	if err != nil {
+		log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+	var dfbinds []*DatafileBind
+	for _, df := range dtfiles {
+		err = df.UpInsert()
+		if err != nil {
+			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+		}
+		dfb := df.getPreview()
+		dfbinds = append(dfbinds, dfb)
+	}
+	res.DoneData(c, dfbinds)
+}
+
+func previewFile(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	id := c.Param("id")
+	df := &Datafile{}
+	err := db.Where("id = ?", id).First(df).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			log.Errorf(`dataPreview, can not find datafile, id: %s`, id)
+			res.FailMsg(c, "datafile not found")
+			return
+		}
+		log.Errorf(`dataPreview, get datafile info error, details: %s`, err)
+		res.Fail(c, 5001)
+		return
+	}
+	encoding := strings.ToLower(c.Query("encoding"))
+	switch encoding {
+	case "":
+	case "utf-8", "gbk", "big5":
+		df.Encoding = encoding
+	default:
+		df.Encoding = "gb18030"
+	}
+	switch df.Format {
+	case ".csv", ".geojson", ".json", ".shp":
+		pv := df.getPreview()
+		res.DoneData(c, pv)
+	default:
+		res.DoneData(c, "unkown format")
+	}
+}
+
+func importFile(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	dp := &DatafileBind{}
+	err := c.Bind(&dp)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
+		return
+	}
+	//GeometryCollection,Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon
+	df := &Datafile{}
+	err = db.Where("id = ?", dp.ID).First(df).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			log.Errorf(`can not find datafile, id: %s`, dp.ID)
+			res.FailMsg(c, `can not find datafile`)
+			return
+		}
+		log.Errorf(`get datafile info error, details: %s`, err)
+		res.Fail(c, 5001)
+		return
+	}
+	df.Update(dp)
+	df.Overwrite = true
+	err = df.UpInsert()
+	if err != nil {
+		log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+
+	task, err := df.dataImport()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+	//todo goroute 导入，以下事务需在task完成后处理
+	ds, err := df.toDataset()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+
+	err = ds.UpInsert()
+	if err != nil {
+		log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+
+	if true {
+		dss := ds.toService()
+		set.D.Store(dss.ID, dss)
+	}
+
+	res.DoneData(c, task)
+}
+
+func taskQuery(c *gin.Context) {
+	res := NewRes()
+	user := c.GetString("id")
+	log.Println(user)
+	id := c.Param("id")
+	task, ok := taskSet.Load(id)
+	if ok {
+		res.DoneData(c, task)
+		return
+	}
+	dbtask := &Task{ID: id}
+	dbtask.info()
+	res.DoneData(c, dbtask)
+}
+
+func taskStreamQuery(c *gin.Context) {
+
+	id := c.Param("id")
+	task, ok := taskSet.Load(id)
+	if ok {
+		// listener := openListener(roomid)
+		ticker := time.NewTicker(1 * time.Second)
+		// users.Add("connected", 1)
+		defer func() {
+			// closeListener(roomid, listener)
+			ticker.Stop()
+			// users.Add("disconnected", 1)
+		}()
+
+		c.Stream(func(w io.Writer) bool {
+			select {
+			// case msg := <-listener:
+			// 	messages.Add("outbound", 1)
+			// 	c.SSEvent("message", msg)
+			case <-ticker.C:
+				c.SSEvent("task", task)
+			}
+			return true
+		})
+	}
+}
+
+//downloadDataset 下载数据集
+func downloadDataset(c *gin.Context) {
+	res := NewRes()
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
+	did := c.Param("id")
+	ds := userSet.dataset(uid, did)
+	if ds == nil {
+		log.Errorf(`downloadDataset, %s's data service (%s) not found ^^`, uid, did)
+		res.Fail(c, 4044)
+		return
+	}
+	file, err := os.Open(ds.URL)
+	if err != nil {
+		log.Errorf(`downloadTileset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
+		res.FailErr(c, err)
+		return
+	}
+	c.Header("Content-type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename= "+ds.ID+".mbtiles")
+	io.Copy(c.Writer, file)
+	return
+}
+
+func viewDataset(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	tid := c.Param("id")
+	tss := userSet.tileset(uid, tid)
+	if tss == nil {
+		log.Errorf("tilesets id(%s) not exist in the service", tid)
+		res.Fail(c, 4044)
+		return
+	}
+	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
+	c.HTML(http.StatusOK, "data.html", gin.H{
+		"Title": "PerView",
+		"ID":    tid,
+		"URL":   tileurl,
+		"FMT":   tss.Tileset.TileFormat().String(),
+	})
 }
 
 func getDistinctValues(c *gin.Context) {
@@ -786,7 +1108,7 @@ func searchGeos(c *gin.Context) {
 	c.JSON(http.StatusOK, ams)
 }
 
-func updateInsertData(c *gin.Context) {
+func upInsertDataset(c *gin.Context) {
 	res := NewRes()
 	did := c.Param("id")
 
@@ -834,7 +1156,33 @@ func updateInsertData(c *gin.Context) {
 	})
 }
 
-func deleteData(c *gin.Context) {
+func deleteDatasets(c *gin.Context) {
+	res := NewRes()
+	did := c.Param("id")
+
+	if code := checkDataset(did); code != 200 {
+		res.Fail(c, code)
+		return
+	}
+
+	var body struct {
+		ID string `form:"id" json:"id" binding:"required"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	err = db.Where("id = ?", body.ID).Delete(&Bank{}).Error
+	if err != nil {
+		log.Errorf("delete data : %s; dataid: %s", err, body.ID)
+		res.Fail(c, 5001)
+		return
+	}
+	res.Done(c, "")
+}
+
+func deleteFeatures(c *gin.Context) {
 	res := NewRes()
 	did := c.Param("id")
 

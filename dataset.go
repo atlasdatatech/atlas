@@ -3,9 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"sort"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -47,9 +45,10 @@ type Fields []Field
 type Dataset struct {
 	ID        string `json:"id"`   //字段列表
 	Name      string `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
+	Alias     string `json:"alias"`
+	Tag       string `json:"tag"`
 	Owner     string `json:"owner"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
+	Count     int    `json:"count"`
 	Type      string `json:"type"`                    //字段列表
 	Fields    []byte `json:"fields" gorm:"type:json"` //字段列表
 	CreatedAt time.Time
@@ -74,48 +73,10 @@ func (dss *DataService) toDataset() *Dataset {
 		ID:    dss.ID,
 		Name:  dss.Name,
 		Owner: dss.Owner,
-		Path:  dss.URL,
 		Type:  dss.Type,
 	}
 	out.Fields, _ = json.Marshal(dss.Fields)
 	return out
-}
-
-// LoadDataset setServices returns a ServiceSet that combines all .mbtiles files under
-// the directory at baseDir. The DBs will all be served under their relative paths
-// to baseDir.
-func LoadDataset(dataset string) (*Dataset, error) {
-	// 获取所有记录
-	fStat, err := os.Stat(dataset)
-	if err != nil {
-		log.Errorf(`LoadStyle, read style file info error, details: %s`, err)
-		return nil, err
-	}
-	base := filepath.Base(dataset)
-	ext := filepath.Ext(dataset)
-	name := strings.TrimSuffix(base, ext)
-	// id, _ := shortid.Generate()
-
-	out := &Dataset{
-		ID:        name,
-		Name:      name,
-		Owner:     ATLAS,
-		Type:      ext,
-		Path:      dataset,
-		Size:      fStat.Size(),
-		UpdatedAt: fStat.ModTime(),
-		Fields:    nil,
-	}
-	switch ext {
-	case ".geojson":
-		// mb, err := LoadMBTiles(tileset)
-		// out.JSON = mb.TileJSON()
-	case ".zip":
-		// tm, err := LoadTilemap(tileset)
-		// out.JSON = tm.TileJSON()
-	}
-
-	return out, nil
 }
 
 func (ds *Dataset) toService() *DataService {
@@ -150,6 +111,57 @@ func (ds *Dataset) UpInsert() error {
 		return err
 	}
 	return nil
+}
+
+//getEncoding guess data file encoding
+func (ds *Dataset) getTags() []string {
+	var tags []string
+	if ds == nil {
+		log.Errorf("datafile may not be nil")
+		return tags
+	}
+
+	datasets := []Dataset{}
+	err := db.Where("owner = ?", ds.Owner).Find(&datasets).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			log.Errorf(`getTags, can not find user datafile, user: %s`, ds.Owner)
+			return tags
+		}
+		log.Errorf(`getTags, get data file info error, details: %s`, err)
+		return tags
+	}
+	mtags := make(map[string]int)
+	for _, dataset := range datasets {
+		tag := dataset.Tag
+		if tag == "" {
+			continue
+		}
+		_, ok := mtags[tag]
+		if ok {
+			mtags[tag]++
+		} else {
+			mtags[tag] = 1
+		}
+	}
+	type kv struct {
+		Key   string
+		Value int
+	}
+
+	var ss []kv
+	for k, v := range mtags {
+		ss = append(ss, kv{k, v})
+	}
+
+	sort.Slice(ss, func(i, j int) bool {
+		return ss[i].Value > ss[j].Value
+	})
+
+	for _, kv := range ss {
+		tags = append(tags, kv.Key)
+	}
+	return tags
 }
 
 // GetGeoJSON reads a data in the database

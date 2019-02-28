@@ -145,7 +145,7 @@ type TileService struct {
 func LoadTileset(tileset string) (*Tileset, error) {
 	fStat, err := os.Stat(tileset)
 	if err != nil {
-		log.Errorf(`LoadStyle, read style file info error, details: %s`, err)
+		log.Errorf(`LoadTileset, read style file info error, details: %s`, err)
 		return nil, err
 	}
 	base := filepath.Base(tileset)

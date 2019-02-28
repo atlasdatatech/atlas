@@ -454,21 +454,40 @@ func (s *ServiceSet) AddDatasets() error {
 		_, ok := quickmap[id]
 		if !ok {
 			//加载文件
-			dataset, err := LoadDataset(file)
+			datafiles, err := LoadDatafile(file)
 			if err != nil {
 				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
-			//入库
-			err = dataset.UpInsert()
-			if err != nil {
-				log.Errorf(`AddDatasets, upinsert font %s error, details: %s`, dataset.ID, err)
+			//入库、导入、加载服务
+			for _, df := range datafiles {
+				dp := df.getPreview()
+				df.Update(dp)
+				df.Overwrite = true
+				err = df.UpInsert()
+				if err != nil {
+					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+				}
+				_, err = df.dataImport()
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				ds, err := df.toDataset()
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				err = ds.UpInsert()
+				if err != nil {
+					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+				}
+				count++
 			}
-			count++
 		}
 	}
 
-	log.Infof("AddDatasets, append %d tilesets ~", count)
+	log.Infof("AddDatasets, append %d datasets ~", count)
 	return nil
 }
 

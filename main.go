@@ -281,7 +281,10 @@ func setupRouter() *gin.Engine {
 
 	r.GET("/", index)
 	r.GET("/ping", ping)
-
+	//x
+	r.GET("/crs/", crsList)
+	r.GET("/encoding/", encodingList)
+	r.GET("/ftype/", fieldTypeList)
 	sign := r.Group("/sign")
 	// Create a limiter, 每IP每秒3次, 每小时回收Bruck
 	lter := tollbooth.NewLimiter(3, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
@@ -312,7 +315,7 @@ func setupRouter() *gin.Engine {
 		account.GET("/password/", renderChangePassword)
 		//api
 		account.GET("/", getUser)
-		account.GET("/logout/", signout)
+		account.GET("/signout/", signout)
 		account.GET("/verify/", sendVerification)
 		account.POST("/update/", updateUser)
 		account.GET("/refresh/", jwtRefresh)
@@ -328,15 +331,15 @@ func setupRouter() *gin.Engine {
 		user.POST("/", addUser)
 		user.GET("/:id/", getUser)
 		user.POST("/:id/", updateUser)
-		user.POST("/:id/del/", deleteUser)
+		user.POST("/:id/delete/", deleteUser)
 		user.GET("/:id/refresh/", jwtRefresh)
 		user.POST("/:id/password/", changePassword)
-		user.GET("/:id/roles/", getUserRoles)        //该用户拥有哪些角色
-		user.POST("/:id/roles/", addUserRole)        //添加用户角色
-		user.POST("/:id/roles/del/", deleteUserRole) //删除用户角色
-		user.GET("/:id/maps/", getUserMaps)          //该用户拥有哪些权限（含资源与操作）
+		user.GET("/:id/roles/", getUserRoles)           //该用户拥有哪些角色
+		user.POST("/:id/roles/", addUserRole)           //添加用户角色
+		user.POST("/:id/roles/delete/", deleteUserRole) //删除用户角色
+		user.GET("/:id/maps/", getUserMaps)             //该用户拥有哪些权限（含资源与操作）
 		user.POST("/:id/maps/", addUserMap)
-		user.POST("/:id/maps/del/", deleteUserMap)
+		user.POST("/:id/maps/delete/", deleteUserMap)
 	}
 	//roles
 	role := r.Group("/roles")
@@ -346,11 +349,11 @@ func setupRouter() *gin.Engine {
 		//authn > roles
 		role.GET("/", listRoles)
 		role.POST("/", createRole)
-		role.POST("/:id/del/", deleteRole)
+		role.POST("/:id/delete/", deleteRole)
 		role.GET("/:id/users/", getRoleUsers) //该角色包含哪些用户
 		role.GET("/:id/maps/", getRoleMaps)   //该用户拥有哪些权限（含资源与操作）
 		role.POST("/:id/maps/", addRoleMap)
-		role.POST("/:id/maps/del/", deleteRoleMap)
+		role.POST("/:id/maps/delete/", deleteRoleMap)
 	}
 
 	//maproute
@@ -397,37 +400,37 @@ func setupRouter() *gin.Engine {
 	{
 		// > styles
 		styles.GET("/", autoUser)
-		styles.POST("/", autoUser)
 		styles.GET("/:user/", listStyles)
-		styles.POST("/:user/", uploadStyle)
-		styles.GET("/:user/x/:id/", getStyle)               //style.json
-		styles.GET("/:user/copy/:id/", copyStyle)           //style.json
-		styles.POST("/:user/save/:id/", saveStyle)          //style.json
-		styles.GET("/:user/download/:id/", downloadStyle)   //style.json
-		styles.POST("/:user/replace/:id/", replaceStyle)    //style.json
-		styles.GET("/:user/sprite/:id/:fmt", getSprite)     //sprite.json/png
-		styles.POST("/:user/sprite/:id/", uploadSprite)     //sprite.json/png
-		styles.POST("/:user/sprite/:id/:fmt", updateSprite) //sprite.json/png
-		styles.GET("/:user/icon/:id/:name/", getIcon)       //sprite.json/png
-		styles.POST("/:user/icon/:id/:name/", updateIcon)   //sprite.json/png
-		styles.POST("/:user/icons/:id/", uploadIcons)       //sprite.json/png
-		styles.POST("/:user/icons/:id/del/", deleteIcons)   //sprite.json/png
+		styles.GET("/:user/x/:id/", getStyle) //style.json
+		styles.POST("/:user/upload/", uploadStyle)
+		styles.GET("/:user/create/:id/", copyStyle)       //style.json
+		styles.POST("/:user/save/:id/", saveStyle)        //style.json
+		styles.POST("/:user/update/:id/", updateStyle)    //updateStyle
+		styles.POST("/:user/replace/:id/", replaceStyle)  //style.json
+		styles.GET("/:user/download/:id/", downloadStyle) //style.json
+		styles.POST("/:user/delete/:ids/", deleteStyle)   //updateStyle
 
-		styles.GET("/:user/view/:id/", viewStyle)      //view map style
-		styles.POST("/:user/edit/:id/", updateStyle)   //updateStyle
-		styles.POST("/:user/update/:id/", updateStyle) //updateStyle
-		styles.POST("/:user/del/:ids/", deleteStyle)   //updateStyle
+		styles.GET("/:user/sprite/:id/:fmt", getSprite)      //sprite.json/png
+		styles.POST("/:user/sprite/:id/", uploadSprite)      //sprite.json/png
+		styles.POST("/:user/sprite/:id/:fmt", updateSprite)  //sprite.json/png
+		styles.GET("/:user/icon/:id/:name/", getIcon)        //sprite.json/png
+		styles.POST("/:user/icon/:id/:name/", updateIcon)    //sprite.json/png
+		styles.POST("/:user/icons/:id/", uploadIcons)        //sprite.json/png
+		styles.POST("/:user/icons/:id/delete/", deleteIcons) //sprite.json/png
+
+		styles.GET("/:user/view/:id/", viewStyle)    //view map style
+		styles.POST("/:user/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
 	// fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
-		fonts.GET("/", autoUser)                         //get font
-		fonts.POST("/", autoUser)                        //get font
-		fonts.GET("/:user/", listFonts)                  //get font
-		fonts.POST("/:user/", uploadFont)                //get font
-		fonts.POST("/:user/:fontstack/del", deleteFonts) //get font
-		fonts.GET("/:user/:fontstack/:range", getGlyphs) //get glyph pbfs
+		fonts.GET("/", autoUser)                             //get font
+		fonts.POST("/", autoUser)                            //get font
+		fonts.GET("/:user/", listFonts)                      //get font
+		fonts.POST("/:user/", uploadFont)                    //get font
+		fonts.POST("/:user/:fontstack/delete/", deleteFonts) //get font
+		fonts.GET("/:user/:fontstack/:range", getGlyphs)     //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")
@@ -437,51 +440,53 @@ func setupRouter() *gin.Engine {
 		tilesets.GET("/", autoUser)
 		tilesets.POST("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
-		tilesets.POST("/:user/", uploadTileset)
-		tilesets.POST("/:user/from/:dataset/", uploadTileset)
-		tilesets.POST("/:user/replace/:id/", replaceTileset)
 		tilesets.GET("/:user/x/:id/", getTilejson) //tilejson
-		tilesets.GET("/:user/map/:id/:z/:x/:y", getTile)
-		tilesets.GET("/:user/layer/:id/:lrs/:z/:x/:y", getTile)
+		tilesets.POST("/:user/upload/", uploadTileset)
+		tilesets.POST("/:user/replace/:id/", replaceTileset)
+		tilesets.POST("/:user/publish/", publishTileset)
+		tilesets.POST("/:user/create/:id/", createTileset)
+		tilesets.GET("/:user/download/:id/", downloadTileset)
+		tilesets.POST("/:user/delete/:ids/", deleteTileset)
 		tilesets.POST("/:user/merge/:ids/", getTile)
-		tilesets.POST("/:user/del/:ids/", deleteTileset)
+
+		tilesets.GET("/:user/map/:id/:z/:x/:y", getTile)
+		tilesets.GET("/:user/layers/:id/:lrs/:z/:x/:y", getTile)
+
 		tilesets.GET("/:user/view/:id/", viewTile) //view
 	}
 
-	ds := r.Group("/ds")
-	ds.Use(authMid.MiddlewareFunc())
-	{
-		// > datasets
-		ds.GET("/", listDatasets)
-		ds.GET("/crs/", crsList)
-		ds.GET("/encoding/", encodingList)
-		ds.GET("/ftype/", fieldTypeList)
-		ds.GET("/info/:id/", getDatasetInfo)
-		ds.POST("/upload/", fileUpload)
-		ds.GET("/preview/:id/", dataPreview)
-		ds.POST("/import/:id/", dataImport)
-		ds.GET("/task/:id/", taskQuery)
-		ds.GET("/taskstream/:id/", taskStreamQuery)
-
-	}
 	datasets := r.Group("/datasets")
-	// datasets.Use(authMid.MiddlewareFunc())
+	datasets.Use(authMid.MiddlewareFunc())
 	{
 		// > datasets
-		datasets.GET("/", listDatasets)
-		datasets.GET("/:id/", getDatasetInfo)
-		datasets.POST("/:id/distinct/", getDistinctValues)
-		datasets.GET("/:id/geojson/", getGeojson)
-		datasets.POST("/:id/import/", importFiles)
-		datasets.POST("/:id/query/", queryGeojson)
-		datasets.POST("/:id/cube/", cubeQuery)
-		datasets.POST("/:id/common/", queryExec)
-		datasets.GET("/:id/business/", queryBusiness)
-		datasets.GET("/:id/buffers/", getBuffers)
-		datasets.GET("/:id/models/", getModels)
-		datasets.GET("/:id/geos/", searchGeos)
-		datasets.POST("/:id/update/", updateInsertData)
-		datasets.POST("/:id/delete/", deleteData)
+		datasets.GET("/", autoUser)
+		datasets.GET("/:user/", listDatasets)
+		datasets.GET("/:user/x/:id/", getDatasetInfo)
+		// datasets.GET("/:user/info/:id/")
+		datasets.POST("/:user/upload/", uploadFile)
+		datasets.GET("/:user/preview/:id/", previewFile)
+		datasets.POST("/:user/import/:id/", importFile)
+		datasets.POST("/:user/import/", oneClickImport)
+		datasets.GET("/:user/task/:id/", taskQuery)
+		datasets.GET("/:user/task/:id/stream/", taskStreamQuery)
+		datasets.POST("/:user/update/:id/", upInsertDataset)
+		datasets.GET("/:user/download/:id/", downloadDataset)
+		datasets.POST("/:user/delete/:id/", deleteDatasets)
+		datasets.POST("/:user/delete/:id/:fids/", deleteFeatures)
+
+		datasets.GET("/:user/view/:id/", viewDataset) //view
+
+		datasets.GET("/:user/map/:id/:z/:x/:y", getTile)
+		datasets.GET("/:user/layers/:id/:lrs/:z/:x/:y", getTile)
+
+		datasets.GET("/:user/geojson/:id/", getGeojson)
+		datasets.POST("/:user/query/:id/", queryGeojson)
+		datasets.POST("/:user/common/:id/", queryExec)
+
+		datasets.POST("/:user/distinct/:id/", getDistinctValues)
+		datasets.GET("/:user/search/:id/", searchGeos)
+		datasets.GET("/:user/buffer/:id/", getBuffers)
+		datasets.GET("/:user/models/:id/", getModels)
 	}
 	//utilroute
 	utilroute := r.Group("/util")

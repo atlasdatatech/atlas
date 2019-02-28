@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"image/jpeg"
@@ -283,67 +282,6 @@ func checkDataset(did string) int {
 	return 200
 }
 
-func updateDatasetInfo(did string) error {
-	s := fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0;`, did)
-	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	cols, err := rows.ColumnTypes()
-	if err != nil {
-		return err
-	}
-	var fields []Field
-	for _, col := range cols {
-		var t string
-		switch col.DatabaseTypeName() {
-		case "INT", "INT4":
-			t = Int
-		case "NUMERIC": //number
-			t = Float
-		case "BOOL":
-			t = Bool
-		case "TIMESTAMPTZ":
-			t = Date
-		case "_VARCHAR":
-			t = StringArray
-		case "TEXT", "VARCHAR":
-			t = string(String)
-		default:
-			t = string(String)
-		}
-		field := Field{
-			Name: col.Name(),
-			Type: t,
-		}
-		fields = append(fields, field)
-	}
-
-	jfs, err := json.Marshal(fields)
-	if err != nil {
-		return err
-	}
-
-	ds := &Dataset{
-		ID:     did,
-		Name:   did,
-		Type:   Polygon,
-		Fields: jfs,
-	}
-	//更新元数据
-	err = ds.UpInsert()
-	if err != nil {
-		return err
-	}
-	//更新服务
-	// err = pubSet.AddDatasetService(ds)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func buffering(name string, r float64) int {
 	bblocks := viper.GetString("buffers.blocks")
 	bprefix := viper.GetString("buffers.prefix")
@@ -363,7 +301,7 @@ func buffering(name string, r float64) int {
 			log.Error(err)
 			return 5001
 		}
-		updateDatasetInfo(bname)
+		// updateDatasetInfo(bname)
 		return 200
 	}
 
@@ -375,7 +313,7 @@ func buffering(name string, r float64) int {
 		log.Error(err)
 		return 5001
 	}
-	updateDatasetInfo(bname)
+	// updateDatasetInfo(bname)
 
 	db.Exec(`DROP TABLE if EXISTS tmp_lines;`)
 	err = db.Exec(fmt.Sprintf(`CREATE TABLE tmp_lines AS
@@ -416,7 +354,7 @@ func buffering(name string, r float64) int {
 		log.Error(err)
 		return 5001
 	}
-	updateDatasetInfo(fname)
+	// updateDatasetInfo(fname)
 	return 200
 }
 
@@ -427,7 +365,7 @@ func calcM1() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
-	updateDatasetInfo("m1")
+	// updateDatasetInfo("m1")
 	return nil
 }
 
@@ -476,7 +414,7 @@ func calcM2() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
-	updateDatasetInfo("m2")
+	// updateDatasetInfo("m2")
 	return nil
 }
 
@@ -543,7 +481,7 @@ func calcM3() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
-	updateDatasetInfo("m3")
+	// updateDatasetInfo("m3")
 	return nil
 }
 
@@ -586,7 +524,7 @@ func calcM4() error {
 		log.Error(query.Error)
 		// return query.Error
 	}
-	updateDatasetInfo("m4")
+	// updateDatasetInfo("m4")
 	return nil
 }
 
@@ -614,7 +552,7 @@ func calcM5() error {
 	if query.Error != nil {
 		return query.Error
 	}
-	updateDatasetInfo("m5")
+	// updateDatasetInfo("m5")
 	return nil
 }
 

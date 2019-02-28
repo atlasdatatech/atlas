@@ -31,3 +31,18 @@ func ping(c *gin.Context) {
 		"status": fmt.Sprintf(`%s → %s living ~`, dt, "currentDB"),
 	})
 }
+
+func crsList(c *gin.Context) {
+	res := NewRes()
+	res.DoneData(c, CRSs)
+}
+
+func encodingList(c *gin.Context) {
+	res := NewRes()
+	res.DoneData(c, Encodings)
+}
+
+func fieldTypeList(c *gin.Context) {
+	res := NewRes()
+	res.DoneData(c, FieldTypes)
+}
