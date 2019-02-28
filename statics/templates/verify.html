@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.Title}}</title>
+</head>
+<body>
+<h3>Verify</h3>
+<ul>
+    {{if .Send}}
+    <li>
+        <form id="form1" action="/sign/verify/" method="post">
+            <div>
+                <input type="submit" value="重新发送验证邮件"></input>
+            </div>
+        </form>
+    </li>
+    {{else}}
+    <li>
+        <form id="form2" action="/sign/verify/" method="post">
+            <div>
+                <input type="submit" value="发送验证邮件"></input>
+            </div>
+        </form>
+    </li>
+    {{end}}
+</ul>
+</body>
+</html>
+
+

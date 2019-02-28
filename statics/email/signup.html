@@ -1,0 +1,22 @@
+<h3>感谢您注册地图云</h3>
+{{if eq .Verification "yes"}}
+<p>您的账户已经创建完成，注册信息如下：</p>
+<table border="1" cellpadding="5" cellspacing="0">
+	<tr>
+		<td>用户名:</td>
+		<td>{{.Name}}</td>
+	</tr>
+	<tr>
+		<td>电子邮件:</td>
+		<td>{{.Email}}</td>
+	</tr>
+	<tr>
+		<td>登陆连接:</td>
+		<td>{{.SigninURL}}</td>
+	</tr>
+</table>
+{{else}}
+<p>您的账户已经创建完成，只需确认您的电子邮件即可开始使用。</p>
+<a href="{{.VerifyURL}}">{{.VerifyURL}}</a>
+{{end}}
+<p>谢谢,<br/>地图云</p>

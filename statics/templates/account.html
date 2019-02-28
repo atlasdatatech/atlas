@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>AtlasMap</title>
+</head>
+
+<body>
+    <h3>My Account</h3>
+    <div>
+        <ul>
+            <li>ID:{{.ID}}</li>
+            <li>Name:{{.Name}}</li>
+            <li>Role:{{.Role}}</li>
+            <li>Activation:{{.Activation}}</li>
+            <li>JWT:{{.JWT}}</li>
+            <li>Expires:{{.Expires}}</li>
+            <li>Phone:{{.Phone}}</li>
+            <li>Department:{{.Department}}</li>
+        </ul>
+    </div>
+    <div>
+        <ul>
+            <li><a href="/account/logout/">退出</a></li>
+            <li><a href="/account/refresh/">刷新Token</a></li>
+            <li><a href="/account/update/">更新信息</a></li>
+            <li><a href="/account/password/">更改密码</a></li>
+        </ul>
+    </div>
+    {{if eq .Name "root"}}
+    <div>
+        <ul>
+            <li><a href="/users/">获取用户列表</a></li>
+        </ul>
+    </div>
+    {{end}}
+</body>
+
+</html>

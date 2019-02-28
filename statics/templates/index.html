@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AtlasMap</title>
+    <link rel="stylesheet" type="text/css" href="/statics/index.css" />
+    <link rel="icon" href="/statics/favicon.ico" type="image/x-icon" />
+</head>
+
+<body>
+    {{if .Login}}
+    <ul>
+        <li><a href="/sign/in/">登录</a></li>
+    </ul>
+    {{else}}
+    <ul>
+        <li><a href="/account/index/">账户</a></li>
+        <li><a href="/studio/datasets/upload/">数据集上传测试</a></li>
+        <li><a href="/studio/maps/import/">地图导入测试</a></li>
+    </ul>
+    {{end}}
+    <section>
+        <h1 class="title"><img src="/statics/images/logo.png" alt="AtlasMap" /></h1>
+        <h2 class="subtitle">AtlasMap Studio</h2>
+        <h2 class="box-header">Maps</h2>
+        <a href="/studio/styles/upload/">Upload</a>
+        <div class="box">
+            {{range .Styles}}
+            <div class="item">
+                <img src="/statics/images/placeholder.png" alt="{{.ID}} preview" />
+                <div class="details">
+                    <h3>{{.ID}}</h3>
+                    <p class="identifier">id: {{.ID}}</p>
+                    <p class="services">
+                        <a href="/styles/{{.ID}}">Style</a>
+                        <br>
+                        <a href="/studio/styles/upload/{{.ID}}/">Sprite</a>
+                    </p>
+                </div>
+                <div class="viewers">
+                    <a class="btn" href="/styles/{{.ID}}/{{.Hash}}">Viewer</a>
+                </div>
+                <div class="viewers">
+                    <a class="btn" href="/studio/editor/{{.ID}}">Editor</a>
+                </div>
+            </div>
+            {{end}}
+        </div>
+        <h2 class="box-header">Datas</h2>
+        <a href="/studio/tilesets/upload/">Upload</a>
+        <div class="box">
+            {{range .Tilesets}}
+            <div class="item">
+                <img src="/statics/images/placeholder.png" alt="{{.ID}} preview" />
+                <div class="details">
+                    <h3>{{.ID}}</h3>
+                    <p class="identifier">id: {{.ID}} | type:
+                        {{if eq .Type "pbf"}}vector{{else}}raster{{end}} data</p>
+                    <p class="services">
+                        services: <a href="/tilesets/{{.ID}}">TileJSON</a>
+                    </p>
+                </div>
+                <div class="viewers">
+                    <a class="btn" href="/tilesets/{{.ID}}/{{.Hash}}">Inspect</a>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    </section>
+    <footer>
+        <p>
+            <a href="http://www.atlasdata.cn/" target="_blank">Powered by AtlasDataTech </a>
+        </p>
+    </footer>
+</body>
+
+</html>
