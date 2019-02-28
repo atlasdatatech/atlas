@@ -20,9 +20,9 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Tileseter is an interface that represents the shared attributes
+// Tiles is an interface that represents the shared attributes
 // of a tileset.
-type Tileseter interface {
+type Tiles interface {
 	TileType() string
 	TileFormat() TileFormat
 	Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error)
@@ -34,8 +34,8 @@ type Tileseter interface {
 
 // compile time checks
 var (
-	_ Tileseter = MBTiles{}
-	_ Tileseter = TileMap{}
+	_ Tiles = MBTiles{}
+	_ Tiles = TileMap{}
 )
 
 func (tm TileMap) private() {}
@@ -44,7 +44,7 @@ func (mt MBTiles) private() {}
 // AllTilesets lists all possible types and values that a tileset
 // interface can be. It should be used only for testing to verify
 // functions that accept a Geometry will work in all cases.
-var AllTilesets = []Tileseter{
+var AllTilesets = []Tiles{
 	nil,
 	MBTiles{},
 	TileMap{},
@@ -136,8 +136,8 @@ type TileService struct {
 	URL     string // tile format: PNG, JPG, PBF, WEBP
 	Hash    string
 	Type    string
-	State   bool      // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
-	Tileset Tileseter // database connection for mbtiles file
+	State   bool  // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	Tileset Tiles // database connection for mbtiles file
 }
 
 //LoadTileset 创建更新瓦片集服务
@@ -223,7 +223,7 @@ func (ts *Tileset) UpInsert() error {
 
 //LoadService 创建更新瓦片集服务
 //create or update upload data file info into database
-func (ts *Tileset) LoadService() (Tileseter, error) {
+func (ts *Tileset) LoadService() (Tiles, error) {
 	if ts == nil {
 		return nil, fmt.Errorf("datafile may not be nil")
 	}

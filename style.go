@@ -8,9 +8,12 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/fogleman/gg"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 )
@@ -37,7 +40,7 @@ type StyleService struct {
 	Summary     string      `json:"summary" form:"summary"`
 	Owner       string      `json:"owner" form:"owner"`
 	State       bool        `json:"state" form:"state"`
-	Path        string      `json:"path"`
+	URL         string      `json:"url"`
 	Thumbnail   []byte      `json:"thumbnail" form:"thumbnail"`
 	SpritePNG   []byte      `json:"spritePNG" form:"spritePNG"`
 	SpriteJSON  []byte      `json:"spriteJSON" form:"spriteJSON"`
@@ -53,7 +56,7 @@ func (ss *StyleService) toStyle() *Style {
 		Name:    ss.Name,
 		Owner:   ss.Owner,
 		Summary: ss.Summary,
-		Path:    ss.Path,
+		Path:    ss.URL,
 	}
 	var err error
 	if ss.Data != nil {
@@ -73,7 +76,7 @@ func (ss *StyleService) Simplify() *StyleService {
 		Summary:   ss.Summary,
 		Owner:     ss.Owner,
 		State:     ss.State,
-		Path:      ss.Path,
+		URL:       ss.URL,
 		Thumbnail: ss.Thumbnail,
 	}
 	return out
@@ -86,6 +89,7 @@ func (ss *StyleService) Copy() *StyleService {
 		Name:        ss.Name,
 		Summary:     ss.Summary,
 		Owner:       ss.Owner,
+		URL:         ss.URL,
 		Thumbnail:   ss.Thumbnail,
 		SpritePNG:   ss.SpritePNG,
 		SpriteJSON:  ss.SpriteJSON,
@@ -118,7 +122,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 		log.Error(err)
 	}
 
-	dir := filepath.Join(ss.Path, "icons")
+	dir := filepath.Join(ss.URL, "icons")
 	items, err := ioutil.ReadDir(dir)
 	if err == nil {
 		for _, item := range items {
@@ -151,11 +155,77 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = ioutil.WriteFile(filepath.Join(ss.Path, "style.zip"), buf.Bytes(), os.ModePerm)
+	err = ioutil.WriteFile(filepath.Join(ss.URL, "style.zip"), buf.Bytes(), os.ModePerm)
 	if err != nil {
 		fmt.Printf("write zip style file failed,details: %s\n", err)
 	}
 	return buf
+}
+
+//GenSprite 生成sprites
+func (ss *StyleService) GenSprite(sprite string) error {
+	scale := 1.0
+	prefix := "sprite@"
+	if strings.HasPrefix(sprite, prefix) {
+		pos := strings.Index(sprite, "x.")
+		s, err := strconv.ParseFloat(sprite[len(prefix):pos], 64)
+		if err != nil {
+			scale = s
+		}
+	}
+
+	dir := filepath.Join(ss.URL, "icons")
+	symbols := ReadIcons(dir, scale) //readIcons(dir, 1)
+	sort.Slice(symbols, func(i, j int) bool {
+		if symbols[j].Height == symbols[i].Height {
+			return symbols[i].ID < symbols[j].ID
+		}
+		return symbols[j].Height < symbols[i].Height
+	})
+
+	sprites := NewShelfPack(1, 1, ShelfPackOptions{autoResize: true})
+	var bins []*Bin
+	for _, s := range symbols {
+		bin := NewBin(s.ID, s.Width, s.Height, -1, -1, -1, -1)
+		bins = append(bins, bin)
+	}
+
+	results := sprites.Pack(bins, PackOptions{})
+
+	for _, bin := range results {
+		for i := range symbols {
+			if bin.id == symbols[i].ID {
+				symbols[i].X = bin.x
+				symbols[i].Y = bin.y
+				break
+			}
+		}
+	}
+	layout := make(map[string]*Symbol)
+	dc := gg.NewContext(sprites.width, sprites.height)
+	dc.SetRGBA(0, 0, 0, 0.1)
+	for _, s := range symbols {
+		dc.DrawImage(s.Image, s.X, s.Y)
+		layout[s.Name] = s
+	}
+	name := strings.TrimSuffix(sprite, filepath.Ext(sprite))
+	pathname := filepath.Join(ss.URL, name)
+	err := dc.SavePNG(pathname + ".png")
+	if err != nil {
+		log.Errorf("save png file error, details: %s", err)
+		return err
+	}
+	jsonbuf, err := json.Marshal(layout)
+	if err != nil {
+		log.Errorf("marshal json error, details: %s", err)
+		return err
+	}
+	err = ioutil.WriteFile(pathname+".json", jsonbuf, os.ModePerm)
+	if err != nil {
+		log.Errorf("save json file error, details: %s", err)
+		return err
+	}
+	return nil
 }
 
 // LoadStyle 加载样式.
@@ -197,7 +267,7 @@ func (s *Style) toService() *StyleService {
 		Name:    s.Name,
 		Summary: s.Summary,
 		Owner:   s.Owner,
-		Path:    s.Path,
+		URL:     s.Path,
 	}
 
 	if len(s.Data) > 0 {

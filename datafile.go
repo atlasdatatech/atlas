@@ -1068,9 +1068,9 @@ func (df *Datafile) serveMBTiles(uid string) (*Task, error) {
 			log.Errorf(`load mbtiles error, details:%s`, err)
 			return nil, fmt.Errorf("unkown data format")
 		}
-		is, ok := pubSet.Load(uid)
-		if ok {
-			is.(*ServiceSet).T.Store(df.ID, mbs)
+		set := userSet.service(uid)
+		if set != nil {
+			set.T.Store(df.ID, mbs)
 		}
 		task.Progress = 100
 		task.State = "finished"

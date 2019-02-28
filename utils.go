@@ -790,30 +790,32 @@ func UnZipToDir(zipfile string) string {
 	decoder := mahonia.NewDecoder("gbk")
 
 	for _, f := range zr.File {
-		name := f.Name
-		// fmt.Println(chardet.Possible([]byte(name)))
-		// encoding := chardet.Mostlike([]byte(name))
-		//处理文件名
-		// if encoding != "" && encoding != "utf-8" {
-		// decoder := mahonia.NewDecoder(encoding)
-		name = decoder.ConvertString(name)
-		// }
-		_, fn := path.Split(name)
-		pn := filepath.Join(dir, fn)
+		name := decoder.ConvertString(f.Name)
+		info := f.FileInfo()
+		pn := filepath.Join(dir, name)
 		log.Infof("Uncompress: %s -> %s", name, pn)
+		if info.IsDir() {
+			err := os.Mkdir(pn, os.ModePerm)
+			if err != nil {
+				log.Warnf("unzip %s: %v", zipfile, err)
+			}
+			continue
+		}
 		w, err := os.Create(pn)
 		if err != nil {
-			log.Errorf("Cannot unzip %s: %v", zipfile, err)
+			log.Warnf("Cannot unzip %s: %v", zipfile, err)
+			continue
 		}
 		defer w.Close()
 		r, err := f.Open()
 		if err != nil {
-			log.Errorf("Cannot unzip %s: %v", zipfile, err)
+			log.Warnf("Cannot unzip %s: %v", zipfile, err)
+			continue
 		}
 		defer r.Close()
 		_, err = io.Copy(w, r)
 		if err != nil {
-			log.Errorf("Cannot unzip %s: %v", zipfile, err)
+			log.Warnf("Cannot unzip %s: %v", zipfile, err)
 		}
 	}
 	return dir

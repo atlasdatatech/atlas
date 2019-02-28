@@ -353,6 +353,7 @@ func (sp *ShelfPack) clear() {
 	}
 	sp.maxid = 0
 }
+
 func (sp *ShelfPack) resize(w, h int) bool {
 	sp.width = w
 	sp.height = h
@@ -405,11 +406,47 @@ func (sp *ShelfPack) allocShelf(shelf *Shelf, id, w, h int) *Bin {
 	return bin
 }
 
-func svg2png(svgfile string, scale float32) ([]byte, error) {
+func svg2png(svgfile string, scale float64) ([]byte, error) {
 	var params []string
 	if scale > 0 && scale != 1.0 {
 		s := fmt.Sprintf("%f", scale)
 		params = append(params, []string{"-z", s}...)
+	}
+	absPath, err := filepath.Abs(svgfile)
+	if err != nil {
+		return nil, err
+	}
+	params = append(params, absPath)
+	if runtime.GOOS == "windows" {
+		decoder := mahonia.NewDecoder("gbk")
+		gbk := strings.Join(params, ",")
+		gbk = decoder.ConvertString(gbk)
+		params = strings.Split(gbk, ",")
+	}
+	cmd := exec.Command("rsvg-convert", params...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	err = cmd.Start()
+	if err != nil {
+		return nil, fmt.Errorf("rsvg-convert start failed, details: '%s'", err)
+	}
+	err = cmd.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("rsvg-convert run failed, details: %s", err)
+	}
+	// err = ioutil.WriteFile("output.png", stdout.Bytes(), os.ModePerm)
+	// if err != nil {
+	// 	fmt.Printf("svg2png() write tmp file failed,details: %s\n", err)
+	// }
+	return stdout.Bytes(), nil
+}
+
+func svg2svg(svgfile string, scale float64) ([]byte, error) {
+	var params []string
+	if scale > 0 && scale != 1.0 {
+		s := fmt.Sprintf("%f", scale)
+		params = append(params, []string{"-z", s}...)
+		params = append(params, []string{"-f", "svg"}...)
 	}
 	absPath, err := filepath.Abs(svgfile)
 	if err != nil {
@@ -448,14 +485,14 @@ type Symbol struct {
 	Height  int         `json:"height"`
 	X       int         `json:"x"`
 	Y       int         `json:"y"`
-	Scale   float32     `json:"pixelRatio"`
+	Scale   float64     `json:"pixelRatio"`
 	Visible bool        `json:"visible"`
 	Data    []byte      `json:"-"`
 	Image   image.Image `json:"-" gorm:"-"`
 }
 
 // ReadIcons 加载Icons为Symbol结构.
-func ReadIcons(dir string, scale float32) []*Symbol {
+func ReadIcons(dir string, scale float64) []*Symbol {
 	//遍历目录下所有styles
 	var symbols []*Symbol
 	items, err := ioutil.ReadDir(dir)
@@ -526,9 +563,9 @@ func ReadIcons(dir string, scale float32) []*Symbol {
 			w = rect.Dx()
 			h = rect.Dy()
 			if scale != 1.0 {
-				if scale > 0 && scale < 1.2 {
-					w = int(float32(w) * scale)
-					h = int(float32(h) * scale)
+				if scale > 0 && scale < 2 {
+					w = int(float64(w) * scale)
+					h = int(float64(h) * scale)
 				}
 				img = resize.Resize(uint(w), uint(h), img, resize.Lanczos3)
 			}

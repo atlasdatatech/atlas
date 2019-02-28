@@ -42,7 +42,7 @@ var (
 	casEnf    *casbin.Enforcer
 	authMid   *jwt.GinJWTMiddleware
 	taskQueue = make(chan *Task, 32)
-	pubSet    sync.Map
+	userSet   UserSet
 	taskSet   sync.Map
 )
 
@@ -253,7 +253,7 @@ func loadPubServices() {
 	if err != nil {
 		log.Errorf("loading public service set error: %s", err.Error())
 	}
-	pubSet.Store(pubs.Owner, pubs)
+	userSet.Store(pubs.Owner, pubs)
 }
 
 //setupRouter 初始化GIN引擎并配置路由
@@ -381,38 +381,71 @@ func setupRouter() *gin.Engine {
 		studio.GET("/maps/import/", renderMapsImport)
 
 	}
-
+	autoUser := func(c *gin.Context) {
+		claims := jwt.ExtractClaims(c)
+		user, ok := claims[identityKey]
+		if !ok {
+			log.Errorf("can't find %s", user)
+			c.Redirect(http.StatusFound, "/sign/in/")
+		} else {
+			c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
+			r.HandleContext(c)
+		}
+	}
 	styles := r.Group("/styles")
 	styles.Use(authMid.MiddlewareFunc())
 	{
 		// > styles
-		styles.GET("/", listStyles)
-		styles.POST("/", uploadStyle)
-		styles.GET("/:id/", getStyle)               //style.json
-		styles.GET("/:id/download/", downloadStyle) //style.json
-		styles.GET("/:id/sprite:fmt", getSprite)    //sprite.json/png
-		styles.GET("/:id/view/", viewStyle)         //view map style
-		styles.POST("/:id/edit/", updateStyle)      //updateStyle
-		styles.POST("/:id/update/", updateStyle)    //updateStyle
+		styles.GET("/", autoUser)
+		styles.POST("/", autoUser)
+		styles.GET("/:user/", listStyles)
+		styles.POST("/:user/", uploadStyle)
+		styles.GET("/:user/x/:id/", getStyle)               //style.json
+		styles.GET("/:user/copy/:id/", copyStyle)           //style.json
+		styles.POST("/:user/save/:id/", saveStyle)          //style.json
+		styles.GET("/:user/download/:id/", downloadStyle)   //style.json
+		styles.POST("/:user/replace/:id/", replaceStyle)    //style.json
+		styles.GET("/:user/sprite/:id/:fmt", getSprite)     //sprite.json/png
+		styles.POST("/:user/sprite/:id/", uploadSprite)     //sprite.json/png
+		styles.POST("/:user/sprite/:id/:fmt", updateSprite) //sprite.json/png
+		styles.GET("/:user/icon/:id/:name/", getIcon)       //sprite.json/png
+		styles.POST("/:user/icon/:id/:name/", updateIcon)   //sprite.json/png
+		styles.POST("/:user/icons/:id/", uploadIcons)       //sprite.json/png
+		styles.POST("/:user/icons/:id/del/", deleteIcons)   //sprite.json/png
+
+		styles.GET("/:user/view/:id/", viewStyle)      //view map style
+		styles.POST("/:user/edit/:id/", updateStyle)   //updateStyle
+		styles.POST("/:user/update/:id/", updateStyle) //updateStyle
+		styles.POST("/:user/del/:ids/", deleteStyle)   //updateStyle
 	}
 	fonts := r.Group("/fonts")
 	// fonts.Use(authMid.MiddlewareFunc())
 	{
 		// > fonts
-		fonts.GET("/", listFonts)                  //get font
-		fonts.GET("/:fontstack/:range", getGlyphs) //get glyph pbfs
+		fonts.GET("/", autoUser)                         //get font
+		fonts.POST("/", autoUser)                        //get font
+		fonts.GET("/:user/", listFonts)                  //get font
+		fonts.POST("/:user/", uploadFont)                //get font
+		fonts.POST("/:user/:fontstack/del", deleteFonts) //get font
+		fonts.GET("/:user/:fontstack/:range", getGlyphs) //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")
-	// tilesets.Use(authMid.MiddlewareFunc())
+	tilesets.Use(authMid.MiddlewareFunc())
 	{
 		// > tilesets
-		tilesets.GET("/", listTilesets)
-		tilesets.POST("/", uploadTileset)
-		tilesets.GET("/:id/tilejson/", getTilejson) //tilejson
-		tilesets.GET("/:id/view/", viewTile)        //view
-		tilesets.GET("/:id/map:layers/:z/:x/:y", getTile)
-		tilesets.GET("/:id/merge/:tids/", getTile)
+		tilesets.GET("/", autoUser)
+		tilesets.POST("/", autoUser)
+		tilesets.GET("/:user/", listTilesets)
+		tilesets.POST("/:user/", uploadTileset)
+		tilesets.POST("/:user/from/:dataset/", uploadTileset)
+		tilesets.POST("/:user/replace/:id/", replaceTileset)
+		tilesets.GET("/:user/x/:id/", getTilejson) //tilejson
+		tilesets.GET("/:user/map/:id/:z/:x/:y", getTile)
+		tilesets.GET("/:user/layer/:id/:lrs/:z/:x/:y", getTile)
+		tilesets.POST("/:user/merge/:ids/", getTile)
+		tilesets.POST("/:user/del/:ids/", deleteTileset)
+		tilesets.GET("/:user/view/:id/", viewTile) //view
 	}
 
 	ds := r.Group("/ds")

@@ -83,19 +83,18 @@ func renderMapsImport(c *gin.Context) {
 func studioIndex(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	is, ok := pubSet.Load(uid)
-	if !ok {
+	set := userSet.service(uid)
+	if set == nil {
 		res.Fail(c, 4044)
 		return
 	}
-	uset := is.(*ServiceSet)
 	var styles []*StyleService
-	uset.S.Range(func(_, v interface{}) bool {
+	set.S.Range(func(_, v interface{}) bool {
 		styles = append(styles, v.(*StyleService))
 		return true
 	})
 	var tilesets []*TileService
-	uset.T.Range(func(_, v interface{}) bool {
+	set.T.Range(func(_, v interface{}) bool {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
@@ -113,20 +112,19 @@ func studioEditer(c *gin.Context) {
 	//public
 	res := NewRes()
 	uid := c.GetString(identityKey)
-	is, ok := pubSet.Load(uid)
-	if !ok {
+	set := userSet.service(uid)
+	if set == nil {
 		res.Fail(c, 4044)
 		return
 	}
-	uset := is.(*ServiceSet)
 	var styles []*StyleService
-	uset.S.Range(func(_, v interface{}) bool {
+	set.S.Range(func(_, v interface{}) bool {
 		styles = append(styles, v.(*StyleService))
 		return true
 	})
 
 	var tilesets []*TileService
-	uset.T.Range(func(_, v interface{}) bool {
+	set.T.Range(func(_, v interface{}) bool {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
@@ -147,7 +145,7 @@ func renderStyleUpload(c *gin.Context) {
 func renderSpriteUpload(c *gin.Context) {
 	c.HTML(http.StatusOK, "upload-ss.html", gin.H{
 		"Title": "AtlasMap",
-		"id":   c.Param("id"),
+		"id":    c.Param("id"),
 	})
 }
 

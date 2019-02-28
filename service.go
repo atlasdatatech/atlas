@@ -11,6 +11,78 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+//UserSet 用户入口
+type UserSet struct {
+	sync.Map
+}
+
+func (us *UserSet) service(uid string) *ServiceSet {
+	is, ok := us.Load(uid)
+	if ok {
+		set, ok := is.(*ServiceSet)
+		if ok {
+			return set
+		}
+	}
+	return nil
+}
+
+func (us *UserSet) style(uid, sid string) *StyleService {
+	set := us.service(uid)
+	if set != nil {
+		style, ok := set.S.Load(sid)
+		if ok {
+			service, ok := style.(*StyleService)
+			if ok {
+				return service
+			}
+		}
+	}
+	return nil
+}
+
+func (us *UserSet) font(uid, fid string) *FontService {
+	set := us.service(uid)
+	if set != nil {
+		font, ok := set.F.Load(fid)
+		if ok {
+			service, ok := font.(*FontService)
+			if ok {
+				return service
+			}
+		}
+	}
+	return nil
+}
+
+func (us *UserSet) tileset(uid, tid string) *TileService {
+	set := us.service(uid)
+	if set != nil {
+		tile, ok := set.T.Load(tid)
+		if ok {
+			service, ok := tile.(*TileService)
+			if ok {
+				return service
+			}
+		}
+	}
+	return nil
+}
+
+func (us *UserSet) dataset(uid, did string) *DataService {
+	set := us.service(uid)
+	if set != nil {
+		data, ok := set.D.Load(did)
+		if ok {
+			service, ok := data.(*DataService)
+			if ok {
+				return service
+			}
+		}
+	}
+	return nil
+}
+
 // ServiceSet 服务集，S->style样式服务，F->font字体服务，T->tileset瓦片服务，D->dataset数据服务.
 type ServiceSet struct {
 	// ID    string
@@ -300,19 +372,19 @@ func (s *ServiceSet) AddTilesets() error {
 			//加载文件
 			tileset, err := LoadTileset(file)
 			if err != nil {
-				log.Errorf("AddFonts, could not load font %s, details: %s", file, err)
+				log.Errorf("AddTilesets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库
 			err = tileset.UpInsert()
 			if err != nil {
-				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, tileset.ID, err)
+				log.Errorf(`AddTilesets, upinsert font %s error, details: %s`, tileset.ID, err)
 			}
 			count++
 		}
 	}
 
-	log.Infof("AddMBTiles, append %d tilesets ~", count)
+	log.Infof("AddTilesets, append %d tilesets ~", count)
 	return nil
 }
 
@@ -384,19 +456,19 @@ func (s *ServiceSet) AddDatasets() error {
 			//加载文件
 			dataset, err := LoadDataset(file)
 			if err != nil {
-				log.Errorf("AddFonts, could not load font %s, details: %s", file, err)
+				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库
 			err = dataset.UpInsert()
 			if err != nil {
-				log.Errorf(`AddFonts, upinsert font %s error, details: %s`, dataset.ID, err)
+				log.Errorf(`AddDatasets, upinsert font %s error, details: %s`, dataset.ID, err)
 			}
 			count++
 		}
 	}
 
-	log.Infof("AddMBTiles, append %d tilesets ~", count)
+	log.Infof("AddDatasets, append %d tilesets ~", count)
 	return nil
 }
 

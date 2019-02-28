@@ -20,10 +20,9 @@ func listDatasets(c *gin.Context) {
 
 	var dss []*DataService
 	uid := c.GetString(identityKey)
-
-	is, ok := pubSet.Load(uid)
-	if ok {
-		is.(*ServiceSet).D.Range(func(_, v interface{}) bool {
+	set := userSet.service(uid)
+	if set != nil {
+		set.D.Range(func(_, v interface{}) bool {
 			dss = append(dss, v.(*DataService))
 			return true
 		})
@@ -40,17 +39,13 @@ func getDatasetInfo(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	is, ok := pubSet.Load(uid)
-	if !ok {
+
+	ds := userSet.dataset(uid, did)
+	if ds == nil {
 		res.Fail(c, 4044)
 		return
 	}
-	ds, ok := is.(*ServiceSet).D.Load(did)
-	if !ok {
-		res.Fail(c, 4045)
-		return
-	}
-	res.DoneData(c, ds.(*Dataset))
+	res.DoneData(c, ds)
 }
 
 func getDistinctValues(c *gin.Context) {
