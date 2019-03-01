@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,7 +77,12 @@ func uploadTileset(c *gin.Context) {
 
 	//加载服务,todo 用户服务无需预加载
 	if true {
-		ts := tileset.toService()
+		ts, err := tileset.toService()
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
 		set := userSet.service(uid)
 		if set == nil {
 			log.Errorf("%s's service set not found", uid)
@@ -116,10 +120,9 @@ func replaceTileset(c *gin.Context) {
 	lext := strings.ToLower(ext)
 	switch lext {
 	case ".mbtiles":
-	case ".tilemap":
 	default:
 		log.Errorf(`replaceTileset, tileset format error, details: %s; user: %s`, file.Filename, id)
-		res.FailMsg(c, "上传格式错误,请上传zip压缩包格式")
+		res.FailMsg(c, "文件格式错误,请上传正确的.mbtiles文件")
 		return
 	}
 	ntid, _ := shortid.Generate()
@@ -137,23 +140,28 @@ func replaceTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	mbts, ok := ts.Tileset.(*MBTiles)
-	if ok {
-		mbts.Close()
-		os.Remove(ts.URL)
-	}
 	tile.ID = tid
 	tile.Owner = uid
-
 	//加载服务,todo 用户服务无需预加载
-	tss := tile.toService()
+	tss, err := tile.toService()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+	err = ts.Clean()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
 		res.Fail(c, 4044)
 		return
 	}
-
+	//替换
 	set.T.Store(tss.ID, tss)
 	//入库
 	err = tile.UpInsert()
@@ -168,7 +176,12 @@ func replaceTileset(c *gin.Context) {
 //publishTileset 上传并发布服务集
 func publishTileset(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString("id")
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
@@ -179,145 +192,205 @@ func publishTileset(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".json", ".zip":
-	case ".mbtiles":
+	case ".geojson", ".zip", ".kml", ".gpx":
 	default:
-		res.FailMsg(c, "未知数据格式, 请使用csv/geojson/zip(shapefile)数据.")
+		res.FailMsg(c, "未知数据格式, 请使用geojson/shapefile(zip)/kml/gpx等数据.")
 		return
 	}
 	name := strings.TrimSuffix(filename, ext)
 	id, _ := shortid.Generate()
-	t := c.Param("type")
-	var dir string
-	switch t {
-	case "ds":
-		dir = "datasets"
-	case "ts":
-		dir = "tilesets"
-	default:
-		res.FailMsg(c, "未知数据类型, 请使用csv/geojson/zip(shapefile)数据.")
-		return
-	}
-	dst := filepath.Join(dir, name+"."+id+ext)
-
+	dst := filepath.Join("tilesets", uid, name+"."+id+lext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
 		res.Fail(c, 5002)
 		return
 	}
 
-	var dtfiles []Datafile
-	if lext == ".zip" {
-		getDatafiles := func(dir string) map[string]int64 {
-			files := make(map[string]int64)
-			fileInfos, err := ioutil.ReadDir(dir)
-			if err != nil {
-				log.Error(err)
-				return files
-			}
-			for _, fileInfo := range fileInfos {
-				if fileInfo.IsDir() {
-					continue
-				}
-				ext := filepath.Ext(fileInfo.Name())
-				//处理zip内部数据文件
-				switch strings.ToLower(ext) {
-				case ".csv", ".geojson", ".json":
-					files[filepath.Join(dir, fileInfo.Name())] = fileInfo.Size()
-				case ".shp":
-					otherShpFile := func(ext string) int64 {
-						for _, file := range fileInfos {
-							if file.IsDir() {
-								continue
-							}
-							name := file.Name()
-							e := filepath.Ext(name)
-							if strings.ToLower(ext) == strings.ToLower(e) {
-								if e != ext { //rename to lower .ext for linux posible error
-									os.Rename(filepath.Join(dir, name), filepath.Join(dir, strings.TrimSuffix(name, e)+strings.ToLower(e)))
-								}
-								return file.Size()
-							}
-						}
-						return 0
-					}
-					size := fileInfo.Size()
-					fsize := otherShpFile(".dbf")
-					if fsize > 0 {
-						size += fsize
-					} else {
-						continue
-					}
-					fsize = otherShpFile(".shx")
-					if fsize > 0 {
-						size += fsize
-					} else {
-						continue
-					}
-					fsize = otherShpFile(".prj")
-					if fsize > 0 {
-						size += fsize
-					} else {
-						continue
-					}
-
-					files[filepath.Join(dir, fileInfo.Name())] = size
-				default:
-					//other shp files
-				}
-			}
-			return files
-		}
-		subdir := UnZipToDir(dst)
-		zipDatafiles := getDatafiles(subdir)
-		for datafile, size := range zipDatafiles {
-			newName := strings.TrimSuffix(filepath.Base(datafile), filepath.Ext(datafile))
-			df := Datafile{
-				ID:      newName + "." + id,
-				Owner:   user,
-				Name:    newName,
-				Tag:     name,
-				Geotype: "vector",
-				Format:  strings.ToLower(filepath.Ext(datafile)),
-				Path:    datafile,
-				Size:    size,
-				Type:    t,
-			}
-			err = df.UpInsert()
-			if err != nil {
-				log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-				res.FailErr(c, err)
-				return
-			}
-			dtfiles = append(dtfiles, df)
-		}
-	} else {
-		df := Datafile{
-			ID:      name + "." + id,
-			Owner:   user,
-			Name:    name,
-			Geotype: "vector",
-			Format:  lext,
-			Path:    dst,
-			Size:    file.Size,
-			Type:    t,
-		}
+	dtfiles, err := LoadDatafile(dst)
+	if err != nil {
+		log.Errorf(`publishTileset, loading datafile error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+	var inputfiles []string
+	for _, df := range dtfiles {
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+		}
+		var infile string
+		switch df.Format {
+		case ".geojson":
+			infile = df.Path
+		case ".shp", ".kml", ".gpx":
+			err := df.toGeojson()
+			if err != nil {
+				log.Errorf(`publishTileset, convert to geojson error, details: %s`, err)
+				continue
+			}
+			infile = strings.TrimSuffix(df.Path, df.Format) + ".geojson"
+		default:
+			continue
+		}
+		inputfiles = append(inputfiles, infile)
+	}
+	//publish to mbtiles
+	outfile := filepath.Join("tilesets", uid, name+"."+id+".mbtiles")
+	err = createMbtiles(outfile, inputfiles)
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+
+	//加载mbtiles
+	tileset, err := LoadTileset(outfile)
+	if err != nil {
+		log.Errorf("uploadTileset, could not load tileset %s, details: %s", dst, err)
+		res.FailErr(c, err)
+		return
+	}
+	//入库
+	err = tileset.UpInsert()
+	if err != nil {
+		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, dst, err)
+	}
+
+	//加载服务,todo 用户服务无需预加载
+	if true {
+		ts, err := tileset.toService()
+		if err != nil {
+			log.Error(err)
 			res.FailErr(c, err)
 			return
 		}
-		dtfiles = append(dtfiles, df)
+		set := userSet.service(uid)
+		if set == nil {
+			log.Errorf("%s's service set not found", uid)
+			res.FailMsg(c, "加载服务失败")
+			return
+		}
+		set.T.Store(ts.ID, ts)
+	}
+	res.DoneData(c, gin.H{
+		"id": name + "." + id,
+	})
+	res.DoneData(c, dtfiles)
+}
+
+//publishTileset 上传并发布服务集
+func rePublishTileset(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	tid := c.Param("id")
+	ts := userSet.tileset(uid, tid)
+	if ts == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
+		res.Fail(c, 4046)
+		return
+	}
+	filename := file.Filename
+	ext := filepath.Ext(filename)
+	lext := strings.ToLower(ext)
+	switch lext {
+	case ".geojson", ".zip", ".kml", ".gpx":
+	default:
+		res.FailMsg(c, "未知数据格式, 请使用geojson/shapefile(zip)/kml/gpx等数据.")
+		return
+	}
+	name := strings.TrimSuffix(filename, ext)
+	ntid, _ := shortid.Generate()
+	ntid = name + "." + ntid
+	dst := filepath.Join("tilesets", uid, ntid+lext)
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
+		res.Fail(c, 5002)
+		return
 	}
 
-	res.DoneData(c, dtfiles)
+	dtfiles, err := LoadDatafile(dst)
+	if err != nil {
+		log.Errorf(`rePublishTileset, loading datafile error, details: %s`, err)
+		res.FailErr(c, err)
+		return
+	}
+	var inputfiles []string
+	for _, df := range dtfiles {
+		err = df.UpInsert()
+		if err != nil {
+			log.Errorf(`rePublishTileset, upinsert datafile info error, details: %s`, err)
+		}
+		var infile string
+		switch df.Format {
+		case ".geojson":
+			infile = df.Path
+		case ".shp", ".kml", ".gpx":
+			err := df.toGeojson()
+			if err != nil {
+				log.Errorf(`rePublishTileset, convert to geojson error, details: %s`, err)
+				continue
+			}
+			infile = strings.TrimSuffix(df.Path, df.Format) + ".geojson"
+		default:
+			continue
+		}
+		inputfiles = append(inputfiles, infile)
+	}
+	//publish to mbtiles
+	outfile := filepath.Join("tilesets", uid, ntid+".mbtiles")
+	err = createMbtiles(outfile, inputfiles)
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+	//加载mbtiles
+	tile, err := LoadTileset(outfile)
+	if err != nil {
+		log.Errorf("rePublishTileset, could not load tileset %s, details: %s", dst, err)
+		res.FailErr(c, err)
+		return
+	}
+	tile.ID = tid
+	tile.Owner = uid
+
+	//加载服务,todo 用户服务无需预加载
+	if true {
+		ts, err := tile.toService()
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
+		set := userSet.service(uid)
+		if set == nil {
+			log.Errorf("%s's service set not found", uid)
+			res.FailMsg(c, "加载服务失败")
+			return
+		}
+		set.T.Store(ts.ID, ts)
+	}
+	//入库
+	err = tile.UpInsert()
+	if err != nil {
+		log.Errorf(`rePublishTileset, upinsert tileset %s error, details: %s`, dst, err)
+	}
+
+	res.DoneData(c, gin.H{
+		"id":    tid,
+		"newid": ntid,
+	})
 }
 
 //createTileset 从数据集创建服务集
 func createTileset(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
+	// id := c.GetString(identityKey)
 	uid := c.Param("user")
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -326,32 +399,8 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	// style source
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Errorf(`replaceTileset, get file error: %s; user: %s`, err, id)
-		res.Fail(c, 4046)
-		return
-	}
-	ext := filepath.Ext(file.Filename)
-	name := strings.TrimSuffix(file.Filename, ext)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".mbtiles":
-	case ".tilemap":
-	default:
-		log.Errorf(`replaceTileset, tileset format error, details: %s; user: %s`, file.Filename, id)
-		res.FailMsg(c, "上传格式错误,请上传zip压缩包格式")
-		return
-	}
-	ntid, _ := shortid.Generate()
-	ntid = name + "." + ntid
-	dst := filepath.Join("tilesets", uid, ntid)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`replaceTileset, upload file: %s; user: %s`, err, uid)
-		res.Fail(c, 5002)
-		return
-	}
+	dst := ""
+	// creatembtiles(dst)
 	//更新服务
 	tile, err := LoadTileset(dst)
 	if err != nil {
@@ -359,16 +408,16 @@ func createTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	mbts, ok := ts.Tileset.(*MBTiles)
-	if ok {
-		mbts.Close()
-		os.Remove(ts.URL)
-	}
+	ts.Clean()
 	tile.ID = tid
 	tile.Owner = uid
-
 	//加载服务,todo 用户服务无需预加载
-	tss := tile.toService()
+	tss, err := tile.toService()
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
@@ -390,7 +439,7 @@ func createTileset(c *gin.Context) {
 //updateTileset 从数据集更新服务集
 func updateTileset(c *gin.Context) {
 	res := NewRes()
-	id := c.GetString(identityKey)
+	// id := c.GetString(identityKey)
 	uid := c.Param("user")
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -399,32 +448,10 @@ func updateTileset(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	// style source
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Errorf(`replaceTileset, get file error: %s; user: %s`, err, id)
-		res.Fail(c, 4046)
-		return
-	}
-	ext := filepath.Ext(file.Filename)
-	name := strings.TrimSuffix(file.Filename, ext)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".mbtiles":
-	case ".tilemap":
-	default:
-		log.Errorf(`replaceTileset, tileset format error, details: %s; user: %s`, file.Filename, id)
-		res.FailMsg(c, "上传格式错误,请上传zip压缩包格式")
-		return
-	}
-	ntid, _ := shortid.Generate()
-	ntid = name + "." + ntid
-	dst := filepath.Join("tilesets", uid, ntid)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`replaceTileset, upload file: %s; user: %s`, err, uid)
-		res.Fail(c, 5002)
-		return
-	}
+	dst := ""
+	// close(dst)
+	// updatembtiles()
+	// reload(dst)
 	//更新服务
 	tile, err := LoadTileset(dst)
 	if err != nil {
@@ -432,16 +459,18 @@ func updateTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	mbts, ok := ts.Tileset.(*MBTiles)
-	if ok {
-		mbts.Close()
-		os.Remove(ts.URL)
-	}
+	ts.Close()
+	os.Remove(ts.Path)
 	tile.ID = tid
 	tile.Owner = uid
 
 	//加载服务,todo 用户服务无需预加载
-	tss := tile.toService()
+	tss, err := tile.toService()
+	if err != nil {
+		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
+		res.FailErr(c, err)
+		return
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
@@ -472,7 +501,7 @@ func downloadTileset(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	file, err := os.Open(ts.URL)
+	file, err := os.Open(ts.Path)
 	if err != nil {
 		log.Errorf(`downloadTileset, open %s's tileset (%s) error, details: %s ^^`, uid, tid, err)
 		res.FailErr(c, err)
@@ -499,18 +528,20 @@ func deleteTileset(c *gin.Context) {
 	set := userSet.service(uid)
 	tids := strings.Split(tid, ",")
 	for _, tid := range tids {
-		mbtiles, ok := ts.Tileset.(*MBTiles)
-		if ok {
-			mbtiles.Close()
+		err := ts.Clean()
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
 		}
 		set.S.Delete(tid)
-		err := db.Where("id = ?", tid).Delete(Tileset{}).Error
+		err = db.Where("id = ?", tid).Delete(Tileset{}).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
-		err = os.Remove(ts.URL) // +ts.Tileset.TileType()
+		err = os.Remove(ts.Path) // +ts.Tileset.TileType()
 		if err != nil {
 			log.Errorf(`deleteTileset, remove %s's tilesets (%s) error, details: %s ^^`, uid, tid, err)
 			res.FailErr(c, err)
@@ -533,8 +564,8 @@ func getTilejson(c *gin.Context) {
 		return
 	}
 	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
-	format := tss.Tileset.TileFormat().String()
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/map/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
+	format := tss.Format.String()
+	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
@@ -551,37 +582,33 @@ func getTilejson(c *gin.Context) {
 	// default:
 	// 	fmt.Print(ttype)
 	// }
-	mbtiles, ok := tss.Tileset.(*MBTiles)
-	if ok {
-		fmt.Println(mbtiles.Format)
-		metadata, err := mbtiles.GetInfo()
-		if err != nil {
-			log.Errorf("getTilejson, get metadata failed: %s; user: %s ^^", err, tid)
-			res.Fail(c, 5004)
-			return
+	metadata, err := tss.GetInfo()
+	if err != nil {
+		log.Errorf("getTilejson, get metadata failed: %s; user: %s ^^", err, tid)
+		res.Fail(c, 5004)
+		return
+	}
+	for k, v := range metadata {
+		switch k {
+		// strip out values above
+		case "tilejson", "id", "scheme", "format", "tiles", "map":
+			continue
+
+		// strip out values that are not supported or are overridden below
+		case "grids", "interactivity", "modTime":
+			continue
+
+		// strip out values that come from TileMill but aren't useful here
+		case "metatile", "scale", "autoscale", "_updated", "Layer", "Stylesheet":
+			continue
+
+		default:
+			out[k] = v
 		}
-		for k, v := range metadata {
-			switch k {
-			// strip out values above
-			case "tilejson", "id", "scheme", "format", "tiles", "map":
-				continue
+	}
 
-			// strip out values that are not supported or are overridden below
-			case "grids", "interactivity", "modTime":
-				continue
-
-			// strip out values that come from TileMill but aren't useful here
-			case "metatile", "scale", "autoscale", "_updated", "Layer", "Stylesheet":
-				continue
-
-			default:
-				out[k] = v
-			}
-		}
-
-		if mbtiles.HasUTFGrid() {
-			out["grids"] = []string{fmt.Sprintf("%s.json", tileurl)}
-		}
+	if tss.HasUTFGrid {
+		out["grids"] = []string{fmt.Sprintf("%s.json", tileurl)}
 	}
 
 	c.JSON(http.StatusOK, out)
@@ -602,7 +629,7 @@ func viewTile(c *gin.Context) {
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
-		"FMT":   tss.Tileset.TileFormat().String(),
+		"FMT":   tss.Format.String(),
 	})
 }
 
@@ -638,7 +665,7 @@ func getTile(c *gin.Context) {
 	isGrid := ext == ".json"
 	switch {
 	case !isGrid:
-		data, err = tss.Tileset.Tile(c.Request.Context(), tc.z, tc.x, tc.y)
+		data, err = tss.Tile(c.Request.Context(), tc.z, tc.x, tc.y)
 	// case isGrid && tss.Tileset.HasUTFGrid():
 	// 	err = tss.Tileset.GetGrid(tc.z, tc.x, tc.y, &data)
 	default:
@@ -655,9 +682,8 @@ func getTile(c *gin.Context) {
 		res.Fail(c, 5004)
 		return
 	}
-	format := tss.Tileset.TileFormat()
 	if data == nil || len(data) <= 1 {
-		switch format {
+		switch tss.Format {
 		case PNG, JPG, WEBP:
 			// Return blank PNG for all image types
 			c.Render(
@@ -683,8 +709,8 @@ func getTile(c *gin.Context) {
 		// 	c.Writer.Header().Set("Content-Encoding", "gzip")
 		// }
 	} else {
-		c.Writer.Header().Set("Content-Type", tss.Tileset.TileFormat().ContentType())
-		if tss.Tileset.TileFormat() == PBF {
+		c.Writer.Header().Set("Content-Type", tss.Format.ContentType())
+		if tss.Format == PBF {
 			c.Writer.Header().Set("Content-Encoding", "gzip")
 		}
 	}

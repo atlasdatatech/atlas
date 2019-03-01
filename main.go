@@ -118,7 +118,7 @@ func initConf(cfgFile string) {
 	viper.SetDefault("db.port", "5432")
 	viper.SetDefault("db.user", "postgres")
 	viper.SetDefault("db.password", "postgres")
-	viper.SetDefault("db.name", "postgres")
+	viper.SetDefault("db.database", "postgres")
 	viper.SetDefault("casbin.config", "./auth.conf")
 	viper.SetDefault("statics", "statics/")
 	viper.SetDefault("styles", "styles/")
@@ -130,7 +130,7 @@ func initConf(cfgFile string) {
 //initDb 初始化数据库
 func initDb() (*gorm.DB, error) {
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.name"))
+		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
 	pg, err := gorm.Open("postgres", pgConnInfo)
 	if err != nil {
 		return nil, fmt.Errorf("init gorm pg error, details: %s", err)
@@ -179,7 +179,7 @@ func initJWT() (*jwt.GinJWTMiddleware, error) {
 //initEnforcer 初始化资源访问控制
 func initEnforcer() (*casbin.Enforcer, error) {
 	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.name"))
+		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
 	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
 	enforcer := casbin.NewEnforcer("./auth.conf", casbinAdapter)
 	return enforcer, nil
@@ -441,16 +441,16 @@ func setupRouter() *gin.Engine {
 		tilesets.POST("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
 		tilesets.GET("/:user/x/:id/", getTilejson) //tilejson
+		tilesets.GET("/:user/x/:id/:z/:x/:y", getTile)
 		tilesets.POST("/:user/upload/", uploadTileset)
 		tilesets.POST("/:user/replace/:id/", replaceTileset)
 		tilesets.POST("/:user/publish/", publishTileset)
+		tilesets.POST("/:user/publish/:id/", rePublishTileset)
 		tilesets.POST("/:user/create/:id/", createTileset)
+		tilesets.POST("/:user/update/:id/", createTileset)
 		tilesets.GET("/:user/download/:id/", downloadTileset)
 		tilesets.POST("/:user/delete/:ids/", deleteTileset)
 		tilesets.POST("/:user/merge/:ids/", getTile)
-
-		tilesets.GET("/:user/map/:id/:z/:x/:y", getTile)
-		tilesets.GET("/:user/layers/:id/:lrs/:z/:x/:y", getTile)
 
 		tilesets.GET("/:user/view/:id/", viewTile) //view
 	}
@@ -462,7 +462,7 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/", autoUser)
 		datasets.GET("/:user/", listDatasets)
 		datasets.GET("/:user/x/:id/", getDatasetInfo)
-		// datasets.GET("/:user/info/:id/")
+		datasets.GET("/:user/x/:id/:z/:x/:y", getTile)
 		datasets.POST("/:user/upload/", uploadFile)
 		datasets.GET("/:user/preview/:id/", previewFile)
 		datasets.POST("/:user/import/:id/", importFile)
@@ -475,9 +475,6 @@ func setupRouter() *gin.Engine {
 		datasets.POST("/:user/delete/:id/:fids/", deleteFeatures)
 
 		datasets.GET("/:user/view/:id/", viewDataset) //view
-
-		datasets.GET("/:user/map/:id/:z/:x/:y", getTile)
-		datasets.GET("/:user/layers/:id/:lrs/:z/:x/:y", getTile)
 
 		datasets.GET("/:user/geojson/:id/", getGeojson)
 		datasets.POST("/:user/query/:id/", queryGeojson)

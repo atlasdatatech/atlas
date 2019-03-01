@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,41 +20,6 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
-)
-
-// Tiles is an interface that represents the shared attributes
-// of a tileset.
-type Tiles interface {
-	TileType() string
-	TileFormat() TileFormat
-	Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error)
-	TileJSON() TileJSON
-
-	// requiring because sub package type switch over all possible types.
-	private()
-}
-
-// compile time checks
-var (
-	_ Tiles = MBTiles{}
-	_ Tiles = TileMap{}
-)
-
-func (tm TileMap) private() {}
-func (mt MBTiles) private() {}
-
-// AllTilesets lists all possible types and values that a tileset
-// interface can be. It should be used only for testing to verify
-// functions that accept a Geometry will work in all cases.
-var AllTilesets = []Tiles{
-	nil,
-	MBTiles{},
-	TileMap{},
-}
-
-const (
-	// MaxZoom will not render tile beyond this zoom level
-	MaxZoom = 22
 )
 
 // TileFormat is an enum that defines the tile format of a tile
@@ -125,19 +92,21 @@ type Tileset struct {
 	UpdatedAt time.Time
 }
 
-//TileJSON tilejson结构定义
-type TileJSON struct {
-}
-
 // TileService represents an mbtiles file connection.
 type TileService struct {
-	ID      string
-	Name    string
-	URL     string // tile format: PNG, JPG, PBF, WEBP
-	Hash    string
-	Type    string
-	State   bool  // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
-	Tileset Tiles // database connection for mbtiles file
+	ID                 string
+	Name               string
+	Path               string
+	Owner              string
+	Format             TileFormat // tile format: PNG, JPG, PBF, WEBP
+	URL                string     // tile format: PNG, JPG, PBF, WEBP
+	Hash               string
+	State              bool       // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	Timestamp          time.Time  // timestamp of file, for cache control headers
+	HasUTFGrid         bool       // true if mbtiles file contains additional tables with UTFGrid data
+	UTFGridCompression TileFormat // compression (GZIP or ZLIB) of UTFGrids
+	HasUTFGridData     bool       // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	db                 *sql.DB    // database connection for mbtiles file
 }
 
 //LoadTileset 创建更新瓦片集服务
@@ -165,36 +134,79 @@ func LoadTileset(tileset string) (*Tileset, error) {
 		Layers:    nil,
 		JSON:      nil,
 	}
-	switch ext {
-	case ".mbtiles":
-		// mb, err := LoadMBTiles(tileset)
-		// out.JSON = mb.TileJSON()
-	case ".tilemap":
-		// tm, err := LoadTilemap(tileset)
-		// out.JSON = tm.TileJSON()
-	}
-
 	return out, nil
 }
 
 // CreateTileService creates a new StyleService instance.
-// Connection is closed by runtime on application termination or by calling
-// its Close() method.
-func (ts *Tileset) toService() *TileService {
+//loadService 创建更新瓦片集服务
+func (ts *Tileset) toService() (*TileService, error) {
 	out := &TileService{
 		ID:   ts.ID,
 		Name: ts.Name,
-		URL:  ts.Path, //should not add / at the end
+		Path: ts.Path, //should not add / at the end
 	}
-	its, err := ts.LoadService()
+	//Saves last modified mbtiles time for setting Last-Modified header
+	fStat, err := os.Stat(ts.Path)
 	if err != nil {
-		return out
+		return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", ts.Path)
+	}
+	db, err := sql.Open("sqlite3", ts.Path)
+	if err != nil {
+		return nil, err
+	}
+	//query a sample tile to determine format
+	var data []byte
+	err = db.QueryRow("select tile_data from tiles limit 1").Scan(&data)
+	if err != nil {
+		return nil, err
+	}
+	format, err := detectTileFormat(data)
+	if err != nil {
+		return nil, err
+	}
+	if format == GZIP {
+		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
 	}
 
-	out.Type = its.TileFormat().String()
-	out.Tileset = its
+	out.db = db
+	out.Format = format
+	out.Timestamp = fStat.ModTime().Round(time.Second)
+
+	// UTFGrids
+	// first check to see if requisite tables exist
+	var count int
+	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grids'").Scan(&count)
+	if err != nil {
+		return nil, err
+	}
+	if count == 1 {
+		// query a sample grid to detect type
+		var gridData []byte
+		err = db.QueryRow("select grid from grids where grid is not null LIMIT 1").Scan(&gridData)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				return nil, fmt.Errorf("could not read sample grid to determine type: %v", err)
+			}
+		} else {
+			out.HasUTFGrid = true
+			out.UTFGridCompression, err = detectTileFormat(gridData)
+			if err != nil {
+				return nil, fmt.Errorf("could not determine UTF Grid compression type: %v", err)
+			}
+
+			// Check to see if grid_data view exists
+			count = 0 // prevent use of prior value
+			err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grid_data'").Scan(&count)
+			if err != nil {
+				return nil, err
+			}
+			if count == 1 {
+				out.HasUTFGridData = true
+			}
+		}
+	}
 	out.State = true
-	return out
+	return out, nil
 }
 
 //UpInsert 创建更新瓦片集服务
@@ -221,153 +233,198 @@ func (ts *Tileset) UpInsert() error {
 	return nil
 }
 
-//LoadService 创建更新瓦片集服务
-//create or update upload data file info into database
-func (ts *Tileset) LoadService() (Tiles, error) {
-	if ts == nil {
-		return nil, fmt.Errorf("datafile may not be nil")
-	}
-	switch ts.Type {
-	case ".mbtiles":
-		mb, err := LoadMBTiles(ts.Path)
-		if err != nil {
-			return nil, err
-		}
-		return mb, nil
-		// out.JSON = mb.TileJSON()
-	case ".tilemap":
-		tm, err := LoadTileMap(ts.Path)
-		if err != nil {
-			return nil, err
-		}
-		return tm, nil
-		// out.JSON = tm.TileJSON()
-	}
-	return nil, fmt.Errorf("未知文件类型")
-}
-
-// LoadMBTiles creates a new MBTiles instance.
-// Connection is closed by runtime on application termination or by calling
-// its Close() method.
-func LoadMBTiles(pathfile string) (*MBTiles, error) {
-	//Saves last modified mbtiles time for setting Last-Modified header
-	fStat, err := os.Stat(pathfile)
-	if err != nil {
-		return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", pathfile)
-	}
-	_, id := filepath.Split(pathfile)
-	id = strings.Split(id, ".")[0]
-
-	db, err := sql.Open("sqlite3", pathfile)
-	if err != nil {
-		return nil, err
-	}
-
-	//query a sample tile to determine format
+// Tile reads a tile with tile identifiers z, x, y into provided *[]byte.
+// data will be nil if the tile does not exist in the database
+func (tss *TileService) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error) {
 	var data []byte
-	err = db.QueryRow("select tile_data from tiles limit 1").Scan(&data)
+	err := tss.db.QueryRow("select tile_data from tiles where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(&data)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
-	format, err := detectTileFormat(data)
-	if err != nil {
-		return nil, err
-	}
-	if format == GZIP {
-		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
-	}
-	out := MBTiles{
-		db:        db,
-		Format:    format,
-		timestamp: fStat.ModTime().Round(time.Second), // round to nearest second
+	return data, nil
+}
+
+// GetGrid reads a UTFGrid with identifiers z, x, y into provided *[]byte. data
+// will be nil if the grid does not exist in the database, and an error will be
+// raised. This merges in grid key data, if any exist The data is returned in
+// the original compression encoding (zlib or gzip)
+func (tss *TileService) GetGrid(z uint8, x uint, y uint, data *[]byte) error {
+	if !tss.HasUTFGrid {
+		return errors.New("Tileset does not contain UTFgrids")
 	}
 
-	// UTFGrids
-	// first check to see if requisite tables exist
-	var count int
-	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grids'").Scan(&count)
+	err := tss.db.QueryRow("select grid from grids where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(data)
 	if err != nil {
-		return nil, err
+		if err == sql.ErrNoRows {
+			*data = nil // If this tile does not exist in the database, return empty bytes
+			return nil
+		}
+		return err
 	}
-	if count == 1 {
-		// query a sample grid to detect type
-		var gridData []byte
-		err = db.QueryRow("select grid from grids where grid is not null LIMIT 1").Scan(&gridData)
+
+	if tss.HasUTFGridData {
+		keydata := make(map[string]interface{})
+		var (
+			key   string
+			value []byte
+		)
+
+		rows, err := tss.db.Query("select key_name, key_json FROM grid_data where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y)
 		if err != nil {
-			if err != sql.ErrNoRows {
-				return nil, fmt.Errorf("could not read sample grid to determine type: %v", err)
-			}
-		} else {
-			out.hasUTFGrid = true
-			out.utfgridCompression, err = detectTileFormat(gridData)
+			return fmt.Errorf("cannot fetch grid data: %v", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			err := rows.Scan(&key, &value)
 			if err != nil {
-				return nil, fmt.Errorf("could not determine UTF Grid compression type: %v", err)
+				return fmt.Errorf("could not fetch grid data: %v", err)
 			}
+			valuejson := make(map[string]interface{})
+			json.Unmarshal(value, &valuejson)
+			keydata[key] = valuejson
+		}
 
-			// Check to see if grid_data view exists
-			count = 0 // prevent use of prior value
-			err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grid_data'").Scan(&count)
+		if len(keydata) == 0 {
+			return nil // there is no key data for this tile, return
+		}
+
+		var (
+			zreader io.ReadCloser  // instance of zlib or gzip reader
+			zwriter io.WriteCloser // instance of zlip or gzip writer
+			buf     bytes.Buffer
+		)
+		reader := bytes.NewReader(*data)
+
+		if tss.UTFGridCompression == ZLIB {
+			zreader, err = zlib.NewReader(reader)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			if count == 1 {
-				out.hasUTFGridData = true
+			zwriter = zlib.NewWriter(&buf)
+		} else {
+			zreader, err = gzip.NewReader(reader)
+			if err != nil {
+				return err
 			}
+			zwriter = gzip.NewWriter(&buf)
+		}
+
+		var utfjson map[string]interface{}
+		jsonDecoder := json.NewDecoder(zreader)
+		jsonDecoder.Decode(&utfjson)
+		zreader.Close()
+
+		// splice the key data into the UTF json
+		utfjson["data"] = keydata
+		if err != nil {
+			return err
+		}
+
+		// now re-encode to original zip encoding
+		jsonEncoder := json.NewEncoder(zwriter)
+		err = jsonEncoder.Encode(utfjson)
+		if err != nil {
+			return err
+		}
+		zwriter.Close()
+		*data = buf.Bytes()
+	}
+	return nil
+}
+
+// GetInfo reads the metadata table into a map, casting their values into
+// the appropriate type
+func (tss *TileService) GetInfo() (map[string]interface{}, error) {
+	var (
+		key   string
+		value string
+	)
+	metadata := make(map[string]interface{})
+
+	rows, err := tss.db.Query("select * from metadata where value is not ''")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		rows.Scan(&key, &value)
+
+		switch key {
+		case "maxzoom", "minzoom":
+			metadata[key], err = strconv.Atoi(value)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read metadata item %s: %v", key, err)
+			}
+		case "bounds", "center":
+			metadata[key], err = stringToFloats(value)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read metadata item %s: %v", key, err)
+			}
+		case "json":
+			err = json.Unmarshal([]byte(value), &metadata)
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse JSON metadata item: %v", err)
+			}
+		default:
+			metadata[key] = value
 		}
 	}
 
-	return &out, nil
-
+	// Supplement missing values by inferring from available data
+	_, hasMinZoom := metadata["minzoom"]
+	_, hasMaxZoom := metadata["maxzoom"]
+	if !(hasMinZoom && hasMaxZoom) {
+		var minZoom, maxZoom int
+		err := tss.db.QueryRow("select min(zoom_level), max(zoom_level) from tiles").Scan(&minZoom, &maxZoom)
+		if err != nil {
+			return metadata, nil
+		}
+		metadata["minzoom"] = minZoom
+		metadata["maxzoom"] = maxZoom
+	}
+	return metadata, nil
 }
 
-// LoadTileMap creates a new MBTiles instance.
-// Co123456789nnection is closed by runtime on application termination or by calling
-// its Close() method.
-func LoadTileMap(pathfile string) (*TileMap, error) {
-	//Saves last modified mbtiles time for setting Last-Modified header
-	// fStat, err := os.Stat(pathfile)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", pathfile)
-	// }
-	// check the conf file exists
-	if _, err := os.Stat(pathfile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("config file %v not found", pathfile)
-	}
-
-	buf, err := ioutil.ReadFile(pathfile)
+// GetHash reads the metadata table center value into a string
+func (tss *TileService) GetHash() string {
+	var value string
+	err := tss.db.QueryRow("select value from metadata where name='center'").Scan(&value)
 	if err != nil {
-		return nil, err
+		log.Error(err)
+		return ""
 	}
-
-	out := &TileMap{}
-	json.Unmarshal(buf, &out)
-
-	for i := range out.Layers {
-		provd.Layers()
-		out.Layers[i].Provider = provd
+	split := strings.Split(value, ",")
+	if len(split) != 3 {
+		log.Error("metadata center has invalid vaule number(!=3) ^^")
+		return ""
 	}
-
-	return out, nil
+	hash := "#" + strings.TrimSpace(split[2]) + "/" + strings.TrimSpace(split[1]) + "/" + strings.TrimSpace(split[0])
+	return hash
 }
 
-//SaveTileMap 保存配置文件
-func SaveTileMap(pathfile string) error {
-	var layers []TileLayer
-	layer := TileLayer{
-		Name:              "places_a",
-		ProviderLayerName: "osm_places_a",
-		MinZoom:           5,
-		MaxZoom:           20,
-	}
-	layers = append(layers, layer)
-	out := &TileMap{
-		Name:   pathfile,
-		Layers: layers,
-	}
-	buf, err := json.Marshal(out)
-	err = ioutil.WriteFile(pathfile, buf, os.ModePerm)
+// Close closes the database connection
+func (tss *TileService) Close() error {
+	return tss.db.Close()
+}
+
+// Clean closes the database and delete db record and delete mbtiles file
+func (tss *TileService) Clean() error {
+	tss.db.Close()
+	err := db.Where("id = ?", tss.ID).Delete(Tileset{}).Error
 	if err != nil {
-		return err
+		if !gorm.IsRecordNotFoundError(err) {
+			return err
+		}
+	}
+	err = os.Remove(tss.Path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }

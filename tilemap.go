@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 
@@ -78,20 +81,9 @@ func (l *TileLayer) MVTName() string {
 	return l.ProviderLayerName
 }
 
-// TileType returns the tileset type.
-func (tm TileMap) TileType() string {
-	return ".tilemap"
-}
-
 // TileFormat returns the TileFormat of the DB.
 func (tm TileMap) TileFormat() TileFormat {
 	return tm.Format
-}
-
-//TileJSON 获取瓦片数据集的tilejson
-func (tm TileMap) TileJSON() TileJSON {
-	tilejson := TileJSON{}
-	return tilejson
 }
 
 //Tile 获取瓦片
@@ -142,7 +134,7 @@ func (tm TileMap) AddDebugLayers() TileMap {
 			Provider:          debugProvider,
 			GeomType:          geom.LineString{},
 			MinZoom:           0,
-			MaxZoom:           MaxZoom,
+			MaxZoom:           22,
 		},
 		{
 			Name:              debug.LayerDebugTileCenter,
@@ -150,7 +142,7 @@ func (tm TileMap) AddDebugLayers() TileMap {
 			Provider:          debugProvider,
 			GeomType:          geom.Point{},
 			MinZoom:           0,
-			MaxZoom:           MaxZoom,
+			MaxZoom:           22,
 		},
 	}...)
 
@@ -320,4 +312,56 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 
 	// return encoded, gzipped tile
 	return gzipBuf.Bytes(), nil
+}
+
+// LoadTileMap creates a new MBTiles instance.
+// Co123456789nnection is closed by runtime on application termination or by calling
+// its Close() method.
+func LoadTileMap(pathfile string) (*TileMap, error) {
+	//Saves last modified mbtiles time for setting Last-Modified header
+	// fStat, err := os.Stat(pathfile)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", pathfile)
+	// }
+	// check the conf file exists
+	if _, err := os.Stat(pathfile); os.IsNotExist(err) {
+		return nil, fmt.Errorf("config file %v not found", pathfile)
+	}
+
+	buf, err := ioutil.ReadFile(pathfile)
+	if err != nil {
+		return nil, err
+	}
+
+	out := &TileMap{}
+	json.Unmarshal(buf, &out)
+
+	for i := range out.Layers {
+		provd.Layers()
+		out.Layers[i].Provider = provd
+	}
+
+	return out, nil
+}
+
+//SaveTileMap 保存配置文件
+func SaveTileMap(pathfile string) error {
+	var layers []TileLayer
+	layer := TileLayer{
+		Name:              "places_a",
+		ProviderLayerName: "osm_places_a",
+		MinZoom:           5,
+		MaxZoom:           20,
+	}
+	layers = append(layers, layer)
+	out := &TileMap{
+		Name:   pathfile,
+		Layers: layers,
+	}
+	buf, err := json.Marshal(out)
+	err = ioutil.WriteFile(pathfile, buf, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return nil
 }

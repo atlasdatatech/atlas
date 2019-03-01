@@ -75,7 +75,7 @@ func oneClickImport(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".json", ".zip":
+	case ".csv", ".geojson", ".zip":
 	default:
 		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
 		return
@@ -150,7 +150,7 @@ func uploadFile(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".json", ".zip":
+	case ".csv", ".geojson", ".zip":
 	default:
 		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
 		return
@@ -211,7 +211,7 @@ func previewFile(c *gin.Context) {
 		df.Encoding = "gb18030"
 	}
 	switch df.Format {
-	case ".csv", ".geojson", ".json", ".shp":
+	case ".csv", ".geojson", ".shp":
 		pv := df.getPreview()
 		res.DoneData(c, pv)
 	default:
@@ -366,7 +366,7 @@ func viewDataset(c *gin.Context) {
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
-		"FMT":   tss.Tileset.TileFormat().String(),
+		"FMT":   tss.Format.String(),
 	})
 }
 

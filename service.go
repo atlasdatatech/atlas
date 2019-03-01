@@ -347,7 +347,7 @@ func (s *ServiceSet) AddTilesets() error {
 		name := item.Name()
 		ext := filepath.Ext(name)
 		lext := strings.ToLower(ext)
-		if strings.Compare(".mbtiles", lext) == 0 || strings.Compare(".tilemap", lext) == 0 {
+		if strings.Compare(".mbtiles", lext) == 0 {
 			files[strings.TrimSuffix(name, ext)] = filepath.Join(dir, name)
 		}
 	}
@@ -395,7 +395,10 @@ func (s *ServiceSet) ServeTileset(id string) error {
 	if err != nil {
 		return err
 	}
-	tss := ts.toService()
+	tss, err := ts.toService()
+	if err != nil {
+		return err
+	}
 	s.T.Store(tss.ID, tss)
 	return nil
 }
@@ -408,7 +411,11 @@ func (s *ServiceSet) ServeTilesets() error {
 		return err
 	}
 	for _, tileset := range tilesets {
-		tss := tileset.toService()
+		tss, err := tileset.toService()
+		if err != nil {
+			log.Error(err)
+			continue
+		}
 		s.T.Store(tss.ID, tss)
 	}
 	return nil

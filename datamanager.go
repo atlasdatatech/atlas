@@ -21,7 +21,6 @@ import (
 	"github.com/axgle/mahonia"
 	"github.com/jinzhu/gorm"
 	shp "github.com/jonas-p/go-shp"
-	"github.com/spf13/viper"
 
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	// "github.com/paulmach/orb/encoding/wkb"
@@ -121,7 +120,7 @@ func LoadDatafile(datafile string) ([]*Datafile, error) {
 	ext := filepath.Ext(datafile)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".json", ".zip":
+	case ".csv", ".geojson", ".zip", ".kml", ".gpx":
 	default:
 		log.Errorf("LoadDataset, unkown datafile format, details: %s", datafile)
 		return datafiles, fmt.Errorf("未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据")
@@ -144,7 +143,7 @@ func LoadDatafile(datafile string) ([]*Datafile, error) {
 				ext := filepath.Ext(fileInfo.Name())
 				//处理zip内部数据文件
 				switch strings.ToLower(ext) {
-				case ".csv", ".geojson", ".json":
+				case ".csv", ".geojson":
 					files[filepath.Join(dir, fileInfo.Name())] = fileInfo.Size()
 				case ".shp":
 					otherShpFile := func(ext string) int64 {
@@ -454,7 +453,7 @@ func (df *Datafile) getPreview() *DatafileBind {
 		dp.Fields = fields
 		dp.Rows = records
 		dp.Update = false
-	case ".geojson", ".json":
+	case ".geojson":
 		buf, err := df.getDatabuf()
 		if err != nil {
 			log.Errorf(`getPreview, get databuf error, details:%s`, err)
@@ -899,7 +898,7 @@ func (df *Datafile) dataImport() (*Task, error) {
 
 		}(task, buf)
 		return task, nil
-	case ".geojson", ".json":
+	case ".geojson":
 		formatBool := func(v interface{}) string {
 			if v == nil {
 				return "null"
@@ -1085,11 +1084,6 @@ func (df *Datafile) dataImport() (*Task, error) {
 		return task, nil
 	case ".shp":
 		var params []string
-		//设置数据库
-		params = append(params, []string{"-f", "PostgreSQL"}...)
-		pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
-			viper.GetString("db.name"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
-		params = append(params, pg)
 		//显示进度,读取outbuffer缓冲区
 		params = append(params, "-progress")
 		//跳过失败
@@ -1166,6 +1160,82 @@ func (df *Datafile) dataImport() (*Task, error) {
 	return task, nil
 }
 
+//toGeojson import geojson or csv data, can transform from gcj02 or bd09
+func (df *Datafile) toGeojson() error {
+	switch df.Format {
+	case ".shp": //and so on
+		var params []string
+		//显示进度,读取outbuffer缓冲区
+		absPath, err := filepath.Abs(df.Path)
+		if err != nil {
+			return err
+		}
+		outfile := strings.TrimSuffix(absPath, filepath.Ext(absPath)) + ".geojson"
+		params = append(params, []string{"-f", "GEOJSON", outfile}...)
+		params = append(params, "-progress")
+		params = append(params, "-skipfailures")
+		//覆盖or更新选项
+		if df.Overwrite {
+			//-overwrite not works
+			params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
+		} else {
+			params = append(params, "-update") //open in update model/用更新模式打开,而不是尝试新建
+			params = append(params, "-append")
+		}
+		params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
+		params = append(params, absPath)
+		if runtime.GOOS == "windows" {
+			decoder := mahonia.NewDecoder("gbk")
+			gbk := strings.Join(params, ",")
+			gbk = decoder.ConvertString(gbk)
+			params = strings.Split(gbk, ",")
+		}
+		cmd := exec.Command("ogr2ogr", params...)
+		err = cmd.Start()
+		if err != nil {
+			return err
+		}
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
+	case ".kml", "gpx":
+		var params []string
+		//显示进度,读取outbuffer缓冲区
+		absPath, err := filepath.Abs(df.Path)
+		if err != nil {
+			return err
+		}
+
+		params = append(params, absPath)
+		params = append(params, ">")
+
+		ext := filepath.Ext(absPath)
+		outfile := strings.TrimSuffix(absPath, ext)
+		params = append(params, outfile+".geojson")
+
+		if runtime.GOOS == "windows" {
+			decoder := mahonia.NewDecoder("gbk")
+			gbk := strings.Join(params, ",")
+			gbk = decoder.ConvertString(gbk)
+			params = strings.Split(gbk, ",")
+		}
+		// go func(task *ImportTask) {
+		cmd := exec.Command("togeojson", params...)
+		err = cmd.Start()
+		if err != nil {
+			return err
+		}
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("not support format: %s", df.Format)
+	}
+	return nil
+}
+
 //toDataset 创建Dataset
 func (df *Datafile) toDataset() (*Dataset, error) {
 	//info from data table
@@ -1221,46 +1291,6 @@ func (df *Datafile) toDataset() (*Dataset, error) {
 		Fields: jfs,
 	}
 	return ds, nil
-}
-
-//csvImport import csv data
-func (df *Datafile) serveMBTiles(uid string) (*Task, error) {
-	task := &Task{
-		ID:   df.ID,
-		Type: "tsprocess",
-	}
-	select {
-	case taskQueue <- task:
-	default:
-		log.Warningf("task queue overflow, request refused...")
-		task.State = "task queue overflow, request refused"
-		return task, fmt.Errorf("task queue overflow, request refused")
-	}
-	taskSet.Store(task.ID, task)
-
-	switch df.Format {
-	case ".mbtiles":
-
-		mbs, err := LoadMBTiles(df.Path)
-		if err != nil {
-			log.Errorf(`load mbtiles error, details:%s`, err)
-			return nil, fmt.Errorf("unkown data format")
-		}
-		set := userSet.service(uid)
-		if set != nil {
-			set.T.Store(df.ID, mbs)
-		}
-		task.Progress = 100
-		task.State = "finished"
-		//保存任务
-		task.save()
-
-	default:
-		log.Warningf(`ogr importing unkown format data:%s`, df.Format)
-		return nil, fmt.Errorf("unkown data format")
-	}
-
-	return task, nil
 }
 
 //getDataFrame get data preview context
@@ -1337,6 +1367,36 @@ func createTable(name string, fields []Field, geoType string) error {
 	st := fmt.Sprintf(`CREATE TABLE "%s" (%s);`, name, headers)
 	log.Info(st)
 	return db.Exec(st).Error
+}
+
+func createMbtiles(outfile string, infiles []string) error {
+	var params []string
+	//显示进度,读取outbuffer缓冲区
+	absPath, err := filepath.Abs(outfile)
+	if err != nil {
+		return err
+	}
+	params = append(params, "-zg")
+	params = append(params, "-o")
+	params = append(params, absPath)
+	params = append(params, "--force")
+	params = append(params, infiles...)
+	if runtime.GOOS == "windows" {
+		decoder := mahonia.NewDecoder("gbk")
+		gbk := strings.Join(params, ",")
+		gbk = decoder.ConvertString(gbk)
+		params = strings.Split(gbk, ",")
+	}
+	cmd := exec.Command("tippecanoe", params...)
+	err = cmd.Start()
+	if err != nil {
+		return err
+	}
+	err = cmd.Wait()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (task *Task) save() error {
