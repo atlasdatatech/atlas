@@ -1,13 +1,27 @@
 package main
 
 import (
+	"context"
+	"database/sql"
+
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/go-spatial/geom"
+	"github.com/go-spatial/geom/slippy"
+	"github.com/go-spatial/tegola"
+	"github.com/go-spatial/tegola/dict"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/geojson"
+	"github.com/paulmach/orb/maptile"
+	"github.com/paulmach/orb/maptile/tilecover"
 	log "github.com/sirupsen/logrus"
 	// "github.com/paulmach/orb/encoding/wkb"
 )
@@ -62,20 +76,154 @@ type DataService struct {
 	Owner  string      `form:"owner" json:"owner"`   //字段列表// 显示标签
 	Type   string      `form:"type" json:"type"`     //字段列表
 	Fields interface{} `form:"fields" json:"fields"` //字段列表
+	BBox   orb.Bound
 
-	URL   string // geojson service
-	Hash  string
-	State bool
+	URL    string // geojson service
+	Hash   string
+	State  bool
+	TLayer *TileLayer
 }
 
-func (dss *DataService) toDataset() *Dataset {
-	out := &Dataset{
-		ID:    dss.ID,
-		Name:  dss.Name,
-		Owner: dss.Owner,
-		Type:  dss.Type,
+// NewTileLayer 新建服务层
+func (dts *DataService) NewTileLayer() (*TileLayer, error) {
+	tlayer := &TileLayer{
+		ID:   dts.ID,
+		Name: dts.Name,
 	}
-	out.Fields, _ = json.Marshal(dss.Fields)
+	prd, ok := providers["atlas"]
+	if !ok {
+		return nil, fmt.Errorf("provider not found")
+	}
+	cfg := dict.Dict{}
+	cfg["name"] = dts.Name
+	cfg["tablename"] = strings.ToLower(dts.ID)
+	err := prd.AddLayer(cfg)
+	if err != nil {
+		return nil, err
+	}
+	tlayer.MinZoom = 0
+	tlayer.MaxZoom = 20
+	tlayer.Provider = prd
+	tlayer.ProviderLayerName = dts.Name
+	dts.TLayer = tlayer
+	return tlayer, nil
+}
+
+// CacheMBTiles 新建服务层
+func (dts *DataService) CacheMBTiles(path string) error {
+	if dts.TLayer == nil {
+		_, err := dts.NewTileLayer()
+		if err != nil {
+			return err
+		}
+	}
+	err := dts.UpdateExtent()
+	if err != nil {
+		log.Errorf(`update datasets extent error, details: %s`, err)
+	}
+	os.Remove(path)
+	dir := filepath.Dir(path)
+	os.MkdirAll(dir, os.ModePerm)
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return err
+	}
+	{
+		_, err := db.Exec("PRAGMA synchronous=0")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("PRAGMA locking_mode=EXCLUSIVE")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("PRAGMA journal_mode=DELETE")
+
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create table if not exists tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create table if not exists metadata (name text, value text);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create unique index name on metadata (name);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create unique index tile_index on tiles(zoom_level, tile_column, tile_row);")
+		if err != nil {
+			return err
+		}
+	}
+
+	minzoom, maxzoom := 7, 9
+	for z := minzoom; z <= maxzoom; z++ {
+		tiles := tilecover.Bound(dts.BBox, maptile.Zoom(z))
+		log.Infof("zoom: %d, count: %d", z, len(tiles))
+		for t, v := range tiles {
+			if !v {
+				continue
+			}
+			tile := slippy.NewTile(uint(t.Z), uint(t.X), uint(t.Y), TileBuffer, tegola.WebMercator)
+			// Check to see that the zxy is within the bounds of the map.
+			textent := geom.Extent(tile.Bounds())
+			if !dts.TLayer.Bounds.Contains(&textent) {
+				continue
+			}
+
+			pbyte, err := dts.TLayer.Encode(context.Background(), tile)
+			if err != nil {
+				errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+				log.Error(errMsg)
+				continue
+			}
+			if len(pbyte) == 0 {
+				continue
+			}
+			log.Infof("%v", t)
+			_, err = db.Exec("insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?, ?, ?, ?);", t.Z, t.X, t.Y, pbyte)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+		}
+	}
+	//should save tilejson
+	db.Close()
+	return nil
+}
+
+// UpdateExtent 更新图层外边框
+func (dts *DataService) UpdateExtent() error {
+	tbname := strings.ToLower(dts.ID)
+	var extent []byte
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM "%s";`, tbname)
+	err := db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
+	if err != nil {
+		return err
+	}
+	ext, err := geojson.UnmarshalGeometry(extent)
+	if err != nil {
+		return err
+	}
+	bbox := ext.Geometry().Bound()
+	dts.BBox = bbox
+	dts.TLayer.Bounds = &geom.Extent{bbox.Left(), bbox.Bottom(), bbox.Right(), bbox.Top()}
+	return nil
+}
+
+func (dts *DataService) toDataset() *Dataset {
+	out := &Dataset{
+		ID:    dts.ID,
+		Name:  dts.Name,
+		Owner: dts.Owner,
+		Type:  dts.Type,
+	}
+	out.Fields, _ = json.Marshal(dts.Fields)
 	return out
 }
 

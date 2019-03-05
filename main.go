@@ -3,14 +3,24 @@ package main
 import (
 	"flag"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
+	"github.com/go-spatial/geom"
+	"github.com/go-spatial/tegola"
+	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/cache"
+	"github.com/go-spatial/tegola/config"
+	"github.com/go-spatial/tegola/dict"
 	"github.com/go-spatial/tegola/provider"
+	"github.com/go-spatial/tegola/server"
+
 	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
 	"github.com/teris-io/shortid"
@@ -32,13 +42,16 @@ const (
 	//VERSION  版本号
 	VERSION = "1.0"
 	//ATLAS 默认用户名
-	ATLAS       = "root"
+	ATLAS = "atlas"
+	//DTSSCHEMA 数据存储SCHEMA 默认用户名
+	DTSSCHEMA   = "datasets"
 	identityKey = "id"
 )
 
 var (
+	conf      config.Config
 	db        *gorm.DB
-	provd     provider.Tiler
+	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
 	authMid   *jwt.GinJWTMiddleware
 	taskQueue = make(chan *Task, 32)
@@ -101,6 +114,14 @@ func initConf(cfgFile string) {
 		log.Warnf("read config file(%s) error, details: %s", viper.ConfigFileUsed(), err)
 	}
 
+	log.Infof("Loading config file: %v", cfgFile)
+	if conf, err = config.Load(cfgFile); err != nil {
+		log.Fatal(err)
+	}
+	if err = conf.Validate(); err != nil {
+		log.Fatal(err)
+	}
+
 	//配置默认值，如果配置内容中没有指定，就使用以下值来作为配置值，给定默认值是一个让程序更健壮的办法
 	viper.SetDefault("app.port", "8080")
 	viper.SetDefault("jwt.realm", "atlasmap")
@@ -141,31 +162,180 @@ func initDb() (*gorm.DB, error) {
 	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
+	pg.AutoMigrate(&TileLayer{})
 	return pg, nil
 }
 
 //initProvider 初始化数据库驱动
-func initProvider() (provider.Tiler, error) {
-	type prov struct {
-		ID   string
-		Name string
-		Type string
-	}
-	p := &prov{
-		ID:   "123",
-		Name: "test",
-		Type: "postgis",
+func initProviders(provArr []dict.Dicter) (map[string]provider.Tiler, error) {
+	providers := map[string]provider.Tiler{}
+	// init our providers
+	// but first convert []env.Map -> []dict.Dicter
+	for _, p := range provArr {
+		// lookup our proivder name
+		pname, err := p.String("name", nil)
+		if err != nil {
+			log.Error(err)
+			return providers, err
+		}
+
+		// check if a proivder with this name is alrady registered
+		_, ok := providers[pname]
+		if ok {
+			return providers, err
+		}
+
+		// lookup our provider type
+		ptype, err := p.String("type", nil)
+		if err != nil {
+			log.Error(err)
+			return providers, err
+		}
+
+		// register the provider
+		prov, err := provider.For(ptype, p)
+		if err != nil {
+			return providers, err
+		}
+
+		// add the provider to our map of registered providers
+		providers[pname] = prov
 	}
 
-	switch p.Type {
-	case "postgis":
-	case "gpkg":
+	return providers, nil
+}
+
+// Maps registers maps with with atlas
+func initMaps(a *atlas.Atlas, maps []config.Map, providers map[string]provider.Tiler) error {
+
+	// iterate our maps
+	for _, m := range maps {
+		newMap := atlas.NewWebMercatorMap(string(m.Name))
+		newMap.Attribution = html.EscapeString(string(m.Attribution))
+
+		// convert from env package
+		centerArr := [3]float64{}
+		for i, v := range m.Center {
+			centerArr[i] = float64(v)
+		}
+
+		newMap.Center = centerArr
+
+		if len(m.Bounds) == 4 {
+			newMap.Bounds = geom.NewExtent(
+				[2]float64{float64(m.Bounds[0]), float64(m.Bounds[1])},
+				[2]float64{float64(m.Bounds[2]), float64(m.Bounds[3])},
+			)
+		}
+
+		// iterate our layers
+		for _, l := range m.Layers {
+			// split our provider name (provider.layer) into [provider,layer]
+			providerLayer := strings.Split(string(l.ProviderLayer), ".")
+
+			// we're expecting two params in the provider layer definition
+			if len(providerLayer) != 2 {
+				return fmt.Errorf("invalid provider layer (%v) for map (%v)", l.ProviderLayer, m.Name)
+			}
+
+			// lookup our proivder
+			provider, ok := providers[providerLayer[0]]
+			if !ok {
+				return fmt.Errorf("provider (%v) not defined", providerLayer[0])
+			}
+
+			// read the provider's layer names
+			layerInfos, err := provider.Layers()
+			if err != nil {
+				return fmt.Errorf("error fetching layer info from provider (%v)", providerLayer[0])
+			}
+
+			// confirm our providerLayer name is registered
+			var found bool
+			var layerGeomType tegola.Geometry
+			for i := range layerInfos {
+				if layerInfos[i].Name() == providerLayer[1] {
+					found = true
+
+					// read the layerGeomType
+					layerGeomType = layerInfos[i].GeomType()
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("map (%v) 'provider_layer' (%v) is not registered with provider (%v)", m.Name, l.ProviderLayer, providerLayer[0])
+			}
+
+			var defaultTags map[string]interface{}
+			if l.DefaultTags != nil {
+				var ok bool
+				defaultTags, ok = l.DefaultTags.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("'default_tags' for 'provider_layer' (%v) should be a TOML table", l.ProviderLayer)
+				}
+			}
+
+			var minZoom uint
+			if l.MinZoom != nil {
+				minZoom = uint(*l.MinZoom)
+			}
+
+			var maxZoom uint
+			if l.MaxZoom != nil {
+				maxZoom = uint(*l.MaxZoom)
+			}
+
+			// add our layer to our layers slice
+			newMap.Layers = append(newMap.Layers, atlas.Layer{
+				Name:              string(l.Name),
+				ProviderLayerName: providerLayer[1],
+				MinZoom:           minZoom,
+				MaxZoom:           maxZoom,
+				Provider:          provider,
+				DefaultTags:       defaultTags,
+				GeomType:          layerGeomType,
+				DontSimplify:      bool(l.DontSimplify),
+			})
+		}
+
+		a.AddMap(newMap)
 	}
-	provd, err := provider.For(p.Type, nil)
+
+	return nil
+}
+
+// Cache registers cache backends
+func initCache(config dict.Dicter) (cache.Interface, error) {
+	cType, err := config.String("type", nil)
 	if err != nil {
-		return nil, err
+		switch err.(type) {
+		case dict.ErrKeyRequired:
+			return nil, fmt.Errorf("register: cache 'type' parameter missing")
+		case dict.ErrKeyType:
+			return nil, fmt.Errorf("register: cache 'type' value must be a string")
+		default:
+			return nil, err
+		}
 	}
-	return provd, nil
+
+	// register the provider
+	return cache.For(cType, config)
+}
+
+func initTegolaServer() {
+	// if you set the port via the comand line it will override the port setting in the config
+	serverPort := string(conf.Webserver.Port)
+	// set our server version
+	server.Version = VERSION
+	server.HostName = string(conf.Webserver.HostName)
+	// set the http reply headers
+	server.Headers = conf.Webserver.Headers
+	// set tile buffer
+	if conf.TileBuffer != nil {
+		server.TileBuffer = float64(*conf.TileBuffer)
+	}
+	// start our webserver
+	server.Start(nil, serverPort)
 }
 
 func initJWT() (*jwt.GinJWTMiddleware, error) {
@@ -247,8 +417,8 @@ func initTaskRouter() {
 }
 
 //loadPubServices 加载ATLAS公共服务
-func loadPubServices() {
-	pubs := &ServiceSet{Owner: ATLAS}
+func loadServices(user string) {
+	pubs := &ServiceSet{Owner: user}
 	err := pubs.LoadServiceSet()
 	if err != nil {
 		log.Errorf("loading public service set error: %s", err.Error())
@@ -440,7 +610,7 @@ func setupRouter() *gin.Engine {
 		tilesets.GET("/", autoUser)
 		tilesets.POST("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
-		tilesets.GET("/:user/x/:id/", getTilejson) //tilejson
+		tilesets.GET("/:user/x/:id/", getTileJSON) //tilejson
 		tilesets.GET("/:user/x/:id/:z/:x/:y", getTile)
 		tilesets.POST("/:user/upload/", uploadTileset)
 		tilesets.POST("/:user/replace/:id/", replaceTileset)
@@ -461,8 +631,7 @@ func setupRouter() *gin.Engine {
 		// > datasets
 		datasets.GET("/", autoUser)
 		datasets.GET("/:user/", listDatasets)
-		datasets.GET("/:user/x/:id/", getDatasetInfo)
-		datasets.GET("/:user/x/:id/:z/:x/:y", getTile)
+		datasets.GET("/:user/info/:id/", getDatasetInfo)
 		datasets.POST("/:user/upload/", uploadFile)
 		datasets.GET("/:user/preview/:id/", previewFile)
 		datasets.POST("/:user/import/:id/", importFile)
@@ -484,6 +653,11 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/:user/search/:id/", searchGeos)
 		datasets.GET("/:user/buffer/:id/", getBuffers)
 		datasets.GET("/:user/models/:id/", getModels)
+
+		datasets.GET("/:user/x/:id/", getTileLayerJSON)
+		datasets.GET("/:user/x/:id/:z/:x/:y", getTileLayer)
+		datasets.POST("/:user/x/:id/", createTileLayer)
+
 	}
 	//utilroute
 	utilroute := r.Group("/util")
@@ -518,9 +692,31 @@ func main() {
 	}
 	defer db.Close()
 
-	provd, err = initProvider()
-	if err != nil {
-		log.Fatalf("init provider error: %s", err)
+	{
+		provArr := make([]dict.Dicter, len(conf.Providers))
+		for i := range provArr {
+			provArr[i] = conf.Providers[i]
+		}
+		providers, err = initProviders(provArr)
+		if err != nil {
+			log.Fatalf("could not register providers: %v", err)
+		}
+		// init our maps
+		if err = initMaps(nil, conf.Maps, providers); err != nil {
+			log.Fatalf("could not register maps: %v", err)
+		}
+
+		if len(conf.Cache) > 0 {
+			// init cache backends
+			cache, err := initCache(conf.Cache)
+			if err != nil {
+				log.Errorf("could not register cache: %v", err)
+			}
+			if cache != nil {
+				atlas.SetCache(cache)
+			}
+		}
+		// initTegolaServer()
 	}
 
 	authMid, err = initJWT()
@@ -537,7 +733,7 @@ func main() {
 		return
 	}
 	initTaskRouter()
-	loadPubServices()
+	loadServices(ATLAS)
 
 	r := setupRouter()
 

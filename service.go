@@ -96,40 +96,40 @@ type ServiceSet struct {
 // LoadServiceSet 加载服务集，ATLAS基础服务集，USER用户服务集
 func (s *ServiceSet) LoadServiceSet() error {
 	//diff styles dir and append new styles
-	err := s.AddStyles()
-	if err != nil {
-		log.Errorf("AddStyles, add new styles error, details:%s", err)
-	}
+	// err := s.AddStyles()
+	// if err != nil {
+	// 	log.Errorf("AddStyles, add new styles error, details:%s", err)
+	// }
 	//serve all altas styles
-	err = s.ServeStyles()
+	err := s.ServeStyles()
 	if err != nil {
 		log.Errorf("ServeStyles, serve %s's styles error, details:%s", ATLAS, err)
 	}
-	//diff fonts dir and append new fonts
-	err = s.AddFonts()
-	if err != nil {
-		log.Errorf("AddFonts, add new fonts error, details:%s", err)
-	}
+	// //diff fonts dir and append new fonts
+	// err = s.AddFonts()
+	// if err != nil {
+	// 	log.Errorf("AddFonts, add new fonts error, details:%s", err)
+	// }
 	//serve all altas fonts
 	err = s.ServeFonts()
 	if err != nil {
 		log.Errorf("ServeFonts, serve %s's fonts error, details:%s", ATLAS, err)
 	}
-	//diff tileset dir and append new tileset
-	s.AddTilesets() //服务启动时，检测未入服务集(mbtiles,pbflayers)
-	if err != nil {
-		log.Errorf("AddTilesets, add new tileset error, details:%s", err)
-	}
+	// //diff tileset dir and append new tileset
+	// s.AddTilesets() //服务启动时，检测未入服务集(mbtiles,pbflayers)
+	// if err != nil {
+	// 	log.Errorf("AddTilesets, add new tileset error, details:%s", err)
+	// }
 	//serve all altas tilesets
 	s.ServeTilesets() //服务启动时，创建服务集
 	if err != nil {
 		log.Errorf("ServeTilesets, serve %s's tileset error, details:%s", ATLAS, err)
 	}
-	//diff tileset dir and append new dataset
-	s.AddDatasets() //服务启动时，检测未入库数据集
-	if err != nil {
-		log.Errorf("AddDatasets, add new dataset error, details:%s", err)
-	}
+	// //diff tileset dir and append new dataset
+	// s.AddDatasets() //服务启动时，检测未入库数据集
+	// if err != nil {
+	// 	log.Errorf("AddDatasets, add new dataset error, details:%s", err)
+	// }
 	//serve all altas datasets
 	s.ServeDatasets() //服务启动时，创建数据集
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *ServiceSet) ServeFonts() error {
 	return nil
 }
 
-// AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者tilemap配置文件
+// AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者未发布的可发布数据源(暂未实现)
 func (s *ServiceSet) AddTilesets() error {
 	//遍历dir目录下所有.mbtiles
 	files := make(map[string]string)
@@ -475,20 +475,26 @@ func (s *ServiceSet) AddDatasets() error {
 				if err != nil {
 					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
 				}
-				_, err = df.dataImport()
-				if err != nil {
+				task := df.dataImport()
+				if task.Err != "" {
 					log.Error(err)
+					<-task.Pipe
+					<-taskQueue
 					continue
 				}
-				ds, err := df.toDataset()
-				if err != nil {
-					log.Error(err)
-					continue
-				}
-				err = ds.UpInsert()
-				if err != nil {
-					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-				}
+				go func(df *Datafile) {
+					<-task.Pipe
+					<-taskQueue
+					ds, err := df.toDataset()
+					if err != nil {
+						log.Error(err)
+						return
+					}
+					err = ds.UpInsert()
+					if err != nil {
+						log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+					}
+				}(df)
 				count++
 			}
 		}
