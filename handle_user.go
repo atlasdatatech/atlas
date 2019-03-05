@@ -190,6 +190,7 @@ func signin(c *gin.Context) {
 		res.Fail(c, 4011)
 		return
 	}
+	loadServices(user.Name)
 	//Cookie
 	if authMid.SendCookie {
 		maxage := int(user.JWTExpires.Unix() - time.Now().Unix())

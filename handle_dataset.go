@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,12 @@ import (
 	"strings"
 	"time"
 
+	geom "github.com/go-spatial/geom"
+	slippy "github.com/go-spatial/geom/slippy"
+	"github.com/go-spatial/tegola"
+	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/mvt"
+	"github.com/go-spatial/tegola/server"
 	"github.com/jinzhu/gorm"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
@@ -29,7 +36,6 @@ func listDatasets(c *gin.Context) {
 	if set == nil {
 		res.Fail(c, 4044)
 		return
-
 	}
 	var dss []*DataService
 	set.D.Range(func(_, v interface{}) bool {
@@ -44,11 +50,6 @@ func getDatasetInfo(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	did := c.Param("id")
-	if code := checkDataset(did); code != 200 {
-		res.Fail(c, code)
-		return
-	}
-
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
 		res.Fail(c, 4044)
@@ -75,7 +76,7 @@ func oneClickImport(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".zip":
+	case ".csv", ".geojson", ".kml", ".gpx", ".zip":
 	default:
 		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
 		return
@@ -96,38 +97,60 @@ func oneClickImport(c *gin.Context) {
 	}
 	var tasks []*Task
 	for _, df := range dtfiles {
+		st := time.Now()
+		// srcfile := df.Path
+		// switch df.Format {
+		// case ".kml", ".gpx":
+		// 	err := df.toGeojson()
+		// 	if err != nil {
+		// 		log.Errorf(`oneClickImport, convert to geojson error, details: %s`, err)
+		// 		continue
+		// 	}
+		// 	df.Path = strings.TrimSuffix(df.Path, df.Format) + ".geojson"
+		// 	df.Format = ".geojson"
+		// }
+		// log.Infof(`%s convert to geojson takes :%v`, srcfile, time.Since(st))
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 		}
 		dfb := df.getPreview()
 		df.Update(dfb)
-		task, err := df.dataImport()
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		//todo goroute 导入，以下事务需在task完成后处理
-		ds, err := df.toDataset()
-		if err != nil {
-			log.Error(err)
-			res.FailErr(c, err)
-			return
-		}
+		df.Overwrite = true
+		st = time.Now()
+		task := df.dataImport()
+		go func(df *Datafile) {
+			<-task.Pipe //wait finish
+			<-taskQueue
+			task.State = "finish"
+			task.save()
+			if task.Err != "" {
+				log.Error(task.Err)
+				return
+			}
+			t := time.Since(st)
+			log.Infof("one key import time cost: %v", t)
+			ds, err := df.toDataset()
+			if err != nil {
+				log.Error(err)
+				res.FailErr(c, err)
+				return
+			}
 
-		err = ds.UpInsert()
-		if err != nil {
-			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
-			res.FailErr(c, err)
-			return
-		}
+			err = ds.UpInsert()
+			if err != nil {
+				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+				res.FailErr(c, err)
+				return
+			}
 
-		if true {
-			dss := ds.toService()
-			set.D.Store(dss.ID, dss)
-		}
-
+			if true {
+				dss := ds.toService()
+				set.D.Store(dss.ID, dss)
+			}
+		}(df)
 		tasks = append(tasks, task)
+		//todo goroute 导入，以下事务需在task完成后处理
 	}
 	res.DoneData(c, tasks)
 }
@@ -150,9 +173,9 @@ func uploadFile(c *gin.Context) {
 	ext := filepath.Ext(filename)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".csv", ".geojson", ".zip":
+	case ".csv", ".geojson", ".kml", ".gpx", ".zip":
 	default:
-		res.FailMsg(c, "未知数据格式, 请使用csv/geojson(json)/shapefile(zip)数据.")
+		res.FailMsg(c, "未知数据格式, 请使用csv/geojson/kml/gpx/shapefile(zip)格式.")
 		return
 	}
 	name := strings.TrimSuffix(filename, ext)
@@ -256,39 +279,42 @@ func importFile(c *gin.Context) {
 		return
 	}
 
-	task, err := df.dataImport()
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
+	task := df.dataImport()
+	if task.Err != "" {
+		log.Error(task.Err)
+		res.FailMsg(c, task.Err)
+		<-task.Pipe
+		<-taskQueue
 		return
 	}
-	//todo goroute 导入，以下事务需在task完成后处理
-	ds, err := df.toDataset()
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
+	go func(df *Datafile) {
+		<-task.Pipe
+		<-taskQueue
+		//todo goroute 导入，以下事务需在task完成后处理
+		ds, err := df.toDataset()
+		if err != nil {
+			log.Error(err)
+			res.FailErr(c, err)
+			return
+		}
+		err = ds.UpInsert()
+		if err != nil {
+			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+			res.FailErr(c, err)
+			return
+		}
 
-	err = ds.UpInsert()
-	if err != nil {
-		log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
-		res.FailErr(c, err)
-		return
-	}
-
-	if true {
-		dss := ds.toService()
-		set.D.Store(dss.ID, dss)
-	}
-
+		if true {
+			dss := ds.toService()
+			set.D.Store(dss.ID, dss)
+		}
+	}(df)
 	res.DoneData(c, task)
 }
 
 func taskQuery(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString("id")
-	log.Println(user)
+	// user := c.Param("user")
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)
 	if ok {
@@ -296,7 +322,11 @@ func taskQuery(c *gin.Context) {
 		return
 	}
 	dbtask := &Task{ID: id}
-	dbtask.info()
+	err := dbtask.info()
+	if err != nil {
+		res.FailMsg(c, "task not found")
+		return
+	}
 	res.DoneData(c, dbtask)
 }
 
@@ -352,21 +382,23 @@ func downloadDataset(c *gin.Context) {
 }
 
 func viewDataset(c *gin.Context) {
-	res := NewRes()
-	uid := c.GetString(identityKey)
-	tid := c.Param("id")
-	tss := userSet.tileset(uid, tid)
-	if tss == nil {
-		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4044)
-		return
-	}
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
-	c.HTML(http.StatusOK, "data.html", gin.H{
+	// res := NewRes()
+	uid := c.Param("user")
+	did := c.Param("id")
+	// tss := userSet.tileset(uid, tid)
+	// if tss == nil {
+	// 	log.Errorf("tilesets id(%s) not exist in the service", tid)
+	// 	res.Fail(c, 4044)
+	// 	return
+	// }
+	//"china-z7.rjA5dSCmR"
+	// tileurl :="http://localhost:8080/maps/map/roads/{z}/{x}/{y}.pbf"
+	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), uid, did) //need use user own service set
+	c.HTML(http.StatusOK, "dataset.html", gin.H{
 		"Title": "PerView",
-		"ID":    tid,
+		"ID":    did,
 		"URL":   tileurl,
-		"FMT":   tss.Format.String(),
+		"FMT":   "pbf",
 	})
 }
 
@@ -415,8 +447,8 @@ func getGeojson(c *gin.Context) {
 	did := c.Param("id")
 	fields := c.Query("fields")
 	filter := c.Query("filter")
-
-	if code := checkDataset(did); code != 200 {
+	tbname := strings.ToLower(did)
+	if code := checkDataset(tbname); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -429,7 +461,7 @@ func getGeojson(c *gin.Context) {
 	if "" != filter {
 		whr = " WHERE " + filter
 	}
-	s := fmt.Sprintf(`SELECT %s FROM %s %s;`, selStr, did, whr)
+	s := fmt.Sprintf(`SELECT %s FROM "%s" %s;`, selStr, tbname, whr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -496,7 +528,7 @@ func getGeojson(c *gin.Context) {
 		fc.Append(f)
 	}
 	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, did, whr)
+	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM %s %s;`, tbname, whr)
 	db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
@@ -1206,4 +1238,226 @@ func deleteFeatures(c *gin.Context) {
 		return
 	}
 	res.Done(c, "")
+}
+
+func createTileLayer(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	did := c.Param("id")
+	set := userSet.dataset(uid, did)
+	if set == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	dp := &DatafileBind{}
+	err := c.Bind(&dp)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 4001)
+		return
+	}
+	//GeometryCollection,Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon
+	df := &Datafile{}
+	err = db.Where("id = ?", dp.ID).First(df).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			log.Errorf(`can not find datafile, id: %s`, dp.ID)
+			res.FailMsg(c, `can not find datafile`)
+			return
+		}
+		log.Errorf(`get datafile info error, details: %s`, err)
+		res.Fail(c, 5001)
+		return
+	}
+}
+
+func getTileLayer(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	log.Info(uid)
+	did := c.Param("id")
+	// ds := userSet.dataset(uid, did)
+	// if ds == nil {
+	// 	res.Fail(c, 4044)
+	// 	return
+	// }
+	// lookup our Map
+	placeholder, _ := strconv.ParseUint(c.Param("z"), 10, 32)
+	z := uint(placeholder)
+	placeholder, _ = strconv.ParseUint(c.Param("x"), 10, 32)
+	x := uint(placeholder)
+	ypbf := c.Param("y")
+	ys := strings.Split(ypbf, ".")
+	if len(ys) != 2 {
+		res.Fail(c, 404)
+		return
+	}
+	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
+	y := uint(placeholder)
+	type A struct {
+		*atlas.Atlas
+	}
+	a := A{}
+	m, err := a.Map(did)
+	if err != nil {
+		errMsg := fmt.Sprintf("map (%v) not configured. check your config file", did)
+		log.Errorf(errMsg)
+		http.Error(c.Writer, errMsg, http.StatusNotFound)
+		return
+	}
+
+	// filter down the layers we need for this zoom
+	m = m.FilterLayersByZoom(z)
+	if len(m.Layers) == 0 {
+		log.Errorf("map (%v) has no layers, at zoom %v", did, z)
+		return
+	}
+	layers := c.Query("layers")
+	if layers != "" {
+		m = m.FilterLayersByName(layers)
+		if len(m.Layers) == 0 {
+			log.Errorf("map (%v) has no layers, for LayerName %v at zoom %v", did, layers, z)
+			return
+		}
+	}
+
+	tile := slippy.NewTile(z, x, y, TileBuffer, tegola.WebMercator)
+
+	{
+		// Check to see that the zxy is within the bounds of the map.
+		textent := geom.Extent(tile.Bounds())
+		if !m.Bounds.Contains(&textent) {
+			return
+		}
+	}
+
+	// check for the debug query string
+	if true {
+		m = m.AddDebugLayers()
+	}
+
+	pbyte, err := m.Encode(c.Request.Context(), tile)
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			// TODO: add debug logs
+			return
+		default:
+			errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+			log.Error(errMsg)
+			http.Error(c.Writer, errMsg, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// mimetype for mapbox vector tiles
+	// https://www.iana.org/assignments/media-types/application/vnd.mapbox-vector-tile
+	c.Header("Content-Type", mvt.MimeType)
+	c.Header("Content-Encoding", "gzip")
+	// c.Header("Content-Type", "application/x-protobuf")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pbyte)))
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Write(pbyte)
+	log.Info(len(pbyte))
+	// check for tile size warnings
+	if len(pbyte) > server.MaxTileSize {
+		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
+	}
+}
+
+func createTileMap(c *gin.Context) {
+}
+
+func getTileMap(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	log.Info(uid)
+	did := c.Param("id")
+	// ds := userSet.dataset(uid, did)
+	// if ds == nil {
+	// 	res.Fail(c, 4044)
+	// 	return
+	// }
+	// lookup our Map
+	placeholder, _ := strconv.ParseUint(c.Param("z"), 10, 32)
+	z := uint(placeholder)
+	placeholder, _ = strconv.ParseUint(c.Param("x"), 10, 32)
+	x := uint(placeholder)
+	ypbf := c.Param("y")
+	ys := strings.Split(ypbf, ".")
+	if len(ys) != 2 {
+		res.Fail(c, 404)
+		return
+	}
+	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
+	y := uint(placeholder)
+	type A struct {
+		*atlas.Atlas
+	}
+	a := A{}
+	m, err := a.Map(did)
+	if err != nil {
+		errMsg := fmt.Sprintf("map (%v) not configured. check your config file", did)
+		log.Errorf(errMsg)
+		http.Error(c.Writer, errMsg, http.StatusNotFound)
+		return
+	}
+
+	// filter down the layers we need for this zoom
+	m = m.FilterLayersByZoom(z)
+	if len(m.Layers) == 0 {
+		log.Errorf("map (%v) has no layers, at zoom %v", did, z)
+		return
+	}
+	layers := c.Query("layers")
+	if layers != "" {
+		m = m.FilterLayersByName(layers)
+		if len(m.Layers) == 0 {
+			log.Errorf("map (%v) has no layers, for LayerName %v at zoom %v", did, layers, z)
+			return
+		}
+	}
+
+	tile := slippy.NewTile(z, x, y, TileBuffer, tegola.WebMercator)
+
+	{
+		// Check to see that the zxy is within the bounds of the map.
+		textent := geom.Extent(tile.Bounds())
+		if !m.Bounds.Contains(&textent) {
+			return
+		}
+	}
+
+	// check for the debug query string
+	if true {
+		m = m.AddDebugLayers()
+	}
+
+	pbyte, err := m.Encode(c.Request.Context(), tile)
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			// TODO: add debug logs
+			return
+		default:
+			errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+			log.Error(errMsg)
+			http.Error(c.Writer, errMsg, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// mimetype for mapbox vector tiles
+	// https://www.iana.org/assignments/media-types/application/vnd.mapbox-vector-tile
+	c.Header("Content-Type", mvt.MimeType)
+	c.Header("Content-Encoding", "gzip")
+	// c.Header("Content-Type", "application/x-protobuf")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pbyte)))
+	c.Writer.WriteHeader(http.StatusOK)
+	c.Writer.Write(pbyte)
+	log.Info(len(pbyte))
+	// check for tile size warnings
+	if len(pbyte) > server.MaxTileSize {
+		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
+	}
 }

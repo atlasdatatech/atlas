@@ -9,6 +9,7 @@ import (
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/gin-gonic/gin"
+	"github.com/go-spatial/tegola/dict"
 	"github.com/shiena/ansicolor"
 
 	log "github.com/sirupsen/logrus"
@@ -48,10 +49,19 @@ func debugSetup() *gin.Engine {
 	if err != nil {
 		log.Fatalf("init db error, details: %s", err)
 	}
-
-	provd, err = initProvider()
-	if err != nil {
-		log.Fatalf("init provider error: %s", err)
+	{
+		provArr := make([]dict.Dicter, len(conf.Providers))
+		for i := range provArr {
+			provArr[i] = conf.Providers[i]
+		}
+		providers, err = initProviders(provArr)
+		if err != nil {
+			log.Fatalf("could not register providers: %v", err)
+		}
+		// init our maps
+		if err = initMaps(nil, conf.Maps, providers); err != nil {
+			log.Fatalf("could not register maps: %v", err)
+		}
 	}
 
 	authMid, err = initJWT()
@@ -66,7 +76,7 @@ func debugSetup() *gin.Engine {
 
 	initSystemUser()
 	initTaskRouter()
-	loadPubServices()
+	loadServices(ATLAS)
 
 	return setupRouter()
 }

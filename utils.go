@@ -739,6 +739,7 @@ func UnZipToDir(zipfile string) string {
 			}
 			continue
 		}
+
 		w, err := os.Create(pn)
 		if err != nil {
 			log.Warnf("Cannot unzip %s: %v", zipfile, err)

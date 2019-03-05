@@ -330,7 +330,7 @@ func (s *ServiceSet) ServeFonts() error {
 	return nil
 }
 
-// AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者tilemap配置文件
+// AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者未发布的可发布数据源(暂未实现)
 func (s *ServiceSet) AddTilesets() error {
 	//遍历dir目录下所有.mbtiles
 	files := make(map[string]string)
@@ -475,20 +475,26 @@ func (s *ServiceSet) AddDatasets() error {
 				if err != nil {
 					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
 				}
-				_, err = df.dataImport()
-				if err != nil {
+				task := df.dataImport()
+				if task.Err != "" {
 					log.Error(err)
+					<-task.Pipe
+					<-taskQueue
 					continue
 				}
-				ds, err := df.toDataset()
-				if err != nil {
-					log.Error(err)
-					continue
-				}
-				err = ds.UpInsert()
-				if err != nil {
-					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-				}
+				go func(df *Datafile) {
+					<-task.Pipe
+					<-taskQueue
+					ds, err := df.toDataset()
+					if err != nil {
+						log.Error(err)
+						return
+					}
+					err = ds.UpInsert()
+					if err != nil {
+						log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+					}
+				}(df)
 				count++
 			}
 		}

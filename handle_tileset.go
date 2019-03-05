@@ -565,7 +565,7 @@ func getTilejson(c *gin.Context) {
 	}
 	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
 	format := tss.Format.String()
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
+	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
@@ -616,7 +616,7 @@ func getTilejson(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.Param("user")
 	tid := c.Param("id")
 	tss := userSet.tileset(uid, tid)
 	if tss == nil {
@@ -625,7 +625,7 @@ func viewTile(c *gin.Context) {
 		return
 	}
 	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
-	c.HTML(http.StatusOK, "data.html", gin.H{
+	c.HTML(http.StatusOK, "tileset.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
@@ -635,7 +635,7 @@ func viewTile(c *gin.Context) {
 
 func getTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.Param("user")
 	tid := c.Param("id")
 	tss := userSet.tileset(uid, tid)
 	if tss == nil {
