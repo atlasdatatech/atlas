@@ -652,7 +652,6 @@ func setupRouter() *gin.Engine {
 		datasets.POST("/:user/distinct/:id/", getDistinctValues)
 		datasets.GET("/:user/search/:id/", searchGeos)
 		datasets.GET("/:user/buffer/:id/", getBuffers)
-		datasets.GET("/:user/models/:id/", getModels)
 
 		datasets.GET("/:user/x/:id/", getTileLayerJSON)
 		datasets.GET("/:user/x/:id/:z/:x/:y", getTileLayer)
