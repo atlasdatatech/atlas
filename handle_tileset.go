@@ -205,7 +205,7 @@ func publishTileset(c *gin.Context) {
 		res.Fail(c, 5002)
 		return
 	}
-
+log.Info("receive finished...")
 	dtfiles, err := LoadDatafile(dst)
 	if err != nil {
 		log.Errorf(`publishTileset, loading datafile error, details: %s`, err)
@@ -236,6 +236,7 @@ func publishTileset(c *gin.Context) {
 	}
 	//publish to mbtiles
 	outfile := filepath.Join("tilesets", uid, name+"."+id+".mbtiles")
+log.Println("start create mbtiles")
 	err = createMbtiles(outfile, inputfiles)
 	if err != nil {
 		log.Error(err)
@@ -243,6 +244,7 @@ func publishTileset(c *gin.Context) {
 		return
 	}
 
+log.Info("mbtiles created...")
 	//加载mbtiles
 	tileset, err := LoadTileset(outfile)
 	if err != nil {
