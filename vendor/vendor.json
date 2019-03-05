@@ -339,6 +339,13 @@
 			"revisionTime": "2018-04-15T19:51:42Z"
 		},
 		{
+			"checksumSHA1": "wTEgjm+hDbRorftlv7J7bDo49Og=",
+			"origin": "github.com/go-spatial/tegola/vendor/github.com/dimfeld/httptreemux",
+			"path": "github.com/dimfeld/httptreemux",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
+		},
+		{
 			"checksumSHA1": "KsPE03kawrvXzs7xUmxu3TiPGEE=",
 			"path": "github.com/dustin/go-broadcast",
 			"revision": "f664265f5a662fb4d1df7f3533b1e8d0e0277120",
@@ -580,6 +587,18 @@
 			"revisionTime": "2018-11-09T21:58:47Z"
 		},
 		{
+			"checksumSHA1": "I16ocojtHPdMEPXTzWEFSTn6soQ=",
+			"path": "github.com/go-spatial/tegola/mapbox/style",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
+		},
+		{
+			"checksumSHA1": "X1TS/ISdy/8h234bdL+UG8tBJ8I=",
+			"path": "github.com/go-spatial/tegola/mapbox/tilejson",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
+		},
+		{
 			"checksumSHA1": "hSD9DZqvsavyRmo5DiJGy3AhHIk=",
 			"path": "github.com/go-spatial/tegola/maths",
 			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
@@ -666,6 +685,18 @@
 		{
 			"checksumSHA1": "RhIV+4U3dM2ObSPmlATiNIyuMGg=",
 			"path": "github.com/go-spatial/tegola/provider/postgis",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
+		},
+		{
+			"checksumSHA1": "59ccljZQ9SDEFHwy4502euKGtGY=",
+			"path": "github.com/go-spatial/tegola/server",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
+		},
+		{
+			"checksumSHA1": "4d97PauaNXxYOckpSrwUl1UWSOo=",
+			"path": "github.com/go-spatial/tegola/server/bindata",
 			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
 			"revisionTime": "2018-11-09T21:58:47Z"
 		},
@@ -932,6 +963,24 @@
 		{
 			"checksumSHA1": "xGKNc62C43gq/9HW16ZZ8IlhFi4=",
 			"path": "github.com/paulmach/orb/geojson",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "7admJWutuFJ7lLJKIgxyknU5zKo=",
+			"path": "github.com/paulmach/orb/internal/mercator",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "/GPpRo8541zl12xER3EY2h8sz+U=",
+			"path": "github.com/paulmach/orb/maptile",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "3GDzq2JP0ZrM5iletz0BJrcw7CU=",
+			"path": "github.com/paulmach/orb/maptile/tilecover",
 			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
 			"revisionTime": "2018-09-11T19:35:47Z"
 		},
@@ -1405,6 +1454,13 @@
 			"path": "google.golang.org/grpc/tap",
 			"revision": "5b2c343e0bde905ff6b4c5bc7877cdcc765b9700",
 			"revisionTime": "2018-10-12T22:44:20Z"
+		},
+		{
+			"checksumSHA1": "/Lfp07jxSrJUZlijYMG5W2MtfAM=",
+			"origin": "github.com/go-spatial/tegola/vendor/gopkg.in/go-playground/colors.v1",
+			"path": "gopkg.in/go-playground/colors.v1",
+			"revision": "98f044f54c984cde42eb2f375432e17d3134de14",
+			"revisionTime": "2018-11-09T21:58:47Z"
 		},
 		{
 			"checksumSHA1": "q190bL03wQok3wVwYmMub2XhOiU=",

@@ -96,40 +96,40 @@ type ServiceSet struct {
 // LoadServiceSet 加载服务集，ATLAS基础服务集，USER用户服务集
 func (s *ServiceSet) LoadServiceSet() error {
 	//diff styles dir and append new styles
-	err := s.AddStyles()
-	if err != nil {
-		log.Errorf("AddStyles, add new styles error, details:%s", err)
-	}
+	// err := s.AddStyles()
+	// if err != nil {
+	// 	log.Errorf("AddStyles, add new styles error, details:%s", err)
+	// }
 	//serve all altas styles
-	err = s.ServeStyles()
+	err := s.ServeStyles()
 	if err != nil {
 		log.Errorf("ServeStyles, serve %s's styles error, details:%s", ATLAS, err)
 	}
-	//diff fonts dir and append new fonts
-	err = s.AddFonts()
-	if err != nil {
-		log.Errorf("AddFonts, add new fonts error, details:%s", err)
-	}
+	// //diff fonts dir and append new fonts
+	// err = s.AddFonts()
+	// if err != nil {
+	// 	log.Errorf("AddFonts, add new fonts error, details:%s", err)
+	// }
 	//serve all altas fonts
 	err = s.ServeFonts()
 	if err != nil {
 		log.Errorf("ServeFonts, serve %s's fonts error, details:%s", ATLAS, err)
 	}
-	//diff tileset dir and append new tileset
-	s.AddTilesets() //服务启动时，检测未入服务集(mbtiles,pbflayers)
-	if err != nil {
-		log.Errorf("AddTilesets, add new tileset error, details:%s", err)
-	}
+	// //diff tileset dir and append new tileset
+	// s.AddTilesets() //服务启动时，检测未入服务集(mbtiles,pbflayers)
+	// if err != nil {
+	// 	log.Errorf("AddTilesets, add new tileset error, details:%s", err)
+	// }
 	//serve all altas tilesets
 	s.ServeTilesets() //服务启动时，创建服务集
 	if err != nil {
 		log.Errorf("ServeTilesets, serve %s's tileset error, details:%s", ATLAS, err)
 	}
-	//diff tileset dir and append new dataset
-	s.AddDatasets() //服务启动时，检测未入库数据集
-	if err != nil {
-		log.Errorf("AddDatasets, add new dataset error, details:%s", err)
-	}
+	// //diff tileset dir and append new dataset
+	// s.AddDatasets() //服务启动时，检测未入库数据集
+	// if err != nil {
+	// 	log.Errorf("AddDatasets, add new dataset error, details:%s", err)
+	// }
 	//serve all altas datasets
 	s.ServeDatasets() //服务启动时，创建数据集
 	if err != nil {

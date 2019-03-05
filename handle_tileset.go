@@ -392,24 +392,28 @@ func createTileset(c *gin.Context) {
 	res := NewRes()
 	// id := c.GetString(identityKey)
 	uid := c.Param("user")
-	tid := c.Param("id")
-	ts := userSet.tileset(uid, tid)
-	if ts == nil {
-		log.Errorf(`replaceTileset, %s's tile service (%s) not found ^^`, uid, tid)
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Errorf(`createTileset, %s's tile service (%s) not found ^^`, uid, did)
 		res.Fail(c, 4044)
 		return
 	}
-	dst := ""
-	// creatembtiles(dst)
-	//更新服务
-	tile, err := LoadTileset(dst)
+	path := filepath.Join("tilesets", uid, dts.ID+".mbtiles")
+	// download
+	err := dts.CacheMBTiles(path)
 	if err != nil {
-		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
+		log.Errorf("createTileset, could not load tileset %s, details: %s", path, err)
 		res.FailErr(c, err)
 		return
 	}
-	ts.Clean()
-	tile.ID = tid
+	tile, err := LoadTileset(path)
+	if err != nil {
+		log.Errorf("createTileset, could not load tileset %s, details: %s", path, err)
+		res.FailErr(c, err)
+		return
+	}
+	tile.ID = did
 	tile.Owner = uid
 	//加载服务,todo 用户服务无需预加载
 	tss, err := tile.toService()
@@ -552,7 +556,7 @@ func deleteTileset(c *gin.Context) {
 }
 
 //getTilejson get tilejson
-func getTilejson(c *gin.Context) {
+func getTileJSON(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
@@ -565,7 +569,7 @@ func getTilejson(c *gin.Context) {
 	}
 	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
 	format := tss.Format.String()
-	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
+	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
@@ -615,21 +619,21 @@ func getTilejson(c *gin.Context) {
 }
 
 func viewTile(c *gin.Context) {
-	res := NewRes()
+	// res := NewRes()
 	uid := c.Param("user")
 	tid := c.Param("id")
-	tss := userSet.tileset(uid, tid)
-	if tss == nil {
-		log.Errorf("viewTile, tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4044)
-		return
-	}
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
+	// tss := userSet.tileset(uid, tid)
+	// if tss == nil {
+	// 	log.Errorf("viewTile, tilesets id(%s) not exist in the service", tid)
+	// 	res.Fail(c, 4044)
+	// 	return
+	// }
+	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
 	c.HTML(http.StatusOK, "tileset.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
-		"FMT":   tss.Format.String(),
+		"FMT":   "pbf", //tss.Format.String(),
 	})
 }
 

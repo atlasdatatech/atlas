@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/atlasdatatech/atlas/convert"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
@@ -20,7 +19,7 @@ import (
 	"github.com/go-spatial/tegola/dict"
 	"github.com/go-spatial/tegola/provider"
 	"github.com/go-spatial/tegola/provider/debug"
-	"github.com/go-spatial/tegola/provider/postgis"
+	"github.com/jinzhu/gorm"
 
 	"github.com/go-spatial/tegola/mvt"
 	proto "github.com/golang/protobuf/proto"
@@ -71,15 +70,16 @@ type TileMap struct {
 
 //TileLayer tile layer
 type TileLayer struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	ProviderLayerName string `json:"provider_layer"`
-	MinZoom           uint   `json:"min_zoom"`
-	MaxZoom           uint   `json:"max_zoom"`
-	Provider          provider.Tiler
-	DefaultTags       map[string]interface{} `json:"default_tags"`
-	GeomType          geom.Geometry
-	DontSimplify      bool `json:"dont_simplify"`
+	ID                string                 `json:"id"`
+	Name              string                 `json:"name"`
+	ProviderLayerName string                 `json:"provider_layer"`
+	MinZoom           uint                   `json:"min_zoom"`
+	MaxZoom           uint                   `json:"max_zoom"`
+	Bounds            *geom.Extent           `gorm:"-"`
+	Provider          provider.Tiler         `gorm:"-"`
+	DefaultTags       map[string]interface{} `json:"default_tags" gorm:"-"`
+	GeomType          geom.Geometry          `gorm:"-"`
+	DontSimplify      bool                   `json:"dont_simplify"`
 	Fields            string
 	idFied            string
 	geomFied          string
@@ -87,13 +87,28 @@ type TileLayer struct {
 	srid              uint64
 }
 
-// NewTileLayer will return the value that will be encoded in the Name field when the layer is encoded as MVT
-func NewTileLayer() (*TileLayer, error) {
-	pgl := postgis.Layer{}
-	log.Info(pgl)
-	providers["pg"].Layers()
-
-	return nil, nil
+//UpInsert 创建更新瓦片集服务
+//create or update upload data file info into database
+func (tl *TileLayer) UpInsert() error {
+	if tl == nil {
+		return fmt.Errorf("datafile may not be nil")
+	}
+	tmp := &TileLayer{}
+	err := db.Where("id = ?", tl.ID).First(tmp).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			err = db.Create(tl).Error
+			if err != nil {
+				return err
+			}
+		}
+		return err
+	}
+	err = db.Model(&TileLayer{}).Update(tl).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // MVTName will return the value that will be encoded in the Name field when the layer is encoded as MVT
@@ -108,9 +123,9 @@ func (tl *TileLayer) MVTName() string {
 // FilterByZoom 过滤
 func (tl *TileLayer) FilterByZoom(zoom uint) bool {
 	if (tl.MinZoom <= zoom || tl.MinZoom == 0) && (tl.MaxZoom >= zoom || tl.MaxZoom == 0) {
-		return true
+		return false
 	}
-	return false
+	return true
 }
 
 //Encode TODO (arolek): support for max zoom
@@ -126,7 +141,7 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 	// fetch layer from data provider
 	err := tl.Provider.TileFeatures(ctx, tl.ProviderLayerName, tile, func(f *provider.Feature) error {
 		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
-		geo, err := convert.ToTegola(f.Geometry)
+		geo, err := ToTegola(f.Geometry)
 		if err != nil {
 			return err
 		}
@@ -354,7 +369,7 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 			// fetch layer from data provider
 			err := l.Provider.TileFeatures(ctx, l.ProviderLayerName, tile, func(f *provider.Feature) error {
 				// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
-				geo, err := convert.ToTegola(f.Geometry)
+				geo, err := ToTegola(f.Geometry)
 				if err != nil {
 					return err
 				}

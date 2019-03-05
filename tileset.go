@@ -518,3 +518,47 @@ func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
 	tc.y = uint(uy)
 	return
 }
+
+//SetupMBTileTables 初始化配置MBTile库
+func SetupMBTileTables(path string) (*TileService, error) {
+	os.Remove(path)
+	dir := filepath.Dir(path)
+	os.MkdirAll(dir, os.ModePerm)
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("PRAGMA synchronous=0")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("PRAGMA locking_mode=EXCLUSIVE")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("PRAGMA journal_mode=DELETE")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("create table if not exists tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("create table if not exists metadata (name text, value text);")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("create unique index name on metadata (name);")
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("create unique index tile_index on tiles(zoom_level, tile_column, tile_row);")
+	if err != nil {
+		return nil, err
+	}
+	out := &TileService{
+		Path: path, //should not add / at the end
+		db:   db,
+	}
+	return out, nil
+}

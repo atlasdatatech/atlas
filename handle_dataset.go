@@ -17,8 +17,10 @@ import (
 	slippy "github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/atlas"
+	"github.com/go-spatial/tegola/mapbox/tilejson"
 	"github.com/go-spatial/tegola/mvt"
 	"github.com/go-spatial/tegola/server"
+
 	"github.com/jinzhu/gorm"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
@@ -382,21 +384,22 @@ func downloadDataset(c *gin.Context) {
 }
 
 func viewDataset(c *gin.Context) {
-	// res := NewRes()
+	res := NewRes()
 	uid := c.Param("user")
 	did := c.Param("id")
-	// tss := userSet.tileset(uid, tid)
-	// if tss == nil {
-	// 	log.Errorf("tilesets id(%s) not exist in the service", tid)
-	// 	res.Fail(c, 4044)
-	// 	return
-	// }
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Errorf("tilesets id(%s) not exist in the service", did)
+		res.Fail(c, 4044)
+		return
+	}
 	//"china-z7.rjA5dSCmR"
 	// tileurl :="http://localhost:8080/maps/map/roads/{z}/{x}/{y}.pbf"
 	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), uid, did) //need use user own service set
 	c.HTML(http.StatusOK, "dataset.html", gin.H{
 		"Title": "PerView",
 		"ID":    did,
+		"Name":  dts.Name,
 		"URL":   tileurl,
 		"FMT":   "pbf",
 	})
@@ -1244,43 +1247,31 @@ func createTileLayer(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("user")
 	did := c.Param("id")
-	set := userSet.dataset(uid, did)
-	if set == nil {
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
 		res.Fail(c, 4044)
 		return
 	}
-	dp := &DatafileBind{}
-	err := c.Bind(&dp)
+	tl, err := dts.NewTileLayer()
 	if err != nil {
-		log.Error(err)
-		res.Fail(c, 4001)
+		res.FailErr(c, err)
 		return
 	}
-	//GeometryCollection,Point,MultiPoint,LineString,MultiLineString,Polygon,MultiPolygon
-	df := &Datafile{}
-	err = db.Where("id = ?", dp.ID).First(df).Error
-	if err != nil {
-		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`can not find datafile, id: %s`, dp.ID)
-			res.FailMsg(c, `can not find datafile`)
-			return
-		}
-		log.Errorf(`get datafile info error, details: %s`, err)
-		res.Fail(c, 5001)
-		return
-	}
+	log.Info(tl)
+	tl.UpInsert()
+	res.Done(c, "")
+	return
 }
 
 func getTileLayer(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("user")
-	log.Info(uid)
 	did := c.Param("id")
-	// ds := userSet.dataset(uid, did)
-	// if ds == nil {
-	// 	res.Fail(c, 4044)
-	// 	return
-	// }
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		res.Fail(c, 4044)
+		return
+	}
 	// lookup our Map
 	placeholder, _ := strconv.ParseUint(c.Param("z"), 10, 32)
 	z := uint(placeholder)
@@ -1294,31 +1285,19 @@ func getTileLayer(c *gin.Context) {
 	}
 	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
 	y := uint(placeholder)
-	type A struct {
-		*atlas.Atlas
-	}
-	a := A{}
-	m, err := a.Map(did)
-	if err != nil {
-		errMsg := fmt.Sprintf("map (%v) not configured. check your config file", did)
-		log.Errorf(errMsg)
-		http.Error(c.Writer, errMsg, http.StatusNotFound)
-		return
-	}
 
-	// filter down the layers we need for this zoom
-	m = m.FilterLayersByZoom(z)
-	if len(m.Layers) == 0 {
-		log.Errorf("map (%v) has no layers, at zoom %v", did, z)
-		return
-	}
-	layers := c.Query("layers")
-	if layers != "" {
-		m = m.FilterLayersByName(layers)
-		if len(m.Layers) == 0 {
-			log.Errorf("map (%v) has no layers, for LayerName %v at zoom %v", did, layers, z)
+	if dts.TLayer == nil {
+		_, err := dts.NewTileLayer()
+		if err != nil {
+			log.Error(err)
+			res.FailMsg(c, "tilelayer empty")
 			return
 		}
+	}
+
+	if dts.TLayer.FilterByZoom(z) {
+		log.Errorf("map (%v) has no layer, at zoom %v", did, z)
+		return
 	}
 
 	tile := slippy.NewTile(z, x, y, TileBuffer, tegola.WebMercator)
@@ -1326,17 +1305,12 @@ func getTileLayer(c *gin.Context) {
 	{
 		// Check to see that the zxy is within the bounds of the map.
 		textent := geom.Extent(tile.Bounds())
-		if !m.Bounds.Contains(&textent) {
+		if !dts.TLayer.Bounds.Contains(&textent) {
 			return
 		}
 	}
 
-	// check for the debug query string
-	if true {
-		m = m.AddDebugLayers()
-	}
-
-	pbyte, err := m.Encode(c.Request.Context(), tile)
+	pbyte, err := dts.TLayer.Encode(c.Request.Context(), tile)
 	if err != nil {
 		switch err {
 		case context.Canceled:
@@ -1363,6 +1337,88 @@ func getTileLayer(c *gin.Context) {
 	if len(pbyte) > server.MaxTileSize {
 		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
 	}
+}
+
+func getTileLayerJSON(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("user")
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		res.Fail(c, 4044)
+		return
+	}
+	if dts.TLayer == nil {
+		_, err := dts.NewTileLayer()
+		if err != nil {
+			log.Error(err)
+			res.FailMsg(c, "tilelayer empty")
+			return
+		}
+		dts.UpdateExtent()
+	}
+	zoom := (dts.TLayer.MinZoom + dts.TLayer.MaxZoom) / 2
+	attr := "atlas realtime tile layer"
+	tileJSON := tilejson.TileJSON{
+		Attribution: &attr,
+		Bounds:      dts.TLayer.Bounds.Extent(),
+		Center:      [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(zoom)},
+		Format:      "pbf",
+		Name:        &dts.Name,
+		Scheme:      tilejson.SchemeXYZ,
+		TileJSON:    tilejson.Version,
+		Version:     "1.0.0",
+		Grids:       make([]string, 0),
+		Data:        make([]string, 0),
+	}
+
+	tileJSON.MinZoom = dts.TLayer.MinZoom
+	tileJSON.MaxZoom = dts.TLayer.MaxZoom
+	//	build our vector layer details
+	layer := tilejson.VectorLayer{
+		Version: 2,
+		Extent:  4096,
+		ID:      dts.TLayer.MVTName(),
+		Name:    dts.TLayer.MVTName(),
+		MinZoom: dts.TLayer.MinZoom,
+		MaxZoom: dts.TLayer.MaxZoom,
+		Tiles: []string{
+			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.TLayer.MVTName()),
+		},
+	}
+
+	switch dts.TLayer.GeomType.(type) {
+	case geom.Point, geom.MultiPoint:
+		layer.GeometryType = tilejson.GeomTypePoint
+	case geom.Line, geom.LineString, geom.MultiLineString:
+		layer.GeometryType = tilejson.GeomTypeLine
+	case geom.Polygon, geom.MultiPolygon:
+		layer.GeometryType = tilejson.GeomTypePolygon
+	default:
+		layer.GeometryType = tilejson.GeomTypeUnknown
+		// TODO: debug log
+	}
+
+	// add our layer to our tile layer response
+	tileJSON.VectorLayers = append(tileJSON.VectorLayers, layer)
+
+	tileURL := fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, did)
+
+	// build our URL scheme for the tile grid
+	tileJSON.Tiles = append(tileJSON.Tiles, tileURL)
+
+	// content type
+	c.Header("Content-Type", "application/json")
+
+	// cache control headers (no-cache)
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+
+	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
+		log.Printf("error encoding tileJSON for layer (%v)", did)
+	}
+
 }
 
 func createTileMap(c *gin.Context) {

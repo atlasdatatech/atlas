@@ -162,6 +162,7 @@ func initDb() (*gorm.DB, error) {
 	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
+	pg.AutoMigrate(&TileLayer{})
 	return pg, nil
 }
 
@@ -609,7 +610,7 @@ func setupRouter() *gin.Engine {
 		tilesets.GET("/", autoUser)
 		tilesets.POST("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
-		tilesets.GET("/:user/x/:id/", getTilejson) //tilejson
+		tilesets.GET("/:user/x/:id/", getTileJSON) //tilejson
 		tilesets.GET("/:user/x/:id/:z/:x/:y", getTile)
 		tilesets.POST("/:user/upload/", uploadTileset)
 		tilesets.POST("/:user/replace/:id/", replaceTileset)
@@ -630,8 +631,7 @@ func setupRouter() *gin.Engine {
 		// > datasets
 		datasets.GET("/", autoUser)
 		datasets.GET("/:user/", listDatasets)
-		datasets.GET("/:user/x/:id/", getDatasetInfo)
-		datasets.GET("/:user/x/:id/:z/:x/:y", getTileMap)
+		datasets.GET("/:user/info/:id/", getDatasetInfo)
 		datasets.POST("/:user/upload/", uploadFile)
 		datasets.GET("/:user/preview/:id/", previewFile)
 		datasets.POST("/:user/import/:id/", importFile)
@@ -654,6 +654,8 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/:user/buffer/:id/", getBuffers)
 		datasets.GET("/:user/models/:id/", getModels)
 
+		datasets.GET("/:user/x/:id/", getTileLayerJSON)
+		datasets.GET("/:user/x/:id/:z/:x/:y", getTileLayer)
 		datasets.POST("/:user/x/:id/", createTileLayer)
 
 	}
@@ -714,7 +716,7 @@ func main() {
 				atlas.SetCache(cache)
 			}
 		}
-		initTegolaServer()
+		// initTegolaServer()
 	}
 
 	authMid, err = initJWT()
