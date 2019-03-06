@@ -96,20 +96,20 @@ type ServiceSet struct {
 // LoadServiceSet 加载服务集，ATLAS基础服务集，USER用户服务集
 func (s *ServiceSet) LoadServiceSet() error {
 	//diff styles dir and append new styles
-	// err := s.AddStyles()
-	// if err != nil {
-	// 	log.Errorf("AddStyles, add new styles error, details:%s", err)
-	// }
+	err := s.AddStyles()
+	if err != nil {
+		log.Errorf("AddStyles, add new styles error, details:%s", err)
+	}
 	//serve all altas styles
-	err := s.ServeStyles()
+	err = s.ServeStyles()
 	if err != nil {
 		log.Errorf("ServeStyles, serve %s's styles error, details:%s", ATLAS, err)
 	}
-	// //diff fonts dir and append new fonts
-	// err = s.AddFonts()
-	// if err != nil {
-	// 	log.Errorf("AddFonts, add new fonts error, details:%s", err)
-	// }
+	//diff fonts dir and append new fonts
+	err = s.AddFonts()
+	if err != nil {
+		log.Errorf("AddFonts, add new fonts error, details:%s", err)
+	}
 	//serve all altas fonts
 	err = s.ServeFonts()
 	if err != nil {
