@@ -97,7 +97,7 @@ func getMap(c *gin.Context) {
 			log.Error(err)
 			res.Fail(c, 5001)
 		}
-		res.Fail(c, 4043)
+		res.Fail(c, 4049)
 		return
 	}
 	res.DoneData(c, m.toBind())
@@ -302,7 +302,7 @@ func importMaps(c *gin.Context) {
 	if id == ATLAS || casEnf.HasRoleForUser(id, "admin@group") {
 		file, err := c.FormFile("file")
 		if err != nil {
-			res.Fail(c, 4046)
+			res.Fail(c, 4048)
 			return
 		}
 

@@ -26,7 +26,7 @@ func listStyles(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	var styles []*StyleService
@@ -84,7 +84,7 @@ func getStyleThumbnial(c *gin.Context) {
 	res.DoneData(c, style.Thumbnail)
 }
 
-//publicStyle 下载样式
+//publicStyle 分享样式
 func publicStyle(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -110,7 +110,39 @@ func publicStyle(c *gin.Context) {
 	err := db.Model(&Style{}).Where("id = ?", style.ID).Update(Style{Public: true}).Error
 	if err != nil {
 		log.Errorf(`update style db error, details: %s`, err)
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, "")
+}
+
+//privateStyle 关闭分享样式
+func privateStyle(c *gin.Context) {
+	res := NewRes()
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
+	sid := c.Param("id")
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Errorf(`publicStyle, %s's style service (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
+		return
+	}
+	if !style.Public {
+		res.FailMsg(c, "already private")
+		return
+	}
+
+	//添加管理员组的用户管理权限
+	casEnf.RemovePolicy(USER, fmt.Sprintf("/styles/%s/x/%s/", uid, sid), "GET")
+	casEnf.RemovePolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
+	// casEnf.RemovePolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
+	// casEnf.RemovePolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
+	style.Public = false
+	err := db.Model(&Style{}).Where("id = ?", style.ID).Update(Style{Public: false}).Error
+	if err != nil {
+		log.Errorf(`update style db error, details: %s`, err)
+		res.Fail(c, 5001)
 		return
 	}
 	res.DoneData(c, "")
@@ -125,7 +157,7 @@ func uploadStyle(c *gin.Context) {
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, uid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
@@ -184,14 +216,14 @@ func replaceStyle(c *gin.Context) {
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceStyle, %s's service set not found ^^`, uid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`replaceStyle, get form: %s; user: %s`, err, uid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
@@ -495,6 +527,7 @@ func uploadSprite(c *gin.Context) {
 		res.Fail(c, 400)
 		return
 	}
+	var sucs []string
 	files := form.File["files"]
 	for _, file := range files {
 		dst := filepath.Join(style.URL, file.Filename)
@@ -503,9 +536,10 @@ func uploadSprite(c *gin.Context) {
 			res.Fail(c, 5002)
 			return
 		}
+		sucs = append(sucs, file.Filename)
 	}
 	//todo update to cache
-	res.Done(c, "")
+	res.DoneData(c, sucs)
 }
 
 func updateSprite(c *gin.Context) {
@@ -519,8 +553,7 @@ func updateSprite(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	fmt := c.Param("fmt")
-	sprite := "sprite" + fmt
+	sprite := c.Param("name")
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Errorf(`updateSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
@@ -547,8 +580,7 @@ func getSprite(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	fmt := c.Param("fmt")
-	sprite := "sprite" + fmt
+	sprite := c.Param("name")
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Errorf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
@@ -686,8 +718,8 @@ func getStyle(c *gin.Context) {
 	c.JSON(http.StatusOK, &out)
 }
 
-//copyStyle get user style by id
-func copyStyle(c *gin.Context) {
+//cloneStyle 复制指定用户的公开样式
+func cloneStyle(c *gin.Context) {
 	res := NewRes()
 	self := c.GetString(identityKey)
 	uid := c.Param("user")
@@ -701,12 +733,14 @@ func copyStyle(c *gin.Context) {
 	set := userSet.service(self)
 	if set == nil {
 		log.Errorf("copyStyle, %s's service set not found ^^", uid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	id, _ := shortid.Generate()
 	ns := style.Copy()
-	ns.ID = ns.ID + "." + id
+	suffix := filepath.Ext(ns.ID)
+	ns.ID = strings.TrimSuffix(ns.ID, suffix) + "." + id
+	ns.Name = ns.Name + "-复制"
 	ns.Owner = self
 	oldpath := ns.URL
 	ns.URL = strings.Replace(ns.URL, uid, self, 1)
@@ -723,7 +757,7 @@ func copyStyle(c *gin.Context) {
 		return
 	}
 	set.S.Store(ns.ID, ns)
-	res.Done(c, "success")
+	res.DoneData(c, ns)
 }
 
 //viewStyle load style map
@@ -738,10 +772,11 @@ func viewStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
+	url := fmt.Sprintf(`%s/styles/%s/x/%s/`, rootURL(c.Request), uid, sid)
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
 		"Title": "Viewer",
 		"ID":    sid,
-		"URL":   strings.TrimSuffix(c.Request.URL.Path, "view/"),
+		"URL":   url,
 	})
 }
 

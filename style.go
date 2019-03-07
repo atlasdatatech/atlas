@@ -22,7 +22,7 @@ import (
 type Style struct {
 	ID        string `json:"id" gorm:"primary_key"`
 	Version   string `json:"version"`
-	Name      string `json:"name" gorm:"unique;not null;unique_index"`
+	Name      string `json:"name" gorm:"index"`
 	Summary   string `json:"summary"`
 	Owner     string `json:"owner" gorm:"index"`
 	Public    bool   `json:"public"`
@@ -168,6 +168,11 @@ func (ss *StyleService) GenSprite(sprite string) error {
 	}
 
 	dir := filepath.Join(ss.URL, "icons")
+
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("no icons, can not refresh sprites")
+	}
+
 	symbols := ReadIcons(dir, scale) //readIcons(dir, 1)
 	sort.Slice(symbols, func(i, j int) bool {
 		if symbols[j].Height == symbols[i].Height {

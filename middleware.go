@@ -172,11 +172,20 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 			}
 			//且访问的是其他的资源，资源鉴权
 			//暂时关掉所有通过jwt访问非自有资源权限，后续添加组织、域、资源组等概念后开放
-			c.JSON(http.StatusForbidden, gin.H{
-				"code": 403,
-				"msg":  "need add to group or has a access token",
-			})
-			c.Abort()
+			// c.JSON(http.StatusForbidden, gin.H{
+			// 	"code": 403,
+			// 	"msg":  "need add to group or has a access token",
+			// })
+			// c.Abort()
+			// return
+			if !e.Enforce(uid, c.Request.URL.Path, c.Request.Method) {
+				c.JSON(http.StatusForbidden, gin.H{
+					"code": 403,
+					"msg":  "you don't have permission to access this resource",
+				})
+				c.Abort()
+				return
+			}
 			return
 		}
 		//uid认证未通过	//且token认证未通过,返回

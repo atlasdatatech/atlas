@@ -85,7 +85,7 @@ func studioIndex(c *gin.Context) {
 	uid := c.GetString(identityKey)
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	var styles []*StyleService
@@ -114,7 +114,7 @@ func studioEditer(c *gin.Context) {
 	uid := c.GetString(identityKey)
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	var styles []*StyleService

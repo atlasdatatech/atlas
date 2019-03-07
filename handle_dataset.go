@@ -36,7 +36,7 @@ func listDatasets(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	var dss []*DataService
@@ -67,7 +67,7 @@ func getDatasetInfo(c *gin.Context) {
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	res.DoneData(c, ds)
@@ -78,13 +78,13 @@ func oneClickImport(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -175,13 +175,13 @@ func uploadFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -224,7 +224,7 @@ func previewFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	id := c.Param("id")
@@ -262,7 +262,7 @@ func importFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	dp := &DatafileBind{}
@@ -381,7 +381,7 @@ func downloadDataset(c *gin.Context) {
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
 		log.Errorf(`downloadDataset, %s's data service (%s) not found ^^`, uid, did)
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	file, err := os.Open(ds.URL)
@@ -403,7 +403,7 @@ func viewDataset(c *gin.Context) {
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
 		log.Errorf("tilesets id(%s) not exist in the service", did)
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	//"china-z7.rjA5dSCmR"
@@ -1019,7 +1019,7 @@ func createTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	tl, err := dts.NewTileLayer()
@@ -1039,7 +1039,7 @@ func getTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	// lookup our Map
@@ -1115,7 +1115,7 @@ func getTileLayerJSON(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4046)
 		return
 	}
 	if dts.TLayer == nil {
@@ -1201,7 +1201,7 @@ func getTileMap(c *gin.Context) {
 	did := c.Param("id")
 	// ds := userSet.dataset(uid, did)
 	// if ds == nil {
-	// 	res.Fail(c, 4044)
+	// 	res.Fail(c, 4046)
 	// 	return
 	// }
 	// lookup our Map

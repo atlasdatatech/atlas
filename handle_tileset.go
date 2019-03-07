@@ -22,7 +22,7 @@ func listTilesets(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	var tilesets []*TileService
@@ -56,7 +56,7 @@ func getTilesetInfo(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		log.Errorf(`downloadTileset, %s's tile service (%s) not found ^^`, uid, tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	res.DoneData(c, ts)
@@ -69,14 +69,14 @@ func uploadTileset(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadTileset, get form: %s; user: %s`, err, uid)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
@@ -134,14 +134,14 @@ func replaceTileset(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		log.Errorf(`replaceTileset, %s's tile service (%s) not found ^^`, uid, tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`replaceTileset, get file error: %s; user: %s`, err, id)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
@@ -187,7 +187,7 @@ func replaceTileset(c *gin.Context) {
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	//替换
@@ -208,13 +208,13 @@ func publishTileset(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -314,13 +314,13 @@ func rePublishTileset(c *gin.Context) {
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -425,7 +425,7 @@ func createTileset(c *gin.Context) {
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
 		log.Errorf(`createTileset, %s's tile service (%s) not found ^^`, uid, did)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	path := filepath.Join("tilesets", uid, dts.ID+".mbtiles")
@@ -454,7 +454,7 @@ func createTileset(c *gin.Context) {
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 
@@ -478,7 +478,7 @@ func updateTileset(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		log.Errorf(`replaceTileset, %s's tile service (%s) not found ^^`, uid, tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	dst := ""
@@ -507,7 +507,7 @@ func updateTileset(c *gin.Context) {
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 
@@ -531,7 +531,7 @@ func downloadTileset(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		log.Errorf(`downloadTileset, %s's tile service (%s) not found ^^`, uid, tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	file, err := os.Open(ts.Path)
@@ -555,7 +555,7 @@ func deleteTileset(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		log.Errorf(`deleteTileset, %s's tile service (%s) not found ^^`, uid, tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	set := userSet.service(uid)
@@ -593,7 +593,7 @@ func getTileJSON(c *gin.Context) {
 	tss := userSet.tileset(uid, tid)
 	if tss == nil {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
@@ -654,7 +654,7 @@ func viewTile(c *gin.Context) {
 	// tss := userSet.tileset(uid, tid)
 	// if tss == nil {
 	// 	log.Errorf("viewTile, tilesets id(%s) not exist in the service", tid)
-	// 	res.Fail(c, 4044)
+	// 	res.Fail(c, 4045)
 	// 	return
 	// }
 	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
@@ -673,7 +673,7 @@ func getTile(c *gin.Context) {
 	tss := userSet.tileset(uid, tid)
 	if tss == nil {
 		log.Errorf("tilesets id(%s) not exist in the service", tid)
-		res.Fail(c, 4044)
+		res.Fail(c, 4045)
 		return
 	}
 	// split path components to extract tile coordinates x, y and z

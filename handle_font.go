@@ -43,14 +43,14 @@ func uploadFont(c *gin.Context) {
 	set := userSet.service(user)
 	if set == nil {
 		log.Errorf(`uploadFont, %s's service set not found`, user)
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Errorf(`uploadFont, %s get file error, details: %s`, user, err)
-		res.Fail(c, 4046)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
@@ -105,7 +105,7 @@ func deleteFonts(c *gin.Context) {
 		font := userSet.font(uid, fid)
 		if font == nil {
 			log.Errorf(`deleteFonts, %s's font service (%s) not found ^^`, uid, fid)
-			res.Fail(c, 4044)
+			res.Fail(c, 4047)
 			return
 		}
 		set := userSet.service(uid)
@@ -136,7 +136,7 @@ func getGlyphs(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4045)
+		res.Fail(c, 4046)
 		return
 	}
 	fontstack := c.Param("fontstack")
@@ -159,7 +159,7 @@ func getGlyphs(c *gin.Context) {
 		iv, ok := set.F.Load(fontstack)
 		if !ok {
 			log.Errorf("getGlyphs, fontstack is not found ~")
-			res.Fail(c, 4005)
+			res.Fail(c, 4047)
 			return
 		}
 		data, err := iv.(*FontService).Font(fontrange)

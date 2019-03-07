@@ -158,7 +158,7 @@ func addUser(c *gin.Context) {
 		return
 	}
 	//add to user_group
-	res.DoneCode(c, 201)
+	res.Done(c, "")
 }
 
 func signin(c *gin.Context) {
@@ -878,7 +878,7 @@ func createRole(c *gin.Context) {
 				res.Fail(c, 5001)
 				return
 			}
-			res.DoneCode(c, 201)
+			res.Done(c, "")
 			return
 		}
 		res.Fail(c, 5001)

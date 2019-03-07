@@ -59,10 +59,13 @@ var codes = map[int]string{
 	404:  "找不到资源",
 	4041: "用户不存在",
 	4042: "角色不存在",
-	4043: "地图不存在",
-	4044: "服务不存在",
-	4045: "找不到数据集",
-	4046: "找不到上传文件",
+	4043: "服务不存在",
+	4044: "找不到样式",
+	4045: "找不到瓦片集",
+	4046: "找不到数据集",
+	4047: "找不到字体库",
+	4048: "找不到上传文件",
+	4049: "地图不存在",
 
 	408: "请求超时",
 
@@ -264,7 +267,7 @@ func checkMap(mid string) int {
 			log.Error(err)
 			return 5001
 		}
-		return 4043
+		return 4049
 	}
 	return 200
 }
@@ -274,7 +277,7 @@ func checkDataset(did string) int {
 		return 4001
 	}
 	if !db.HasTable(did) {
-		return 4045
+		return 4046
 	}
 	return 200
 }
