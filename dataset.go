@@ -80,7 +80,7 @@ type DataService struct {
 
 	URL    string // geojson service
 	Hash   string
-	State  bool
+	Status bool
 	TLayer *TileLayer
 }
 

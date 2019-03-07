@@ -24,7 +24,13 @@ func (us *UserSet) service(uid string) *ServiceSet {
 			return set
 		}
 	}
-	return nil
+	uss, err := LoadServiceSet(uid)
+	if err != nil {
+		log.Errorf("load %s's service set error, details: %s", uid, err)
+		return nil
+	}
+	us.Store(uid, uss)
+	return uss
 }
 
 func (us *UserSet) style(uid, sid string) *StyleService {
@@ -94,7 +100,8 @@ type ServiceSet struct {
 }
 
 // LoadServiceSet 加载服务集，ATLAS基础服务集，USER用户服务集
-func (s *ServiceSet) LoadServiceSet() error {
+func LoadServiceSet(user string) (*ServiceSet, error) {
+	s := &ServiceSet{Owner: user}
 	//diff styles dir and append new styles
 	err := s.AddStyles()
 	if err != nil {
@@ -135,7 +142,8 @@ func (s *ServiceSet) LoadServiceSet() error {
 	if err != nil {
 		log.Errorf("ServeDatasets, serve %s's dataset error, details:%s", ATLAS, err)
 	}
-	return nil
+
+	return s, nil
 }
 
 // AddStyles 添加styles目录下未入库的样式

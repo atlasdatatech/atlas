@@ -101,7 +101,7 @@ type TileService struct {
 	Format             TileFormat // tile format: PNG, JPG, PBF, WEBP
 	URL                string     // tile format: PNG, JPG, PBF, WEBP
 	Hash               string
-	State              bool       // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
+	Status             bool       // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
 	Timestamp          time.Time  // timestamp of file, for cache control headers
 	HasUTFGrid         bool       // true if mbtiles file contains additional tables with UTFGrid data
 	UTFGridCompression TileFormat // compression (GZIP or ZLIB) of UTFGrids
@@ -205,7 +205,7 @@ func (ts *Tileset) toService() (*TileService, error) {
 			}
 		}
 	}
-	out.State = true
+	out.Status = true
 	return out, nil
 }
 

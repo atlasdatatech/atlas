@@ -4,113 +4,200 @@ import (
 	"net/http"
 	"time"
 
-	jwt "github.com/appleboy/gin-jwt"
 	"github.com/casbin/casbin"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
-//JWTMidHandler 定义JWT中间件，从相应的配置文件读取默认值
-func JWTMidHandler() *jwt.GinJWTMiddleware {
-	return &jwt.GinJWTMiddleware{
-		//Realm name to display to the user. Required.
-		//必要项，显示给用户看的域
-		Realm: viper.GetString("jwt.realm"),
-		//Secret key used for signing. Required.
-		//用来进行签名的密钥，就是加盐用的
-		Key: []byte(viper.GetString("jwt.key")),
-		//Duration that a jwt token is valid. Optional, defaults to one hour
-		//JWT 的有效时间，默认为30天
-		Timeout: viper.GetDuration("jwt.timeOut"),
-		// This field allows clients to refresh their token until MaxRefresh has passed.
-		// Note that clients can refresh their token in the last moment of MaxRefresh.
-		// This means that the maximum validity timespan for a token is MaxRefresh + Timeout.
-		// Optional, defaults to 0 meaning not refreshable.
-		//最长的刷新时间，用来给客户端自己刷新 token 用的，设置为3个月
-		MaxRefresh:  viper.GetDuration("jwt.timeMax"),
-		IdentityKey: identityKey,
-		PayloadFunc: payload,
-		// Callback function that should perform the authentication of the user based on userID and
-		// password. Must return true on success, false on failure. Required.
-		// Option return user data, if so, user data will be stored in Claim Array.
-		//必要项, 这个函数用来判断 User 信息是否合法，如果合法就反馈 true，否则就是 false, 认证的逻辑就在这里
-		Authenticator: authenticator,
-		// Callback function that should perform the authorization of the authenticated user. Called
-		// only after an authentication success. Must return true on success, false on failure.
-		// Optional, default to success
-		//可选项，用来在 Authenticator 认证成功的基础上进一步的检验用户是否有权限，默认为 success
-		Authorizator: authorizator,
-		// User can define own Unauthorized func.
-		//可以用来息定义如果认证不成功的的处理函数
-		Unauthorized: unauthorized,
-		// TokenLookup is a string in the form of "<source>:<name>" that is used
-		// to extract token from the request.
-		// Optional. Default value "header:Authorization".
-		// Possible values:
-		// - "header:<name>"
-		// - "query:<name>"
-		// - "cookie:<name>"
-		//这个变量定义了从请求中解析 token 的位置和格式
-		TokenLookup: viper.GetString("jwt.lookup"),
-		// TokenLookup: "query:token",
-		// TokenLookup: "cookie:token",
-		// TokenHeadName is a string in the header. Default value is "Bearer"
-		//TokenHeadName 是一个头部信息中的字符串
-		TokenHeadName: viper.GetString("jwt.headName"),
-		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
-		//这个指定了提供当前时间的函数，也可以自定义
-		TimeFunc: time.Now,
-		//设置Cookie
-		SendCookie: true,
-	}
-}
-
-func payload(data interface{}) jwt.MapClaims {
-	if user, ok := data.(*User); ok {
-		return jwt.MapClaims{
-			identityKey: user.Name,
+// AuthMidHandler makes  the Middleware interface.
+func AuthMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := mw.GetClaimsFromJWT(c)
+		if err != nil {
+			// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
+			if !mw.DisabledAbort {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"code": 401,
+					"msg":  "sign in first",
+				})
+				c.Abort()
+			}
+			return
 		}
+		if int64(claims["exp"].(float64)) < mw.TimeFunc().Unix() {
+			//找到但是过期了
+			tokenString, expire, err := mw.RefreshToken(c)
+			if err != nil {
+				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
+				if !mw.DisabledAbort {
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"code": 401,
+						"msg":  ErrExpiredToken.Error(),
+					})
+					c.Abort()
+				}
+				return
+			}
+
+			// set cookie
+			if mw.SendCookie {
+				maxage := int(expire.Unix() - time.Now().Unix())
+				c.SetCookie(
+					"token",
+					tokenString,
+					maxage,
+					"/",
+					mw.CookieDomain,
+					mw.SecureCookie,
+					mw.CookieHTTPOnly,
+				)
+			}
+
+		}
+		//成功验证
+		c.Set("PAYLOAD", claims)
+		identity := claims[identityKey]
+		if identity != nil {
+			c.Set(identityKey, identity)
+		}
+		c.Next()
 	}
-	return jwt.MapClaims{}
 }
 
-//定义一个回调函数，用来决断用户id和密码是否有效.暂时弃用
-func authenticator(c *gin.Context) (interface{}, error) {
-	return nil, nil
-}
-
-//定义一个回调函数，用来决断用户在认证成功的前提下，是否有权限对资源进行访问
-func authorizator(user interface{}, c *gin.Context) bool {
-	if id, ok := user.(string); ok {
-		log.Infof("authorizator for %s -> true ^^", id)
-		return true
-	}
-	//默认策略是不允许
-	return false
-}
-
-//定义一个函数用来处理，认证不成功的情况
-func unauthorized(c *gin.Context, code int, message string) {
-	c.JSON(code, gin.H{
-		"code": code,
-		"msg":  message,
-	})
-}
-
-//EnforceMidHandler returns the authorizer, uses a Casbin enforcer as input
-func EnforceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
+// AccessMidHandler makes  the Middleware interface.
+func AccessMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString(identityKey)
-		if !e.Enforce(uid, c.Request.URL.Path, c.Request.Method) {
+		//完成认证,则放行
+		if uid == "" {
+			//否则,获取query token
+			claims, err := mw.GetClaimsFromJWT(c)
+			if err != nil {
+				//没找到
+				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
+				if !mw.DisabledAbort {
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"code": 401,
+						"msg":  "sign in first or has a access token",
+					})
+					c.Abort()
+				}
+				return
+			}
+			if int64(claims["exp"].(float64)) < mw.TimeFunc().Unix() {
+				//找到但是过期了
+				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
+				if !mw.DisabledAbort {
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"code": 401,
+						"msg":  "access token expired",
+					})
+					c.Abort()
+				}
+				return
+			}
+			//成功验证
+			who := claims[userKey]
+			if who == nil {
+				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
+				if !mw.DisabledAbort {
+					c.JSON(http.StatusUnauthorized, gin.H{
+						"msg": "access token error",
+					})
+					c.Abort()
+				}
+				return
+			}
+			//成功验证
+			c.Set("PAYLOAD", claims)
+			c.Set(userKey, who)
+			c.Next()
+		}
+	}
+}
+
+//AdminMidHandler returns the authorizer, uses a Casbin enforcer as input
+func AdminMidHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetString(identityKey)
+		if uid == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code": 401,
+				"msg":  "sign in first",
+			})
+			c.Abort()
+			return
+		}
+		if uid != ATLAS { //默认隐含ATLAS不为空
+			c.JSON(http.StatusForbidden, gin.H{
+				"code": 403,
+				"msg":  "you don't have permission to access",
+			})
+			c.Abort()
+		}
+	}
+}
+
+//UserMidHandler returns the authorizer, uses a Casbin enforcer as input
+func UserMidHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetString(identityKey)
+		if uid == "" {
+			//uid认证未通过
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code": 401,
+				"msg":  "sign in first",
+			})
+			c.Abort()
+			return
+		}
+		//uid认证通过,正常访问行为
+		c.Next()
+	}
+}
+
+//ResourceMidHandler returns the authorizer, uses a Casbin enforcer as input
+func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uid := c.GetString(identityKey)
+		user := c.GetString(userKey)
+		owner := c.Param("user")
+		//uid认证通过,
+		if uid != "" {
+			//且访问的是自己的资源，放行
+			if uid == owner {
+				c.Next()
+				return
+			}
+			//且访问的是其他的资源，资源鉴权
+			//暂时关掉所有通过jwt访问非自有资源权限，后续添加组织、域、资源组等概念后开放
+			c.JSON(http.StatusForbidden, gin.H{
+				"code": 403,
+				"msg":  "need add to group or has a access token",
+			})
+			c.Abort()
+			return
+		}
+		//uid认证未通过	//且token认证未通过,返回
+		if user == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"code": 401,
+				"msg":  "sign in first or has a access token",
+			})
+			c.Abort()
+			return
+		}
+		//启动资源鉴权
+		if !e.Enforce(user, c.Request.URL.Path, c.Request.Method) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"code": 403,
 				"msg":  "you don't have permission to access this resource",
 			})
 			c.Abort()
+			return
 		}
+		c.Next()
 	}
 }
 

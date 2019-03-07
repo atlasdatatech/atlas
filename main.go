@@ -27,7 +27,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
-	jwt "github.com/appleboy/gin-jwt"
 	"github.com/casbin/casbin"
 	"github.com/casbin/gorm-adapter"
 	"github.com/gin-contrib/cors"
@@ -41,11 +40,16 @@ import (
 const (
 	//VERSION  版本号
 	VERSION = "1.0"
-	//ATLAS 默认用户名
+	//ATLAS 默认管理员用户名
 	ATLAS = "atlas"
+	//ADMIN 默认管理员组
+	ADMIN = "admin@group"
+	//USER 默认用户组
+	USER = "user@group"
 	//DTSSCHEMA 数据存储SCHEMA 默认用户名
 	DTSSCHEMA   = "datasets"
-	identityKey = "id"
+	identityKey = "uid"
+	userKey     = "user"
 )
 
 var (
@@ -53,7 +57,8 @@ var (
 	db        *gorm.DB
 	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
-	authMid   *jwt.GinJWTMiddleware
+	authMid   *JWTMiddleware
+	accessMid *JWTMiddleware
 	taskQueue = make(chan *Task, 32)
 	userSet   UserSet
 	taskSet   sync.Map
@@ -124,13 +129,13 @@ func initConf(cfgFile string) {
 
 	//配置默认值，如果配置内容中没有指定，就使用以下值来作为配置值，给定默认值是一个让程序更健壮的办法
 	viper.SetDefault("app.port", "8080")
-	viper.SetDefault("jwt.realm", "atlasmap")
-	viper.SetDefault("jwt.key", "salta-atad-6221")
-	viper.SetDefault("jwt.timeOut", "720h")
-	viper.SetDefault("jwt.timeMax", "2160h")
-	viper.SetDefault("jwt.identityKey", "name")
-	viper.SetDefault("jwt.lookup", "header:Authorization, query:token, cookie:Token")
-	viper.SetDefault("jwt.headName", "Bearer")
+	viper.SetDefault("jwt.auth.realm", "atlasmap")
+	viper.SetDefault("jwt.auth.key", "salta-atad-6221")
+	viper.SetDefault("jwt.auth.timeOut", "720h")
+	viper.SetDefault("jwt.auth.timeMax", "2160h")
+	viper.SetDefault("jwt.auth.identityKey", "name")
+	viper.SetDefault("jwt.auth.lookup", "header:Authorization, query:token, cookie:token")
+	viper.SetDefault("jwt.auth.headName", "Bearer")
 	viper.SetDefault("app.ips", 127)
 	viper.SetDefault("app.ipExpiration", "-1m")
 	viper.SetDefault("user.attempts", 7)
@@ -338,8 +343,109 @@ func initTegolaServer() {
 	server.Start(nil, serverPort)
 }
 
-func initJWT() (*jwt.GinJWTMiddleware, error) {
-	jwtmid, err := jwt.New(JWTMidHandler())
+func initAuthJWT() (*JWTMiddleware, error) {
+	jwtmid := &JWTMiddleware{
+		//Realm name to display to the user. Required.
+		//必要项，显示给用户看的域
+		Realm: viper.GetString("jwt.auth.realm"),
+		//Secret key used for signing. Required.
+		//用来进行签名的密钥，就是加盐用的
+		Key: []byte(viper.GetString("jwt.auth.key")),
+		//Duration that a jwt token is valid. Optional, defaults to one hour
+		//JWT 的有效时间，默认为30天
+		Timeout: viper.GetDuration("jwt.auth.timeOut"),
+		// This field allows clients to refresh their token until MaxRefresh has passed.
+		// Note that clients can refresh their token in the last moment of MaxRefresh.
+		// This means that the maximum validity timespan for a token is MaxRefresh + Timeout.
+		// Optional, defaults to 0 meaning not refreshable.
+		//最长的刷新时间，用来给客户端自己刷新 token 用的，设置为3个月
+		MaxRefresh: viper.GetDuration("jwt.auth.timeMax"),
+
+		PayloadFunc: func(data interface{}) MapClaims {
+			if user, ok := data.(User); ok {
+				return MapClaims{
+					identityKey: user.Name,
+				}
+			}
+			return MapClaims{}
+		},
+		// TokenLookup is a string in the form of "<source>:<name>" that is used
+		// to extract token from the request.
+		// Optional. Default value "header:Authorization".
+		// Possible values:
+		// - "header:<name>"
+		// - "query:<name>"
+		// - "cookie:<name>"
+		//这个变量定义了从请求中解析 token 的位置和格式
+		TokenLookup: viper.GetString("jwt.auth.lookup"),
+		// TokenLookup: "query:token",
+		// TokenLookup: "cookie:token",
+		// TokenHeadName is a string in the header. Default value is "Bearer"
+		//TokenHeadName 是一个头部信息中的字符串
+		TokenHeadName: viper.GetString("jwt.auth.headName"),
+		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
+		//这个指定了提供当前时间的函数，也可以自定义
+		TimeFunc: time.Now,
+		//设置Cookie
+		SendCookie: true,
+		//禁止abort
+		DisabledAbort: true,
+	}
+	err := jwtmid.MiddlewareInit()
+	if err != nil {
+		return nil, err
+	}
+	return jwtmid, nil
+}
+
+func initAccessJWT() (*JWTMiddleware, error) {
+	jwtmid := &JWTMiddleware{
+		//Realm name to display to the user. Required.
+		//必要项，显示给用户看的域
+		Realm: viper.GetString("jwt.access.realm"),
+		//Secret key used for signing. Required.
+		//用来进行签名的密钥，就是加盐用的
+		Key: []byte(viper.GetString("jwt.access.key")),
+		//Duration that a jwt token is valid. Optional, defaults to one hour
+		//JWT 的有效时间，默认为30天
+		Timeout: viper.GetDuration("jwt.access.timeOut"),
+		// This field allows clients to refresh their token until MaxRefresh has passed.
+		// Note that clients can refresh their token in the last moment of MaxRefresh.
+		// This means that the maximum validity timespan for a token is MaxRefresh + Timeout.
+		// Optional, defaults to 0 meaning not refreshable.
+		//最长的刷新时间，用来给客户端自己刷新 token 用的，设置为3个月
+		MaxRefresh: viper.GetDuration("jwt.access.timeMax"),
+
+		PayloadFunc: func(data interface{}) MapClaims {
+			if user, ok := data.(User); ok {
+				return MapClaims{
+					userKey: user.Name,
+					"ak":    "public",
+				}
+			}
+			return MapClaims{}
+		},
+		// TokenLookup is a string in the form of "<source>:<name>" that is used
+		// to extract token from the request.
+		// Optional. Default value "header:Authorization".
+		// Possible values:
+		// - "header:<name>"
+		// - "query:<name>"
+		// - "cookie:<name>"
+		//这个变量定义了从请求中解析 token 的位置和格式
+		TokenLookup: viper.GetString("jwt.access.lookup"),
+		// TokenLookup: "query:token",
+		// TokenLookup: "cookie:token",
+		// TokenHeadName is a string in the header. Default value is "Bearer"
+		//TokenHeadName 是一个头部信息中的字符串
+		TokenHeadName: viper.GetString("jwt.access.headName"),
+		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
+		//这个指定了提供当前时间的函数，也可以自定义
+		TimeFunc: time.Now,
+		//设置Cookie
+		SendCookie: true,
+	}
+	err := jwtmid.MiddlewareInit()
 	if err != nil {
 		return nil, err
 	}
@@ -360,8 +466,7 @@ func initSystemUser() {
 	CreatePaths(ATLAS)
 	name := ATLAS
 	password := "1234"
-	group := "admin@group"
-	role := Role{ID: group, Name: "管理员"}
+	role := Role{ID: ADMIN, Name: "管理员"}
 	user := User{}
 	db.Where("name = ?", name).First(&user)
 	if user.Name != "" {
@@ -373,14 +478,14 @@ func initSystemUser() {
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Group = group
+	user.Group = ADMIN
 	user.Email = "cloud@atlasdata.cn"
 	user.Phone = "17714211819"
 	user.Department = "cloud"
 	user.Company = "atlasdata"
 	user.Verification = "yes"
 	//No verification required
-	user.JWT, user.JWTExpires, _ = authMid.TokenGenerator(&user)
+	user.AccessToken, _, _ = accessMid.TokenGenerator(user)
 	user.Activation = "yes"
 	user.Role = []string{role.ID}
 	// insertUser
@@ -393,12 +498,13 @@ func initSystemUser() {
 		log.Fatal("admin@group role create error")
 		return
 	}
-	if casEnf != nil {
-		casEnf.AddGroupingPolicy(name, role.ID)
-		//添加管理员组的用户管理权限
-		casEnf.AddPolicy(role.ID, "/users/*", "(GET)|(POST)")
-		casEnf.AddPolicy(role.ID, "/roles/*", "(GET)|(POST)")
-	}
+	casEnf.AddGroupingPolicy(name, ADMIN)
+	casEnf.AddGroupingPolicy(name, USER)
+	//添加管理员组的用户管理权限
+	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/*", ATLAS), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/fonts/%s/*", ATLAS), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/tilesets/%s/*", ATLAS), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/%s/*", ATLAS), "GET")
 }
 
 //initTaskRouter 初始化任务处理线程
@@ -414,16 +520,6 @@ func initTaskRouter() {
 			}
 		}
 	}()
-}
-
-//loadPubServices 加载ATLAS公共服务
-func loadServices(user string) {
-	pubs := &ServiceSet{Owner: user}
-	err := pubs.LoadServiceSet()
-	if err != nil {
-		log.Errorf("loading public service set error: %s", err.Error())
-	}
-	userSet.Store(pubs.Owner, pubs)
 }
 
 //setupRouter 初始化GIN引擎并配置路由
@@ -475,9 +571,26 @@ func setupRouter() *gin.Engine {
 		sign.POST("/reset/:user/:token/", resetPassword)
 		sign.GET("/verify/:user/:token/", verify)
 	}
+
+	//studio
+	studio := r.Group("/studio")
+	studio.Use(AuthMidHandler(authMid))
+	studio.Use(UserMidHandler())
+	{
+		// > styles
+		studio.GET("/", studioIndex)
+		studio.GET("/editor/:id", studioEditer)
+		studio.GET("/styles/upload/", renderStyleUpload)
+		studio.GET("/styles/upload/:id/", renderSpriteUpload)
+		studio.GET("/tilesets/upload/", renderTilesetsUpload)
+		studio.GET("/datasets/upload/", renderDatasetsUpload)
+		studio.GET("/maps/import/", renderMapsImport)
+
+	}
 	//account
 	account := r.Group("/account")
-	account.Use(authMid.MiddlewareFunc())
+	account.Use(AuthMidHandler(authMid))
+	account.Use(UserMidHandler())
 	{
 		//render
 		account.GET("/index/", renderAccount)
@@ -485,16 +598,17 @@ func setupRouter() *gin.Engine {
 		account.GET("/password/", renderChangePassword)
 		//api
 		account.GET("/", getUser)
-		account.GET("/signout/", signout)
+		account.POST("/signout/", signout)
 		account.GET("/verify/", sendVerification)
 		account.POST("/update/", updateUser)
-		account.GET("/refresh/", jwtRefresh)
+		account.GET("/jwt/refresh/", authTokenRefresh)
+		account.GET("/token/refresh/", authTokenRefresh)
 		account.POST("/password/", changePassword)
 	}
 	//users
 	user := r.Group("/users")
-	user.Use(authMid.MiddlewareFunc())
-	user.Use(EnforceMidHandler(casEnf))
+	user.Use(AuthMidHandler(authMid))
+	user.Use(AdminMidHandler())
 	{
 		//authn > users
 		user.GET("/", listUsers)
@@ -502,7 +616,6 @@ func setupRouter() *gin.Engine {
 		user.GET("/:id/", getUser)
 		user.POST("/:id/", updateUser)
 		user.POST("/:id/delete/", deleteUser)
-		user.GET("/:id/refresh/", jwtRefresh)
 		user.POST("/:id/password/", changePassword)
 		user.GET("/:id/roles/", getUserRoles)           //该用户拥有哪些角色
 		user.POST("/:id/roles/", addUserRole)           //添加用户角色
@@ -513,8 +626,8 @@ func setupRouter() *gin.Engine {
 	}
 	//roles
 	role := r.Group("/roles")
-	role.Use(authMid.MiddlewareFunc())
-	role.Use(EnforceMidHandler(casEnf))
+	role.Use(AuthMidHandler(authMid))
+	role.Use(AdminMidHandler())
 	{
 		//authn > roles
 		role.GET("/", listRoles)
@@ -528,7 +641,9 @@ func setupRouter() *gin.Engine {
 
 	//maproute
 	maproute := r.Group("/maps")
-	maproute.Use(authMid.MiddlewareFunc())
+	maproute.Use(AuthMidHandler(authMid))
+	maproute.Use(AccessMidHandler(accessMid))
+	maproute.Use(ResourceMidHandler(casEnf))
 	{
 		// > map op
 		maproute.GET("/", listMaps)
@@ -540,77 +655,57 @@ func setupRouter() *gin.Engine {
 		maproute.POST("/:id/del/", deleteMap)
 	}
 
-	//studio
-	studio := r.Group("/studio")
-	studio.Use(authMid.MiddlewareFunc())
-	{
-		// > styles
-		studio.GET("/", studioIndex)
-		studio.GET("/editor/:id", studioEditer)
-		studio.GET("/styles/upload/", renderStyleUpload)
-		studio.GET("/styles/upload/:id/", renderSpriteUpload)
-		studio.GET("/tilesets/upload/", renderTilesetsUpload)
-		studio.GET("/datasets/upload/", renderDatasetsUpload)
-		studio.GET("/maps/import/", renderMapsImport)
-
-	}
-	autoUser := func(c *gin.Context) {
-		claims := jwt.ExtractClaims(c)
-		user, ok := claims[identityKey]
-		if !ok {
-			log.Errorf("can't find %s", user)
-			c.Redirect(http.StatusFound, "/sign/in/")
-		} else {
-			c.Request.URL.Path = c.Request.URL.Path + user.(string) + "/"
-			r.HandleContext(c)
-		}
-	}
 	styles := r.Group("/styles")
-	styles.Use(authMid.MiddlewareFunc())
+	styles.Use(AuthMidHandler(authMid))
+	styles.Use(AccessMidHandler(accessMid))
+	styles.Use(ResourceMidHandler(casEnf))
 	{
 		// > styles
-		styles.GET("/", autoUser)
 		styles.GET("/:user/", listStyles)
-		styles.GET("/:user/x/:id/", getStyle) //style.json
+		styles.GET("/:user/info/:id/", getStyleInfo)
+		styles.GET("/:user/thumbnail/:id/", getStyleThumbnial)
+		styles.GET("/:user/x/:id/", getStyle)
 		styles.POST("/:user/upload/", uploadStyle)
-		styles.GET("/:user/create/:id/", copyStyle)       //style.json
-		styles.POST("/:user/save/:id/", saveStyle)        //style.json
-		styles.POST("/:user/update/:id/", updateStyle)    //updateStyle
-		styles.POST("/:user/replace/:id/", replaceStyle)  //style.json
-		styles.GET("/:user/download/:id/", downloadStyle) //style.json
-		styles.POST("/:user/delete/:ids/", deleteStyle)   //updateStyle
+		styles.POST("/:user/public/:id/", publicStyle)
+		styles.GET("/:user/create/:id/", copyStyle)
+		styles.POST("/:user/save/:id/", saveStyle)
+		styles.POST("/:user/update/:id/", updateStyle)
+		styles.POST("/:user/replace/:id/", replaceStyle)
+		styles.GET("/:user/download/:id/", downloadStyle)
+		styles.POST("/:user/delete/:ids/", deleteStyle)
 
-		styles.GET("/:user/sprite/:id/:fmt", getSprite)      //sprite.json/png
-		styles.POST("/:user/sprite/:id/", uploadSprite)      //sprite.json/png
-		styles.POST("/:user/sprite/:id/:fmt", updateSprite)  //sprite.json/png
-		styles.GET("/:user/icon/:id/:name/", getIcon)        //sprite.json/png
-		styles.POST("/:user/icon/:id/:name/", updateIcon)    //sprite.json/png
-		styles.POST("/:user/icons/:id/", uploadIcons)        //sprite.json/png
-		styles.POST("/:user/icons/:id/delete/", deleteIcons) //sprite.json/png
+		styles.GET("/:user/sprite/:id/:fmt", getSprite)
+		styles.POST("/:user/sprite/:id/", uploadSprite)
+		styles.POST("/:user/sprite/:id/:fmt", updateSprite)
+		styles.GET("/:user/icon/:id/:name/", getIcon)
+		styles.POST("/:user/icon/:id/:name/", updateIcon)
+		styles.POST("/:user/icons/:id/", uploadIcons)
+		styles.POST("/:user/icons/:id/delete/", deleteIcons)
 
 		styles.GET("/:user/view/:id/", viewStyle)    //view map style
 		styles.POST("/:user/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
-	// fonts.Use(authMid.MiddlewareFunc())
+	fonts.Use(AuthMidHandler(authMid))
+	fonts.Use(AccessMidHandler(accessMid))
+	fonts.Use(ResourceMidHandler(casEnf))
 	{
 		// > fonts
-		fonts.GET("/", autoUser)                             //get font
-		fonts.POST("/", autoUser)                            //get font
 		fonts.GET("/:user/", listFonts)                      //get font
-		fonts.POST("/:user/", uploadFont)                    //get font
-		fonts.POST("/:user/:fontstack/delete/", deleteFonts) //get font
+		fonts.POST("/:user/", uploadFont)                    //upload font
+		fonts.POST("/:user/:fontstack/delete/", deleteFonts) //delete font
 		fonts.GET("/:user/:fontstack/:range", getGlyphs)     //get glyph pbfs
 	}
 
 	tilesets := r.Group("/tilesets")
-	tilesets.Use(authMid.MiddlewareFunc())
+	tilesets.Use(AuthMidHandler(authMid))
+	tilesets.Use(AccessMidHandler(accessMid))
+	tilesets.Use(ResourceMidHandler(casEnf))
 	{
 		// > tilesets
-		tilesets.GET("/", autoUser)
-		tilesets.POST("/", autoUser)
 		tilesets.GET("/:user/", listTilesets)
-		tilesets.GET("/:user/x/:id/", getTileJSON) //tilejson
+		tilesets.GET("/:user/info/:id/", getTilesetInfo) //tilejson
+		tilesets.GET("/:user/x/:id/", getTileJSON)       //tilejson
 		tilesets.GET("/:user/x/:id/:z/:x/:y", getTile)
 		tilesets.POST("/:user/upload/", uploadTileset)
 		tilesets.POST("/:user/replace/:id/", replaceTileset)
@@ -626,10 +721,11 @@ func setupRouter() *gin.Engine {
 	}
 
 	datasets := r.Group("/datasets")
-	datasets.Use(authMid.MiddlewareFunc())
+	datasets.Use(AuthMidHandler(authMid))
+	datasets.Use(AccessMidHandler(accessMid))
+	datasets.Use(ResourceMidHandler(casEnf))
 	{
 		// > datasets
-		datasets.GET("/", autoUser)
 		datasets.GET("/:user/", listDatasets)
 		datasets.GET("/:user/info/:id/", getDatasetInfo)
 		datasets.POST("/:user/upload/", uploadFile)
@@ -660,7 +756,7 @@ func setupRouter() *gin.Engine {
 	}
 	//utilroute
 	utilroute := r.Group("/util")
-	utilroute.Use(authMid.MiddlewareFunc())
+	utilroute.Use(AuthMidHandler(authMid))
 	{
 		// > utils
 		utilroute.GET("/export/maps/", exportMaps)
@@ -718,11 +814,14 @@ func main() {
 		// initTegolaServer()
 	}
 
-	authMid, err = initJWT()
+	authMid, err = initAuthJWT()
 	if err != nil {
 		log.Fatalf("init jwt error: %s", err)
 	}
-
+	accessMid, err = initAccessJWT()
+	if err != nil {
+		log.Fatalf("init access token error: %s", err)
+	}
 	casEnf, err = initEnforcer()
 	if err != nil {
 		log.Fatalf("init enforcer error: %s", err)
@@ -732,7 +831,14 @@ func main() {
 		return
 	}
 	initTaskRouter()
-	loadServices(ATLAS)
+
+	{
+		pubs, err := LoadServiceSet(ATLAS)
+		if err != nil {
+			log.Fatalf("load %s's service set error, details: %s", ATLAS, err)
+		}
+		userSet.Store(ATLAS, pubs)
+	}
 
 	r := setupRouter()
 

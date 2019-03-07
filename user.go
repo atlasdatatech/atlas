@@ -15,7 +15,6 @@ var rUsername, _ = regexp.Compile(`^[a-zA-Z0-9\-\_]+$`)
 var rEmail, _ = regexp.Compile(`^[a-zA-Z0-9\-\_\.\+]+@[a-zA-Z0-9\-\_\.]+\.[a-zA-Z0-9\-\_]+$`)
 var lenUsername = 32
 var lenPassword = 4
-var defaultGroup = `user@group`
 
 // User 用户表
 type User struct {
@@ -28,22 +27,20 @@ type User struct {
 	Department string `json:"department"`
 	Company    string `json:"company"`
 
-	Role  pq.StringArray `json:"role" gorm:"type:varchar[]"`
+	Role  pq.StringArray `json:"-" gorm:"type:varchar[]"`
 	Group string         `json:"group"`
 	Class string         `json:"class"`
 
-	JWT        string    `json:"jwt" gorm:"column:jwt"`
-	JWTExpires time.Time `json:"jwtExpires" gorm:"column:jwt_expires"`
-
-	Activation string `json:"activation"`
-
 	ResetToken        string    `json:"-"`
-	ResetExpires      time.Time `json:"resetExpires"`
+	ResetExpires      time.Time `json:"-"`
+	Activation        string    `json:"activation"`
 	Verification      string    `json:"verification"`
 	VerificationToken string    `json:"-"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	AccessToken string `json:"access_token"`
+
+	CreatedAt time.Time `json:"-"`
+	UpdatedAt time.Time `json:"-"`
 }
 
 //Role 角色表

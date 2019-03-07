@@ -25,6 +25,7 @@ type Style struct {
 	Name      string `json:"name" gorm:"unique;not null;unique_index"`
 	Summary   string `json:"summary"`
 	Owner     string `json:"owner" gorm:"index"`
+	Public    bool   `json:"public"`
 	BaseID    string `json:"baseID" gorm:"index"`
 	Path      string `json:"path"`
 	Size      int64  `json:"size"`
@@ -35,27 +36,31 @@ type Style struct {
 
 //StyleService 样式服务
 type StyleService struct {
-	ID          string      `json:"id" form:"id"`
-	Name        string      `json:"name" form:"name"`
-	Summary     string      `json:"summary" form:"summary"`
-	Owner       string      `json:"owner" form:"owner"`
-	State       bool        `json:"state" form:"state"`
+	ID          string      `json:"id"`
+	Version     string      `json:"version"`
+	Name        string      `json:"name"`
+	Summary     string      `json:"summary"`
+	Owner       string      `json:"owner"`
+	Public      bool        `json:"public"`
+	Status      bool        `json:"status"`
 	URL         string      `json:"url"`
-	Thumbnail   []byte      `json:"thumbnail" form:"thumbnail"`
-	SpritePNG   []byte      `json:"spritePNG" form:"spritePNG"`
-	SpriteJSON  []byte      `json:"spriteJSON" form:"spriteJSON"`
-	SpritePNG2  []byte      `json:"spritePNG2" form:"spritePNG2"`
-	SpriteJSON2 []byte      `json:"spriteJSON2" form:"spriteJSON2"`
-	Data        interface{} `form:"data" json:"data"`
+	Thumbnail   []byte      `json:"-"`
+	SpritePNG   []byte      `json:"-"`
+	SpriteJSON  []byte      `json:"-"`
+	SpritePNG2  []byte      `json:"-"`
+	SpriteJSON2 []byte      `json:"-"`
+	Data        interface{} `json:"-"`
 }
 
 //转为存储
 func (ss *StyleService) toStyle() *Style {
 	out := &Style{
 		ID:      ss.ID,
+		Version: ss.Version,
 		Name:    ss.Name,
 		Owner:   ss.Owner,
 		Summary: ss.Summary,
+		Public:  ss.Public,
 		Path:    ss.URL,
 	}
 	var err error
@@ -68,27 +73,15 @@ func (ss *StyleService) toStyle() *Style {
 	return out
 }
 
-//Simplify 精简服务列表
-func (ss *StyleService) Simplify() *StyleService {
-	out := &StyleService{
-		ID:        ss.ID,
-		Name:      ss.Name,
-		Summary:   ss.Summary,
-		Owner:     ss.Owner,
-		State:     ss.State,
-		URL:       ss.URL,
-		Thumbnail: ss.Thumbnail,
-	}
-	return out
-}
-
 //Copy 服务拷贝
 func (ss *StyleService) Copy() *StyleService {
 	out := &StyleService{
 		ID:          ss.ID,
+		Version:     ss.Version,
 		Name:        ss.Name,
 		Summary:     ss.Summary,
 		Owner:       ss.Owner,
+		Public:      ss.Public,
 		URL:         ss.URL,
 		Thumbnail:   ss.Thumbnail,
 		SpritePNG:   ss.SpritePNG,
@@ -264,10 +257,12 @@ func LoadStyle(styleDir string) (*Style, error) {
 func (s *Style) toService() *StyleService {
 	out := &StyleService{
 		ID:      s.ID,
+		Version: s.Version,
 		Name:    s.Name,
 		Summary: s.Summary,
 		Owner:   s.Owner,
 		URL:     s.Path,
+		Public:  s.Public,
 	}
 
 	if len(s.Data) > 0 {
@@ -324,7 +319,7 @@ func (s *Style) toService() *StyleService {
 			out.SpriteJSON2 = buf
 		}
 	}
-	out.State = true
+	out.Status = true
 	return out
 }
 

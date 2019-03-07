@@ -30,7 +30,36 @@ func listTilesets(c *gin.Context) {
 		tilesets = append(tilesets, v.(*TileService))
 		return true
 	})
+
+	if uid != ATLAS && "true" == c.Query("public") {
+		set := userSet.service(ATLAS)
+		if set != nil {
+			set.T.Range(func(_, v interface{}) bool {
+				ts, ok := v.(*TileService)
+				if ok {
+					tilesets = append(tilesets, ts)
+				}
+				return true
+			})
+		}
+	}
+
 	res.DoneData(c, tilesets)
+}
+
+//getTilesetInfo list user's tilesets info
+func getTilesetInfo(c *gin.Context) {
+	res := NewRes()
+	// id := c.GetString(identityKey)
+	uid := c.Param("user")
+	tid := c.Param("id")
+	ts := userSet.tileset(uid, tid)
+	if ts == nil {
+		log.Errorf(`downloadTileset, %s's tile service (%s) not found ^^`, uid, tid)
+		res.Fail(c, 4044)
+		return
+	}
+	res.DoneData(c, ts)
 }
 
 //uploadTileset list user's tilesets

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
@@ -44,7 +43,7 @@ func listMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
 	var maps []Map
-	if id == "root" {
+	if id == ATLAS {
 		db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Find(&maps)
 		for i := 0; i < len(maps); i++ {
 			maps[i].Action = "EDIT"
@@ -107,8 +106,7 @@ func getMap(c *gin.Context) {
 func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	group := viper.GetString("user.group")
-	if id == "root" || casEnf.HasRoleForUser(id, group) {
+	if id == ATLAS || casEnf.HasRoleForUser(id, "admin@group") {
 		body := &MapBind{}
 		err := c.Bind(&body)
 		if err != nil {
@@ -130,7 +128,7 @@ func createMap(c *gin.Context) {
 			return
 		}
 		//管理员创建地图后自己拥有,root不需要
-		if id != "root" {
+		if id != ATLAS {
 			casEnf.AddPolicy(mm.User, mm.ID, mm.Action)
 		}
 		res.DoneData(c, gin.H{
@@ -249,7 +247,7 @@ func exportMaps(c *gin.Context) {
 	id := c.GetString(identityKey)
 	var maps []Map
 
-	if id == "root" {
+	if id == ATLAS {
 		db.Find(&maps)
 		for i := 0; i < len(maps); i++ {
 			maps[i].Action = "EDIT"
@@ -301,8 +299,7 @@ func exportMaps(c *gin.Context) {
 func importMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	group := viper.GetString("user.group")
-	if id == "root" || casEnf.HasRoleForUser(id, group) {
+	if id == ATLAS || casEnf.HasRoleForUser(id, "admin@group") {
 		file, err := c.FormFile("file")
 		if err != nil {
 			res.Fail(c, 4046)

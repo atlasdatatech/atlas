@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -19,35 +20,100 @@ import (
 	"github.com/teris-io/shortid"
 )
 
-//listStyles list user style
+//listStyles list user's style
 func listStyles(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("user")
-	var styles []*StyleService
 	set := userSet.service(uid)
-	if set != nil {
-		set.S.Range(func(_, v interface{}) bool {
-			s, ok := v.(*StyleService)
-			if ok {
-				styles = append(styles, s.Simplify())
-			}
-			return true
-		})
+	if set == nil {
+		res.Fail(c, 4044)
+		return
 	}
+	var styles []*StyleService
+	set.S.Range(func(_, v interface{}) bool {
+		s, ok := v.(*StyleService)
+		if ok {
+			styles = append(styles, s)
+		}
+		return true
+	})
 	if uid != ATLAS && "true" == c.Query("public") {
 		set := userSet.service(ATLAS)
 		if set != nil {
 			set.S.Range(func(_, v interface{}) bool {
 				s, ok := v.(*StyleService)
 				if ok {
-					styles = append(styles, s.Simplify())
+					if s.Public {
+						styles = append(styles, s)
+					}
 				}
 				return true
 			})
 		}
-
 	}
 	res.DoneData(c, styles)
+}
+
+//getStyleInfo get user's style info by id
+func getStyleInfo(c *gin.Context) {
+	res := NewRes()
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
+	sid := c.Param("id")
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+		res.Fail(c, 4044)
+		return
+	}
+	res.DoneData(c, style)
+}
+
+//getStyleThumbnial get user's style thumbnail by id
+func getStyleThumbnial(c *gin.Context) {
+	res := NewRes()
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
+	sid := c.Param("id")
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+		res.Fail(c, 4044)
+		return
+	}
+	res.DoneData(c, style.Thumbnail)
+}
+
+//publicStyle 下载样式
+func publicStyle(c *gin.Context) {
+	res := NewRes()
+	// uid := c.GetString(identityKey)
+	uid := c.Param("user")
+	sid := c.Param("id")
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Errorf(`publicStyle, %s's style service (%s) not found ^^`, uid, sid)
+		res.Fail(c, 4044)
+		return
+	}
+	if style.Public {
+		res.FailMsg(c, "already public")
+		return
+	}
+
+	//添加管理员组的用户管理权限
+	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/x/%s/", uid, sid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
+	style.Public = true
+	err := db.Model(&Style{}).Where("id = ?", style.ID).Update(Style{Public: true}).Error
+	if err != nil {
+		log.Errorf(`update style db error, details: %s`, err)
+		res.Fail(c, 4044)
+		return
+	}
+	res.DoneData(c, "")
 }
 
 //uploadStyle 上传新样式
@@ -103,6 +169,7 @@ func uploadStyle(c *gin.Context) {
 		}
 		set.S.Store(ss.ID, ss)
 	}
+
 	res.DoneData(c, gin.H{
 		"id": style.ID,
 	})

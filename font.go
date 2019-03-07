@@ -34,11 +34,11 @@ type Font struct {
 
 //FontService struct for font service
 type FontService struct {
-	ID    string
-	Name  string
-	URL   string
-	State bool
-	DB    *sql.DB
+	ID     string
+	Name   string
+	URL    string
+	Status bool
+	DB     *sql.DB
 }
 
 // LoadFont 加载字体.
@@ -158,10 +158,10 @@ func packPBFonts(path string) error {
 //toService 加载服务
 func (f *Font) toService() *FontService {
 	fs := &FontService{
-		ID:    f.ID,
-		Name:  f.Name,
-		URL:   f.Path,
-		State: true,
+		ID:     f.ID,
+		Name:   f.Name,
+		URL:    f.Path,
+		Status: true,
 	}
 	// fs.DB
 	db, err := sql.Open("sqlite3", f.Path)

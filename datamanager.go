@@ -106,7 +106,7 @@ type Task struct {
 	Succeed  int           `json:"succeed" form:"succeed"`
 	Count    int           `json:"count" form:"count"`
 	Progress int           `json:"progress" form:"progress"`
-	State    string        `json:"state"`
+	Status   string        `json:"status"`
 	Err      string        `json:"err"`
 	Pipe     chan struct{} `json:"-" form:"-" gorm:"-"`
 }
@@ -693,7 +693,7 @@ func (df *Datafile) dataImport() *Task {
 	case taskQueue <- task:
 		// default:
 		// 	log.Warningf("task queue overflow, request refused...")
-		// 	task.State = "task queue overflow, request refused"
+		// 	task.Status = "task queue overflow, request refused"
 		// 	return task, fmt.Errorf("task queue overflow, request refused")
 	}
 	//任务集
@@ -873,7 +873,7 @@ func (df *Datafile) dataImport() *Task {
 				csvReader = csv.NewReader(bytes.NewReader(buf))
 				_, err = csvReader.Read()
 				var vals []string
-				task.State = "processing"
+				task.Status = "processing"
 				t = time.Now()
 				for {
 					row, err := csvReader.Read()
@@ -904,19 +904,19 @@ func (df *Datafile) dataImport() *Task {
 				}
 				fmt.Println(`csv process `, time.Since(t))
 				t = time.Now()
-				task.State = "importing"
+				task.Status = "importing"
 				st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 				query := db.Exec(st)
 				err = query.Error
 				if err != nil {
 					log.Errorf(`task failed, details:%s`, err)
-					task.State = "failed"
+					task.Status = "failed"
 				}
 				fmt.Println(`csv insert `, time.Since(t))
 
 				task.Succeed = int(query.RowsAffected)
 				task.Progress = 100
-				task.State = "finished"
+				task.Status = "finished"
 				task.Err = ""
 				task.Pipe <- struct{}{}
 				return
@@ -1053,7 +1053,7 @@ func (df *Datafile) dataImport() *Task {
 				}
 				fmt.Println(time.Since(s))
 				count := len(gjson.Features)
-				task.State = "processing"
+				task.Status = "processing"
 				t := time.Now()
 				var vals []string
 				for i, rawf := range gjson.Features {
@@ -1087,7 +1087,7 @@ func (df *Datafile) dataImport() *Task {
 				}
 				fmt.Println("geojson process ", time.Since(t))
 
-				task.State = "importing"
+				task.Status = "importing"
 				t = time.Now()
 				st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 				// log.Println(st)
@@ -1100,7 +1100,7 @@ func (df *Datafile) dataImport() *Task {
 				task.Count = count
 				task.Succeed = int(query.RowsAffected)
 				task.Progress = 100
-				task.State = "finished"
+				task.Status = "finished"
 				task.Pipe <- struct{}{}
 				return
 			}
@@ -1163,7 +1163,7 @@ func (df *Datafile) dataImport() *Task {
 				params = strings.Split(gbk, ",")
 			}
 			// go func(task *ImportTask) {
-			task.State = "importing"
+			task.Status = "importing"
 			log.Info(params)
 			var stdoutBuf, stderrBuf bytes.Buffer
 			cmd := exec.Command("ogr2ogr", params...)
@@ -1207,7 +1207,7 @@ func (df *Datafile) dataImport() *Task {
 			// outStr, errStr := string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())
 			// fmt.Printf("\nout:\n%s\nerr:\n%s\n", outStr, errStr)
 			ticker.Stop()
-			task.State = "finished"
+			task.Status = "finished"
 			task.Pipe <- struct{}{}
 			return
 			//保存任务

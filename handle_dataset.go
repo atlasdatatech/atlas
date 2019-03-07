@@ -44,6 +44,19 @@ func listDatasets(c *gin.Context) {
 		dss = append(dss, v.(*DataService))
 		return true
 	})
+
+	if uid != ATLAS && "true" == c.Query("public") {
+		set := userSet.service(ATLAS)
+		if set != nil {
+			set.D.Range(func(_, v interface{}) bool {
+				ds, ok := v.(*DataService)
+				if ok {
+					dss = append(dss, ds)
+				}
+				return true
+			})
+		}
+	}
 	res.DoneData(c, dss)
 }
 
@@ -124,7 +137,7 @@ func oneClickImport(c *gin.Context) {
 		go func(df *Datafile) {
 			<-task.Pipe //wait finish
 			<-taskQueue
-			task.State = "finish"
+			task.Status = "finish"
 			task.save()
 			if task.Err != "" {
 				log.Error(task.Err)
