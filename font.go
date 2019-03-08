@@ -16,11 +16,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// PBFONTEXT pbf fonts package format
-const PBFONTEXT = ".pbfonts"
-
-// DEFAULTFONT 默认字体
-const DEFAULTFONT = "Noto Sans Regular"
+const (
+	// PBFONTEXT pbf fonts package format
+	PBFONTEXT = ".pbfonts"
+	// DEFAULTFONT 默认字体
+	DEFAULTFONT = "Noto Sans Regular"
+)
 
 //Font struct for pbf font save
 type Font struct {

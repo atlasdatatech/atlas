@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -37,7 +38,9 @@ func listTilesets(c *gin.Context) {
 			set.T.Range(func(_, v interface{}) bool {
 				ts, ok := v.(*TileService)
 				if ok {
-					tilesets = append(tilesets, ts)
+					if ts.Public {
+						tilesets = append(tilesets, ts)
+					}
 				}
 				return true
 			})
@@ -98,6 +101,8 @@ func uploadTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
+	//更新user
+	tileset.Owner = uid
 	//入库
 	err = tileset.UpInsert()
 	if err != nil {
@@ -148,7 +153,7 @@ func replaceTileset(c *gin.Context) {
 	name := strings.TrimSuffix(file.Filename, ext)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".mbtiles":
+	case MBTILESEXT:
 	default:
 		log.Errorf(`replaceTileset, tileset format error, details: %s; user: %s`, file.Filename, id)
 		res.FailMsg(c, "文件格式错误,请上传正确的.mbtiles文件")
@@ -156,7 +161,7 @@ func replaceTileset(c *gin.Context) {
 	}
 	ntid, _ := shortid.Generate()
 	ntid = name + "." + ntid
-	dst := filepath.Join("tilesets", uid, ntid)
+	dst := filepath.Join("tilesets", uid, ntid+MBTILESEXT)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`replaceTileset, upload file: %s; user: %s`, err, uid)
 		res.Fail(c, 5002)
@@ -209,6 +214,10 @@ func publishTileset(c *gin.Context) {
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
+		return
+	}
+	if runtime.GOOS == "windows" {
+		res.FailMsg(c, "current windows server does not support this func")
 		return
 	}
 	file, err := c.FormFile("file")
@@ -264,7 +273,7 @@ func publishTileset(c *gin.Context) {
 		inputfiles = append(inputfiles, infile)
 	}
 	//publish to mbtiles
-	outfile := filepath.Join("tilesets", uid, name+"."+id+".mbtiles")
+	outfile := filepath.Join("tilesets", uid, name+"."+id+MBTILESEXT)
 	err = createMbtiles(outfile, inputfiles)
 	if err != nil {
 		log.Error(err)
@@ -315,6 +324,10 @@ func rePublishTileset(c *gin.Context) {
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
 		res.Fail(c, 4045)
+		return
+	}
+	if runtime.GOOS == "windows" {
+		res.FailMsg(c, "current windows server does not support this func")
 		return
 	}
 	file, err := c.FormFile("file")
@@ -371,7 +384,7 @@ func rePublishTileset(c *gin.Context) {
 		inputfiles = append(inputfiles, infile)
 	}
 	//publish to mbtiles
-	outfile := filepath.Join("tilesets", uid, ntid+".mbtiles")
+	outfile := filepath.Join("tilesets", uid, ntid+MBTILESEXT)
 	err = createMbtiles(outfile, inputfiles)
 	if err != nil {
 		log.Error(err)
@@ -428,7 +441,7 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	path := filepath.Join("tilesets", uid, dts.ID+".mbtiles")
+	path := filepath.Join("tilesets", uid, dts.ID+MBTILESEXT)
 	// download
 	err := dts.CacheMBTiles(path)
 	if err != nil {
@@ -541,7 +554,7 @@ func downloadTileset(c *gin.Context) {
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+ts.ID+".mbtiles")
+	c.Header("Content-Disposition", "attachment; filename= "+ts.ID+MBTILESEXT)
 	io.Copy(c.Writer, file)
 	return
 }
@@ -567,19 +580,20 @@ func deleteTileset(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
-		set.S.Delete(tid)
+		set.T.Delete(tid)
 		err = db.Where("id = ?", tid).Delete(Tileset{}).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
-		err = os.Remove(ts.Path) // +ts.Tileset.TileType()
-		if err != nil {
-			log.Errorf(`deleteTileset, remove %s's tilesets (%s) error, details: %s ^^`, uid, tid, err)
-			res.FailErr(c, err)
-			return
-		}
+		//already do in clean
+		// err = os.Remove(ts.Path) // +ts.Tileset.TileType()
+		// if err != nil {
+		// 	log.Errorf(`deleteTileset, remove %s's tilesets (%s) error, details: %s ^^`, uid, tid, err)
+		// 	res.FailErr(c, err)
+		// 	return
+		// }
 	}
 	res.Done(c, "")
 }
@@ -648,21 +662,21 @@ func getTileJSON(c *gin.Context) {
 }
 
 func viewTile(c *gin.Context) {
-	// res := NewRes()
+	res := NewRes()
 	uid := c.Param("user")
 	tid := c.Param("id")
-	// tss := userSet.tileset(uid, tid)
-	// if tss == nil {
-	// 	log.Errorf("viewTile, tilesets id(%s) not exist in the service", tid)
-	// 	res.Fail(c, 4045)
-	// 	return
-	// }
-	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
+	tss := userSet.tileset(uid, tid)
+	if tss == nil {
+		log.Errorf("viewTile, tilesets id(%s) not exist in the service", tid)
+		res.Fail(c, 4045)
+		return
+	}
+	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
 	c.HTML(http.StatusOK, "tileset.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
-		"FMT":   "pbf", //tss.Format.String(),
+		"FMT":   tss.Format.String(),
 	})
 }
 

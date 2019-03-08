@@ -693,8 +693,8 @@ func setupRouter() *gin.Engine {
 	{
 		// > fonts
 		fonts.GET("/:user/", listFonts)                      //get font
-		fonts.POST("/:user/", uploadFont)                    //upload font
-		fonts.POST("/:user/:fontstack/delete/", deleteFonts) //delete font
+		fonts.POST("/:user/upload/", uploadFont)             //upload font
+		fonts.POST("/:user/delete/:fontstack/", deleteFonts) //delete font
 		fonts.GET("/:user/:fontstack/:range", getGlyphs)     //get glyph pbfs
 	}
 

@@ -391,7 +391,7 @@ func downloadDataset(c *gin.Context) {
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+ds.ID+".mbtiles")
+	c.Header("Content-Disposition", "attachment; filename= "+ds.ID+MBTILESEXT)
 	io.Copy(c.Writer, file)
 	return
 }

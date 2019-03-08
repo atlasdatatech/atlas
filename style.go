@@ -41,6 +41,7 @@ type StyleService struct {
 	Name        string      `json:"name"`
 	Summary     string      `json:"summary"`
 	Owner       string      `json:"owner"`
+	Path        string      `json:"path"`
 	Public      bool        `json:"public"`
 	Status      bool        `json:"status"`
 	URL         string      `json:"url"`
@@ -61,7 +62,7 @@ func (ss *StyleService) toStyle() *Style {
 		Owner:   ss.Owner,
 		Summary: ss.Summary,
 		Public:  ss.Public,
-		Path:    ss.URL,
+		Path:    ss.Path,
 	}
 	var err error
 	if ss.Data != nil {
@@ -82,6 +83,7 @@ func (ss *StyleService) Copy() *StyleService {
 		Summary:     ss.Summary,
 		Owner:       ss.Owner,
 		Public:      ss.Public,
+		Path:        ss.Path,
 		URL:         ss.URL,
 		Thumbnail:   ss.Thumbnail,
 		SpritePNG:   ss.SpritePNG,
@@ -115,7 +117,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 		log.Error(err)
 	}
 
-	dir := filepath.Join(ss.URL, "icons")
+	dir := filepath.Join(ss.Path, "icons")
 	items, err := ioutil.ReadDir(dir)
 	if err == nil {
 		for _, item := range items {
@@ -148,7 +150,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = ioutil.WriteFile(filepath.Join(ss.URL, "style.zip"), buf.Bytes(), os.ModePerm)
+	err = ioutil.WriteFile(filepath.Join(ss.Path, "style.zip"), buf.Bytes(), os.ModePerm)
 	if err != nil {
 		fmt.Printf("write zip style file failed,details: %s\n", err)
 	}
@@ -162,12 +164,12 @@ func (ss *StyleService) GenSprite(sprite string) error {
 	if strings.HasPrefix(sprite, prefix) {
 		pos := strings.Index(sprite, "x.")
 		s, err := strconv.ParseFloat(sprite[len(prefix):pos], 64)
-		if err != nil {
+		if err == nil {
 			scale = s
 		}
 	}
 
-	dir := filepath.Join(ss.URL, "icons")
+	dir := filepath.Join(ss.Path, "icons")
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("no icons, can not refresh sprites")
@@ -207,7 +209,7 @@ func (ss *StyleService) GenSprite(sprite string) error {
 		layout[s.Name] = s
 	}
 	name := strings.TrimSuffix(sprite, filepath.Ext(sprite))
-	pathname := filepath.Join(ss.URL, name)
+	pathname := filepath.Join(ss.Path, name)
 	err := dc.SavePNG(pathname + ".png")
 	if err != nil {
 		log.Errorf("save png file error, details: %s", err)
@@ -266,7 +268,7 @@ func (s *Style) toService() *StyleService {
 		Name:    s.Name,
 		Summary: s.Summary,
 		Owner:   s.Owner,
-		URL:     s.Path,
+		Path:    s.Path,
 		Public:  s.Public,
 	}
 

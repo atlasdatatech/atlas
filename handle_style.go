@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
@@ -278,7 +279,7 @@ func downloadStyle(c *gin.Context) {
 	return
 }
 
-//uploadStyle 上传新样式
+//uploadStyle icons上传
 func uploadIcons(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -297,7 +298,15 @@ func uploadIcons(c *gin.Context) {
 		res.Fail(c, 400)
 		return
 	}
-	dir := filepath.Join(style.URL, "icons")
+	dir := filepath.Join(style.Path, "icons")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			log.Errorf(`uploadIcons, make %s's icons dir(%s) error, details: %s`, uid, dir, err)
+			res.Fail(c, 5002)
+			return
+		}
+	}
 	files := form.File["files"]
 	for _, file := range files {
 		dst := filepath.Join(dir, file.Filename)
@@ -309,13 +318,13 @@ func uploadIcons(c *gin.Context) {
 	}
 	generate := true
 	if generate {
-		if _, err := os.Stat(filepath.Join(style.URL, "sprite@2x.png")); err == nil {
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite@2x.png")); err == nil {
 			err := style.GenSprite("sprite@2x.png")
 			if err != nil {
 				log.Warnf("uploadIcons, generate sprite@2x error")
 			}
 		}
-		if _, err := os.Stat(filepath.Join(style.URL, "sprite.png")); err == nil {
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite.png")); err == nil {
 			err := style.GenSprite("sprite.png")
 			if err != nil {
 				log.Warnf("uploadIcons, generate sprite@2x error")
@@ -338,25 +347,33 @@ func getIcon(c *gin.Context) {
 		return
 	}
 	name := c.Param("name")
-	pathfile := filepath.Join(style.URL, "icons", name)
-	ext := filepath.Ext(name)
-	if ext == "" {
-		if _, err := os.Stat(pathfile + ".svg"); err == nil {
-			pathfile = pathfile + ".svg"
-			ext = "svg"
-		} else if _, err := os.Stat(pathfile + ".png"); err == nil {
-			pathfile = pathfile + ".png"
-			ext = "png"
+	dir := filepath.Join(style.Path, "icons")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		regen := c.Param("regenerate")
+		if regen != "true" {
+			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
+			return
 		}
-	} else {
-		ext = ext[1:]
+		err := GenIconsFromSprite(style.Path)
+		if err != nil {
+			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			res.FailMsg(c, "regenerate icons error")
+			return
+		}
 	}
+	pathfile := filepath.Join(dir, name)
+	pathfile = autoAppendExt(pathfile)
 	file, err := ioutil.ReadFile(pathfile)
 	if err != nil {
 		log.Errorf(`getIcon, read sprite file: %v; user: %s ^^`, err, uid)
 		res.Fail(c, 5002)
 		return
 	}
+	ext := filepath.Ext(pathfile)
+	if ext == "" {
+		ext = ".svg"
+	}
+	ext = ext[1:]
 	c.Header("Content-Type", "image/"+ext)
 	c.Writer.Write(file)
 }
@@ -374,44 +391,39 @@ func updateIcon(c *gin.Context) {
 		return
 	}
 	name := c.Param("name")
-
 	var body struct {
-		Scale float64 `json:"scale" form:"scale" binding:"required"`
+		Scale      float64 `json:"scale" form:"scale" binding:"required"`
+		Regenerate bool    `json:"regenerate" form:"regenerate"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
+	if body.Scale == 1 || body.Scale <= 0 || body.Scale > 100 {
+		res.FailMsg(c, "scale error")
+		return
+	}
 
-	pathfile := filepath.Join(style.URL, "icons", name)
-
-	ext := filepath.Ext(name)
-	if ext == "" {
-		if _, err := os.Stat(pathfile + ".svg"); err == nil {
-			pathfile = pathfile + ".svg"
-			ext = "svg"
-		} else if _, err := os.Stat(pathfile + ".png"); err == nil {
-			pathfile = pathfile + ".png"
-			ext = "png"
-		} else if _, err := os.Stat(pathfile + ".jpg"); err == nil {
-			pathfile = pathfile + ".jpg"
-			ext = "jpg"
-		} else if _, err := os.Stat(pathfile + ".bmp"); err == nil {
-			pathfile = pathfile + ".bmp"
-			ext = "bmp"
-		} else if _, err := os.Stat(pathfile + ".gif"); err == nil {
-			pathfile = pathfile + ".gif"
-			ext = "gif"
-		} else {
+	dir := filepath.Join(style.Path, "icons")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if !body.Regenerate {
+			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
 			return
 		}
-	} else {
-		ext = ext[1:]
+		err := GenIconsFromSprite(style.Path)
+		if err != nil {
+			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			res.FailMsg(c, "regenerate icons error")
+			return
+		}
 	}
+	pathfile := filepath.Join(dir, name)
+	pathfile = autoAppendExt(pathfile)
+	ext := filepath.Ext(pathfile)
 	lext := strings.ToLower(ext)
 	switch lext {
-	case "svg":
+	case ".svg":
 		buf, err := svg2svg(pathfile, body.Scale)
 		if err != nil {
 			res.FailErr(c, err)
@@ -422,8 +434,7 @@ func updateIcon(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
-		res.Done(c, "success")
-		return
+
 	default:
 		file, err := os.Open(pathfile)
 		if err != nil {
@@ -441,13 +452,9 @@ func updateIcon(c *gin.Context) {
 		rect := img.Bounds()
 		w := rect.Dx()
 		h := rect.Dy()
-		if body.Scale != 1.0 {
-			if body.Scale > 0 && body.Scale < 2 {
-				w = int(float64(w) * body.Scale)
-				h = int(float64(h) * body.Scale)
-			}
-			img = resize.Resize(uint(w), uint(h), img, resize.Lanczos3)
-		}
+		w = int(float64(w) * body.Scale)
+		h = int(float64(h) * body.Scale)
+		img = resize.Resize(uint(w), uint(h), img, resize.Lanczos3)
 		var out bytes.Buffer
 		err = png.Encode(&out, img)
 		if err != nil {
@@ -461,8 +468,23 @@ func updateIcon(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
-		res.Done(c, "success")
 	}
+
+	if body.Regenerate {
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite@2x.png")); err == nil {
+			err := style.GenSprite("sprite@2x.png")
+			if err != nil {
+				log.Warnf("uploadIcons, generate sprite@2x error")
+			}
+		}
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite.png")); err == nil {
+			err := style.GenSprite("sprite.png")
+			if err != nil {
+				log.Warnf("uploadIcons, generate sprite@2x error")
+			}
+		}
+	}
+	res.Done(c, "success")
 }
 
 //upInsertStyle create a style
@@ -478,37 +500,54 @@ func deleteIcons(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Names []string `json:"names" form:"names" binding:"required"`
+		Names      []string `json:"names" form:"names" binding:"required"`
+		Regenerate bool     `json:"regenerate" form:"regenerate"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	dir := filepath.Join(style.URL, "icons")
+	dir := filepath.Join(style.Path, "icons")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if !body.Regenerate {
+			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
+			return
+		}
+		err := GenIconsFromSprite(style.Path)
+		if err != nil {
+			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			res.FailMsg(c, "regenerate icons error")
+			return
+		}
+	}
+	var sucs []string
 	for _, name := range body.Names {
 		dst := filepath.Join(dir, name)
-		os.Remove(dst)
+		dst = autoAppendExt(dst)
+		err := os.Remove(dst)
+		if err == nil {
+			sucs = append(sucs, name)
+		}
 	}
-	generate := true
-	if generate {
-		if _, err := os.Stat(filepath.Join(style.URL, "sprite@2x.png")); err == nil {
+	if body.Regenerate {
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite@2x.png")); err == nil {
 			err := style.GenSprite("sprite@2x.png")
 			if err != nil {
 				log.Warnf("uploadIcons, generate sprite@2x error")
 			}
 		}
-		if _, err := os.Stat(filepath.Join(style.URL, "sprite.png")); err == nil {
+		if _, err := os.Stat(filepath.Join(style.Path, "sprite.png")); err == nil {
 			err := style.GenSprite("sprite.png")
 			if err != nil {
 				log.Warnf("uploadIcons, generate sprite@2x error")
 			}
 		}
 	}
-	res.Done(c, "")
+	res.DoneData(c, sucs)
 }
 
-//uploadSprite 上传新样式
+//uploadSprite sprites符号库
 func uploadSprite(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -530,7 +569,7 @@ func uploadSprite(c *gin.Context) {
 	var sucs []string
 	files := form.File["files"]
 	for _, file := range files {
-		dst := filepath.Join(style.URL, file.Filename)
+		dst := filepath.Join(style.Path, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
 			log.Errorf(`uploadSprite, upload file: %s; user: %s`, err, uid)
 			res.Fail(c, 5002)
@@ -542,6 +581,7 @@ func uploadSprite(c *gin.Context) {
 	res.DoneData(c, sucs)
 }
 
+//updateSprite 刷新（重新生成）sprites符号库
 func updateSprite(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -587,7 +627,7 @@ func getSprite(c *gin.Context) {
 		res.Fail(c, 4004)
 		return
 	}
-	pathfile := filepath.Join(style.URL, sprite)
+	pathfile := filepath.Join(style.Path, sprite)
 	_, err := os.Stat(pathfile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -619,7 +659,7 @@ func getSprite(c *gin.Context) {
 	c.Writer.Write(file)
 }
 
-//upInsertStyle create a style
+//deleteStyle 删除样式
 func deleteStyle(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -641,14 +681,14 @@ func deleteStyle(c *gin.Context) {
 			res.Fail(c, 5001)
 			return
 		}
-		err = os.RemoveAll(style.URL)
-		if err != nil {
+		err = os.RemoveAll(style.Path)
+		if err != nil && !os.IsNotExist(err) {
 			log.Errorf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, sid, err)
 			res.FailErr(c, err)
 			return
 		}
-		err = os.Remove(style.URL + ".zip")
-		if err != nil {
+		err = os.Remove(style.Path + ".zip")
+		if err != nil && !os.IsNotExist(err) {
 			log.Errorf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, sid, err)
 			res.FailErr(c, err)
 			return
@@ -730,23 +770,28 @@ func cloneStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
+	if !style.Public {
+		log.Errorf("copyStyle, %s's style service (%s) not public ^^", uid, sid)
+		res.Fail(c, 4044)
+		return
+	}
 	set := userSet.service(self)
 	if set == nil {
 		log.Errorf("copyStyle, %s's service set not found ^^", uid)
 		res.Fail(c, 4043)
 		return
 	}
+
 	id, _ := shortid.Generate()
 	ns := style.Copy()
-	suffix := filepath.Ext(ns.ID)
-	ns.ID = strings.TrimSuffix(ns.ID, suffix) + "." + id
-	ns.Name = ns.Name + "-复制"
+	suffix := filepath.Ext(style.ID)
+	ns.ID = strings.TrimSuffix(style.ID, suffix) + "." + id
+	ns.Name = style.Name + "-复制"
 	ns.Owner = self
-	oldpath := ns.URL
-	ns.URL = strings.Replace(ns.URL, uid, self, 1)
-	err := DirCopy(oldpath, ns.URL)
+	ns.Path = filepath.Join("styles", self, ns.ID)
+	err := DirCopy(style.Path, ns.Path)
 	if err != nil {
-		log.Errorf("copyStyle, copy %s's styledir to new (%s) error ^^", uid, ns.URL)
+		log.Errorf("copyStyle, copy %s's styledir to new (%s) error ^^", uid, ns.Path)
 		res.FailErr(c, err)
 		return
 	}
@@ -793,12 +838,15 @@ func updateStyle(c *gin.Context) {
 		return
 	}
 
-	body, err := ioutil.ReadAll(c.Request.Body)
+	decoder := json.NewDecoder(c.Request.Body)
+	var data interface{}
+	err := decoder.Decode(&data)
 	if err != nil {
-		res.Fail(c, 5003)
+		log.Errorf("decode style error, details:%s", err)
+		res.FailMsg(c, "decode style error")
 		return
 	}
-	style.Data = body
+	style.Data = data
 	needsavedb := false
 	if needsavedb {
 		style.toStyle().UpInsert()
@@ -838,16 +886,11 @@ func saveStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-
-	body, err := ioutil.ReadAll(c.Request.Body)
+	err := style.toStyle().UpInsert()
 	if err != nil {
-		res.Fail(c, 5003)
+		log.Errorf(`saveStyle, saved %s's style (%s) to db/file error, details: %s`, uid, sid, err)
+		res.FailMsg(c, "save style to db/file error")
 		return
 	}
-	style.Data = body
-	needsavedb := true
-	if needsavedb {
-		style.toStyle().UpInsert()
-	}
-	res.Done(c, "")
+	res.Done(c, "success")
 }

@@ -22,16 +22,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	// MBTILESEXT mbtiles ext format
+	MBTILESEXT = ".mbtiles"
+)
+
 // TileFormat is an enum that defines the tile format of a tile
-// in the mbtiles file.  Supported image formats:
-//   * PNG
-//   * JPG
-//   * WEBP
-//   * PBF  (vector tile protocol buffers)
-// Tiles may be compressed, in which case the type is one of:
-//   * GZIP
-//   * ZLIB
-// Compressed tiles may be PBF or UTFGrids
 type TileFormat uint8
 
 // Constants representing TileFormat types
@@ -79,25 +75,31 @@ func (t TileFormat) ContentType() string {
 
 //Tileset 样式库
 type Tileset struct {
-	ID        string `json:"id" gorm:"primary_key"`
-	Version   string `json:"version"`
-	Name      string `json:"name" gorm:"unique;not null;unique_index"`
-	Owner     string `json:"owner" gorm:"index"`
-	Type      string `json:"type"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
-	Layers    []byte `json:"data" ` //gorm:"type:json"
-	JSON      []byte `json:"json" ` //gorm:"column:json;type:json"
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID                 string     `json:"id" gorm:"primary_key"`
+	Version            string     `json:"version"`
+	Name               string     `json:"name" gorm:"not null"`
+	Owner              string     `json:"owner" gorm:"index;not null"`
+	Format             TileFormat // tile format: PNG, JPG, PBF, WEBP
+	Public             bool       `json:"public"`
+	Path               string     `json:"path"`
+	Size               int64      `json:"size"`
+	HasUTFGrid         bool       // true if mbtiles file contains additional tables with UTFGrid data
+	UTFGridCompression TileFormat // compression (GZIP or ZLIB) of UTFGrids
+	HasUTFGridData     bool
+	Layers             []byte `json:"data" ` //gorm:"type:json"
+	JSON               []byte `json:"json" ` //gorm:"column:json;type:json"
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // TileService represents an mbtiles file connection.
 type TileService struct {
 	ID                 string
+	Version            string `json:"version"`
 	Name               string
 	Path               string
 	Owner              string
+	Public             bool       `json:"public"`
 	Format             TileFormat // tile format: PNG, JPG, PBF, WEBP
 	URL                string     // tile format: PNG, JPG, PBF, WEBP
 	Hash               string
@@ -120,41 +122,24 @@ func LoadTileset(tileset string) (*Tileset, error) {
 	base := filepath.Base(tileset)
 	ext := filepath.Ext(tileset)
 	name := strings.TrimSuffix(base, ext)
-	// id, _ := shortid.Generate()
 
 	out := &Tileset{
 		ID:        name,
-		Version:   "8",
+		Version:   "v3",
 		Name:      name,
-		Owner:     ATLAS,
-		Type:      ext,
+		Public:    true, //服务集默认是公开的
 		Path:      tileset,
 		Size:      fStat.Size(),
 		UpdatedAt: fStat.ModTime(),
 		Layers:    nil,
 		JSON:      nil,
 	}
-	return out, nil
-}
-
-// CreateTileService creates a new StyleService instance.
-//loadService 创建更新瓦片集服务
-func (ts *Tileset) toService() (*TileService, error) {
-	out := &TileService{
-		ID:   ts.ID,
-		Name: ts.Name,
-		Path: ts.Path, //should not add / at the end
-	}
 	//Saves last modified mbtiles time for setting Last-Modified header
-	fStat, err := os.Stat(ts.Path)
-	if err != nil {
-		return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", ts.Path)
-	}
-	db, err := sql.Open("sqlite3", ts.Path)
+	db, err := sql.Open("sqlite3", tileset)
 	if err != nil {
 		return nil, err
 	}
-	//query a sample tile to determine format
+	defer db.Close()
 	var data []byte
 	err = db.QueryRow("select tile_data from tiles limit 1").Scan(&data)
 	if err != nil {
@@ -167,11 +152,7 @@ func (ts *Tileset) toService() (*TileService, error) {
 	if format == GZIP {
 		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
 	}
-
-	out.db = db
 	out.Format = format
-	out.Timestamp = fStat.ModTime().Round(time.Second)
-
 	// UTFGrids
 	// first check to see if requisite tables exist
 	var count int
@@ -205,6 +186,36 @@ func (ts *Tileset) toService() (*TileService, error) {
 			}
 		}
 	}
+
+	return out, nil
+}
+
+// CreateTileService creates a new StyleService instance.
+//loadService 创建更新瓦片集服务
+func (ts *Tileset) toService() (*TileService, error) {
+	out := &TileService{
+		ID:                 ts.ID,
+		Version:            ts.Version,
+		Name:               ts.Name,
+		Path:               ts.Path, //should not add / at the end
+		Owner:              ts.Owner,
+		Public:             ts.Public,
+		Format:             ts.Format,
+		HasUTFGrid:         ts.HasUTFGrid,
+		UTFGridCompression: ts.UTFGridCompression,
+		HasUTFGridData:     ts.HasUTFGridData,
+	}
+	//Saves last modified mbtiles time for setting Last-Modified header
+	fStat, err := os.Stat(ts.Path)
+	if err != nil {
+		return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", ts.Path)
+	}
+	db, err := sql.Open("sqlite3", ts.Path)
+	if err != nil {
+		return nil, err
+	}
+	out.db = db
+	out.Timestamp = fStat.ModTime().Round(time.Second)
 	out.Status = true
 	return out, nil
 }

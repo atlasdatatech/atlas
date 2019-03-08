@@ -355,7 +355,7 @@ func (s *ServiceSet) AddTilesets() error {
 		name := item.Name()
 		ext := filepath.Ext(name)
 		lext := strings.ToLower(ext)
-		if strings.Compare(".mbtiles", lext) == 0 {
+		if strings.Compare(MBTILESEXT, lext) == 0 {
 			files[strings.TrimSuffix(name, ext)] = filepath.Join(dir, name)
 		}
 	}

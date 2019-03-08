@@ -38,7 +38,8 @@ func uploadFont(c *gin.Context) {
 	res := NewRes()
 	user := c.Param("user")
 	if user != ATLAS {
-		user = ATLAS
+		res.FailMsg(c, "no perm")
+		return
 	}
 	set := userSet.service(user)
 	if set == nil {
