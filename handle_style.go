@@ -30,9 +30,9 @@ func listStyles(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var styles []*StyleService
+	var styles []*Style
 	set.S.Range(func(_, v interface{}) bool {
-		s, ok := v.(*StyleService)
+		s, ok := v.(*Style)
 		if ok {
 			styles = append(styles, s)
 		}
@@ -42,7 +42,7 @@ func listStyles(c *gin.Context) {
 		set := userSet.service(ATLAS)
 		if set != nil {
 			set.S.Range(func(_, v interface{}) bool {
-				s, ok := v.(*StyleService)
+				s, ok := v.(*Style)
 				if ok {
 					if s.Public {
 						styles = append(styles, s)
@@ -76,13 +76,20 @@ func getStyleThumbnial(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
+	s := userSet.style(uid, sid)
+	if s == nil {
 		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
 		res.Fail(c, 4044)
 		return
 	}
-	res.DoneData(c, style.Thumbnail)
+	file := filepath.Join(s.Path, "thumbnail.jpg")
+	buf, err := ioutil.ReadFile(file)
+	if err != nil {
+		log.Errorf(`getStyleThumbnial, read %s's style (%s) thumbnail.jpg error, details: %s`, uid, sid, err)
+		res.FailErr(c, err)
+		return
+	}
+	res.DoneData(c, buf)
 }
 
 //publicStyle 分享样式
@@ -193,14 +200,13 @@ func uploadStyle(c *gin.Context) {
 	}
 	//加载服务,todo 用户服务无需预加载
 	if true {
-		ss := style.toService()
 		set := userSet.service(uid)
 		if set == nil {
 			log.Errorf("%s's service set not found", uid)
 			res.FailMsg(c, "加载服务失败")
 			return
 		}
-		set.S.Store(ss.ID, ss)
+		set.S.Store(style.ID, style)
 	}
 
 	res.DoneData(c, gin.H{
@@ -255,8 +261,7 @@ func replaceStyle(c *gin.Context) {
 		log.Errorf(`AddStyles, upinsert style %s error, details: %s`, style.ID, err)
 	}
 	//加载服务,todo 用户服务无需预加载
-	ss := style.toService()
-	set.S.Store(ss.ID, ss)
+	set.S.Store(style.ID, style)
 	res.Done(c, "")
 }
 
@@ -704,58 +709,32 @@ func getStyle(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Errorf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	// var out map[string]interface{}
-	// json.Unmarshal(style.(*StyleService).Data, &out)
-
-	protoScheme := scheme(c.Request)
+	var style Root
+	if err := json.Unmarshal(s.Data, &style); err != nil {
+		fmt.Println(err)
+	}
+	baseurl := rootURL(c.Request)
 	fixURL := func(url string) string {
 		if "" == url || !strings.HasPrefix(url, "atlas://") {
 			return url
 		}
-		return strings.Replace(url, "atlas://", protoScheme+"://"+c.Request.Host+"/", -1)
+		return strings.Replace(url, "atlas:/", baseurl, -1)
 	}
-
-	out, ok := style.Data.(map[string]interface{})
-	if !ok {
-		log.Errorf("getStyle, style json error, sid: %s ^^", sid)
-		res.FailMsg(c, "style json error")
-		return
-	}
-
-	for k, v := range out {
-		switch v.(type) {
-		case string:
-			//style->sprite
-			if "sprite" == k && v != nil {
-				path := v.(string)
-				out["sprite"] = fixURL(path)
-			}
-			//style->glyphs
-			if "glyphs" == k && v != nil {
-				path := v.(string)
-				out["glyphs"] = fixURL(path)
-			}
-		case map[string]interface{}:
-			if "sources" == k {
-				//style->sources
-				sources := v.(map[string]interface{})
-				for _, u := range sources {
-					source := u.(map[string]interface{})
-					if url := source["url"]; url != nil {
-						source["url"] = fixURL(url.(string))
-					}
-				}
-			}
-		default:
+	style.Glyphs = fixURL(style.Glyphs)
+	style.Sprite = fixURL(style.Sprite)
+	for _, src := range style.Sources {
+		src.URL = fixURL(src.URL)
+		for i := range src.Tiles {
+			src.Tiles[i] = fixURL(src.Tiles[i])
 		}
 	}
-	c.JSON(http.StatusOK, &out)
+	c.JSON(http.StatusOK, &style)
 }
 
 //cloneStyle 复制指定用户的公开样式
@@ -795,7 +774,7 @@ func cloneStyle(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	err = ns.toStyle().UpInsert()
+	err = ns.UpInsert()
 	if err != nil {
 		log.Errorf("copyStyle, upinsert %s's new style error ^^", self)
 		res.FailErr(c, err)
@@ -837,9 +816,8 @@ func updateStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-
 	decoder := json.NewDecoder(c.Request.Body)
-	var data interface{}
+	var data json.RawMessage
 	err := decoder.Decode(&data)
 	if err != nil {
 		log.Errorf("decode style error, details:%s", err)
@@ -847,30 +825,6 @@ func updateStyle(c *gin.Context) {
 		return
 	}
 	style.Data = data
-	needsavedb := false
-	if needsavedb {
-		style.toStyle().UpInsert()
-		// //save to file decrept
-		// dst := filepath.Join(style.Path, "style.json")
-		// out := make(map[string]interface{})
-		// json.Unmarshal(body, &out)
-		// out["id"] = sid
-		// out["modified"] = time.Now().Format("2006-01-02 03:04:05 PM")
-		// out["owner"] = uid
-		// buf, err := json.Marshal(out)
-		// if err != nil {
-		// 	log.Error(err)
-		// 	res.FailErr(c, err)
-		// 	return
-		// }
-		// err = ioutil.WriteFile(dst, buf, os.ModePerm)
-		// if err != nil {
-		// 	log.Error(err)
-		// 	res.Fail(c, 5002)
-		// 	return
-		// }
-	}
-
 	res.Done(c, "")
 }
 
@@ -886,7 +840,7 @@ func saveStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	err := style.toStyle().UpInsert()
+	err := style.UpInsert()
 	if err != nil {
 		log.Errorf(`saveStyle, saved %s's style (%s) to db/file error, details: %s`, uid, sid, err)
 		res.FailMsg(c, "save style to db/file error")

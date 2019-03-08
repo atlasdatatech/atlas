@@ -26,9 +26,9 @@ func listTilesets(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var tilesets []*TileService
+	var tss []*Tileset
 	set.T.Range(func(_, v interface{}) bool {
-		tilesets = append(tilesets, v.(*TileService))
+		tss = append(tss, v.(*Tileset))
 		return true
 	})
 
@@ -36,10 +36,10 @@ func listTilesets(c *gin.Context) {
 		set := userSet.service(ATLAS)
 		if set != nil {
 			set.T.Range(func(_, v interface{}) bool {
-				ts, ok := v.(*TileService)
+				ts, ok := v.(*Tileset)
 				if ok {
 					if ts.Public {
-						tilesets = append(tilesets, ts)
+						tss = append(tss, ts)
 					}
 				}
 				return true
@@ -47,7 +47,7 @@ func listTilesets(c *gin.Context) {
 		}
 	}
 
-	res.DoneData(c, tilesets)
+	res.DoneData(c, tss)
 }
 
 //getTilesetInfo list user's tilesets info
@@ -58,7 +58,7 @@ func getTilesetInfo(c *gin.Context) {
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		log.Errorf(`downloadTileset, %s's tile service (%s) not found ^^`, uid, tid)
+		log.Errorf(`getTilesetInfo, %s's tile service (%s) not found ^^`, uid, tid)
 		res.Fail(c, 4045)
 		return
 	}
@@ -111,7 +111,7 @@ func uploadTileset(c *gin.Context) {
 
 	//加载服务,todo 用户服务无需预加载
 	if true {
-		ts, err := tileset.toService()
+		ts, err := tileset.Service()
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
@@ -177,7 +177,7 @@ func replaceTileset(c *gin.Context) {
 	tile.ID = tid
 	tile.Owner = uid
 	//加载服务,todo 用户服务无需预加载
-	tss, err := tile.toService()
+	tss, err := tile.Service()
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
@@ -296,7 +296,7 @@ func publishTileset(c *gin.Context) {
 
 	//加载服务,todo 用户服务无需预加载
 	if true {
-		ts, err := tileset.toService()
+		ts, err := tileset.Service()
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
@@ -403,7 +403,7 @@ func rePublishTileset(c *gin.Context) {
 
 	//加载服务,todo 用户服务无需预加载
 	if true {
-		ts, err := tile.toService()
+		ts, err := tile.Service()
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
@@ -458,7 +458,7 @@ func createTileset(c *gin.Context) {
 	tile.ID = did
 	tile.Owner = uid
 	//加载服务,todo 用户服务无需预加载
-	tss, err := tile.toService()
+	tss, err := tile.Service()
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
@@ -511,7 +511,7 @@ func updateTileset(c *gin.Context) {
 	tile.Owner = uid
 
 	//加载服务,todo 用户服务无需预加载
-	tss, err := tile.toService()
+	tss, err := tile.Service()
 	if err != nil {
 		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
 		res.FailErr(c, err)

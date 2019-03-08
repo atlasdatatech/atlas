@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-spatial/tegola/mapbox/style"
+
 	"github.com/fogleman/gg"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
@@ -20,90 +22,105 @@ import (
 
 //Style 样式库
 type Style struct {
-	ID        string `json:"id" gorm:"primary_key"`
-	Version   string `json:"version"`
-	Name      string `json:"name" gorm:"index"`
-	Summary   string `json:"summary"`
-	Owner     string `json:"owner" gorm:"index"`
-	Public    bool   `json:"public"`
-	BaseID    string `json:"baseID" gorm:"index"`
-	Path      string `json:"path"`
-	Size      int64  `json:"size"`
-	Data      []byte `json:"data" gorm:"type:json"`
+	ID        string          `json:"id" gorm:"primary_key"`
+	Version   string          `json:"version"`
+	Name      string          `json:"name" gorm:"index"`
+	Summary   string          `json:"summary"`
+	Owner     string          `json:"owner" gorm:"index"`
+	Public    bool            `json:"public"`
+	BaseID    string          `json:"baseID" gorm:"index"`
+	Path      string          `json:"path"`
+	Size      int64           `json:"size"`
+	URL       string          `json:"url"`
+	Status    bool            `json:"status"`
+	Data      json.RawMessage `json:"data" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
-//StyleService 样式服务
-type StyleService struct {
-	ID          string      `json:"id"`
-	Version     string      `json:"version"`
-	Name        string      `json:"name"`
-	Summary     string      `json:"summary"`
-	Owner       string      `json:"owner"`
-	Path        string      `json:"path"`
-	Public      bool        `json:"public"`
-	Status      bool        `json:"status"`
-	URL         string      `json:"url"`
-	Thumbnail   []byte      `json:"-"`
-	SpritePNG   []byte      `json:"-"`
-	SpriteJSON  []byte      `json:"-"`
-	SpritePNG2  []byte      `json:"-"`
-	SpriteJSON2 []byte      `json:"-"`
-	Data        interface{} `json:"-"`
-}
-
-//转为存储
-func (ss *StyleService) toStyle() *Style {
-	out := &Style{
-		ID:      ss.ID,
-		Version: ss.Version,
-		Name:    ss.Name,
-		Owner:   ss.Owner,
-		Summary: ss.Summary,
-		Public:  ss.Public,
-		Path:    ss.Path,
+//Service 加载服务
+func (s *Style) Service() *Style {
+	var output style.Root
+	// read the response body
+	if err := json.Unmarshal(s.Data, &output); err != nil {
+		fmt.Println(err)
 	}
-	var err error
-	if ss.Data != nil {
-		out.Data, err = json.Marshal(ss.Data)
-		if err != nil {
-			log.Errorf("marshal style json error, details:%s", err)
-		}
-	}
-	return out
+	fmt.Printf("%v", output)
+	// if len(s.Data) > 0 {
+	// 	err := json.Unmarshal(s.Data, &out.Data)
+	// 	if err != nil {
+	// 		log.Errorf("unmarshal style json error, details:%s", err)
+	// 	}
+	// }
+	// items, err := ioutil.ReadDir(s.Path)
+	// if err != nil {
+	// 	return out
+	// }
+	// for _, item := range items {
+	// 	if item.IsDir() {
+	// 		continue
+	// 	}
+	// 	name := item.Name()
+	// 	lname := strings.ToLower(name)
+	// 	switch lname {
+	// 	case "thumbnail.jpg":
+	// 		f := filepath.Join(s.Path, name)
+	// 		buf, err := ioutil.ReadFile(f)
+	// 		if err != nil {
+	// 			log.Error(err)
+	// 		}
+	// 		out.Thumbnail = buf
+	// 	case "sprite.png":
+	// 		f := filepath.Join(s.Path, name)
+	// 		buf, err := ioutil.ReadFile(f)
+	// 		if err != nil {
+	// 			log.Error(err)
+	// 		}
+	// 		out.SpritePNG = buf
+	// 	case "sprite@2x.png":
+	// 		f := filepath.Join(s.Path, name)
+	// 		buf, err := ioutil.ReadFile(f)
+	// 		if err != nil {
+	// 			log.Error(err)
+	// 		}
+	// 		out.SpritePNG2 = buf
+	// 	case "sprite.json":
+	// 		f := filepath.Join(s.Path, name)
+	// 		buf, err := ioutil.ReadFile(f)
+	// 		if err != nil {
+	// 			log.Error(err)
+	// 		}
+	// 		out.SpriteJSON = buf
+	// 	case "sprite@2x.json":
+	// 		f := filepath.Join(s.Path, name)
+	// 		buf, err := ioutil.ReadFile(f)
+	// 		if err != nil {
+	// 			log.Error(err)
+	// 		}
+	// 		out.SpriteJSON2 = buf
+	// 	}
+	// }
+	s.Status = true
+	return s
 }
 
 //Copy 服务拷贝
-func (ss *StyleService) Copy() *StyleService {
-	out := &StyleService{
-		ID:          ss.ID,
-		Version:     ss.Version,
-		Name:        ss.Name,
-		Summary:     ss.Summary,
-		Owner:       ss.Owner,
-		Public:      ss.Public,
-		Path:        ss.Path,
-		URL:         ss.URL,
-		Thumbnail:   ss.Thumbnail,
-		SpritePNG:   ss.SpritePNG,
-		SpriteJSON:  ss.SpriteJSON,
-		SpritePNG2:  ss.SpritePNG2,
-		SpriteJSON2: ss.SpriteJSON2,
-		Data:        ss.Data,
-	}
-	return out
+func (s *Style) Copy() *Style {
+	out := *s
+	out.Data = make([]byte, len(s.Data))
+	copy(out.Data, s.Data)
+	return &out
 }
 
 //PackStyle 打包样式
-func (ss *StyleService) PackStyle() *bytes.Buffer {
+func (s *Style) PackStyle() *bytes.Buffer {
 	// Create a buffer to write our archive to.
 	buf := new(bytes.Buffer)
 	// Create a new zip archive.
 	w := zip.NewWriter(buf)
 
 	// Add some files to the archive.
-	style, err := json.Marshal(ss.Data)
+	style, err := json.Marshal(s.Data)
 	if err != nil {
 		log.Errorf("marshal style json error, details:%s", err)
 	}
@@ -117,7 +134,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 		log.Error(err)
 	}
 
-	dir := filepath.Join(ss.Path, "icons")
+	dir := filepath.Join(s.Path, "icons")
 	items, err := ioutil.ReadDir(dir)
 	if err == nil {
 		for _, item := range items {
@@ -150,7 +167,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = ioutil.WriteFile(filepath.Join(ss.Path, "style.zip"), buf.Bytes(), os.ModePerm)
+	err = ioutil.WriteFile(filepath.Join(s.Path, "style.zip"), buf.Bytes(), os.ModePerm)
 	if err != nil {
 		fmt.Printf("write zip style file failed,details: %s\n", err)
 	}
@@ -158,7 +175,7 @@ func (ss *StyleService) PackStyle() *bytes.Buffer {
 }
 
 //GenSprite 生成sprites
-func (ss *StyleService) GenSprite(sprite string) error {
+func (s *Style) GenSprite(sprite string) error {
 	scale := 1.0
 	prefix := "sprite@"
 	if strings.HasPrefix(sprite, prefix) {
@@ -169,7 +186,7 @@ func (ss *StyleService) GenSprite(sprite string) error {
 		}
 	}
 
-	dir := filepath.Join(ss.Path, "icons")
+	dir := filepath.Join(s.Path, "icons")
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("no icons, can not refresh sprites")
@@ -209,7 +226,7 @@ func (ss *StyleService) GenSprite(sprite string) error {
 		layout[s.Name] = s
 	}
 	name := strings.TrimSuffix(sprite, filepath.Ext(sprite))
-	pathname := filepath.Join(ss.Path, name)
+	pathname := filepath.Join(s.Path, name)
 	err := dc.SavePNG(pathname + ".png")
 	if err != nil {
 		log.Errorf("save png file error, details: %s", err)
@@ -258,76 +275,6 @@ func LoadStyle(styleDir string) (*Style, error) {
 	}
 
 	return out, nil
-}
-
-//转为服务
-func (s *Style) toService() *StyleService {
-	out := &StyleService{
-		ID:      s.ID,
-		Version: s.Version,
-		Name:    s.Name,
-		Summary: s.Summary,
-		Owner:   s.Owner,
-		Path:    s.Path,
-		Public:  s.Public,
-	}
-
-	if len(s.Data) > 0 {
-		err := json.Unmarshal(s.Data, &out.Data)
-		if err != nil {
-			log.Errorf("unmarshal style json error, details:%s", err)
-		}
-	}
-	items, err := ioutil.ReadDir(s.Path)
-	if err != nil {
-		return out
-	}
-	for _, item := range items {
-		if item.IsDir() {
-			continue
-		}
-		name := item.Name()
-		lname := strings.ToLower(name)
-		switch lname {
-		case "thumbnail.jpg":
-			f := filepath.Join(s.Path, name)
-			buf, err := ioutil.ReadFile(f)
-			if err != nil {
-				log.Error(err)
-			}
-			out.Thumbnail = buf
-		case "sprite.png":
-			f := filepath.Join(s.Path, name)
-			buf, err := ioutil.ReadFile(f)
-			if err != nil {
-				log.Error(err)
-			}
-			out.SpritePNG = buf
-		case "sprite@2x.png":
-			f := filepath.Join(s.Path, name)
-			buf, err := ioutil.ReadFile(f)
-			if err != nil {
-				log.Error(err)
-			}
-			out.SpritePNG2 = buf
-		case "sprite.json":
-			f := filepath.Join(s.Path, name)
-			buf, err := ioutil.ReadFile(f)
-			if err != nil {
-				log.Error(err)
-			}
-			out.SpriteJSON = buf
-		case "sprite@2x.json":
-			f := filepath.Join(s.Path, name)
-			buf, err := ioutil.ReadFile(f)
-			if err != nil {
-				log.Error(err)
-			}
-			out.SpriteJSON2 = buf
-		}
-	}
-	out.Status = true
-	return out
 }
 
 //UpInsert 创建更新样式存储

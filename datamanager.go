@@ -202,7 +202,6 @@ func LoadDatafile(datafile string) ([]*Datafile, error) {
 			newName := strings.TrimSuffix(filepath.Base(datafile), filepath.Ext(datafile))
 			df := &Datafile{
 				ID:      newName + id,
-				Owner:   ATLAS,
 				Name:    newName,
 				Tag:     name,
 				Geotype: "vector",
@@ -215,7 +214,6 @@ func LoadDatafile(datafile string) ([]*Datafile, error) {
 	} else {
 		df := &Datafile{
 			ID:      name,
-			Owner:   ATLAS,
 			Name:    strings.TrimSuffix(name, id),
 			Geotype: "vector",
 			Format:  lext,

@@ -88,14 +88,14 @@ func studioIndex(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var styles []*StyleService
+	var styles []*Style
 	set.S.Range(func(_, v interface{}) bool {
-		styles = append(styles, v.(*StyleService))
+		styles = append(styles, v.(*Style))
 		return true
 	})
-	var tilesets []*TileService
+	var tss []*Tileset
 	set.T.Range(func(_, v interface{}) bool {
-		tilesets = append(tilesets, v.(*TileService))
+		tss = append(tss, v.(*Tileset))
 		return true
 	})
 
@@ -104,7 +104,7 @@ func studioIndex(c *gin.Context) {
 		"Title":    "AtlasMap",
 		"Login":    false,
 		"Styles":   styles,
-		"Tilesets": tilesets,
+		"Tilesets": tss,
 	})
 }
 
@@ -117,22 +117,22 @@ func studioEditer(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var styles []*StyleService
+	var styles []*Style
 	set.S.Range(func(_, v interface{}) bool {
-		styles = append(styles, v.(*StyleService))
+		styles = append(styles, v.(*Style))
 		return true
 	})
 
-	var tilesets []*TileService
+	var tss []*Tileset
 	set.T.Range(func(_, v interface{}) bool {
-		tilesets = append(tilesets, v.(*TileService))
+		tss = append(tss, v.(*Tileset))
 		return true
 	})
 	c.HTML(http.StatusOK, "editor.html", gin.H{
 		"Title":    "Creater",
 		"User":     uid,
 		"Styles":   styles,
-		"Tilesets": tilesets,
+		"Tilesets": tss,
 	})
 }
 

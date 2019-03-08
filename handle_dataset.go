@@ -39,9 +39,9 @@ func listDatasets(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var dss []*DataService
+	var dts []*Dataset
 	set.D.Range(func(_, v interface{}) bool {
-		dss = append(dss, v.(*DataService))
+		dts = append(dts, v.(*Dataset))
 		return true
 	})
 
@@ -49,15 +49,17 @@ func listDatasets(c *gin.Context) {
 		set := userSet.service(ATLAS)
 		if set != nil {
 			set.D.Range(func(_, v interface{}) bool {
-				ds, ok := v.(*DataService)
+				dt, ok := v.(*Dataset)
 				if ok {
-					dss = append(dss, ds)
+					if dt.Public {
+						dts = append(dts, dt)
+					}
 				}
 				return true
 			})
 		}
 	}
-	res.DoneData(c, dss)
+	res.DoneData(c, dts)
 }
 
 func getDatasetInfo(c *gin.Context) {
@@ -125,6 +127,7 @@ func oneClickImport(c *gin.Context) {
 		// 	df.Format = ".geojson"
 		// }
 		// log.Infof(`%s convert to geojson takes :%v`, srcfile, time.Since(st))
+		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
@@ -145,14 +148,14 @@ func oneClickImport(c *gin.Context) {
 			}
 			t := time.Since(st)
 			log.Infof("one key import time cost: %v", t)
-			ds, err := df.toDataset()
+			dt, err := df.toDataset()
 			if err != nil {
 				log.Error(err)
 				res.FailErr(c, err)
 				return
 			}
 
-			err = ds.UpInsert()
+			err = dt.UpInsert()
 			if err != nil {
 				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 				res.FailErr(c, err)
@@ -160,8 +163,7 @@ func oneClickImport(c *gin.Context) {
 			}
 
 			if true {
-				dss := ds.toService()
-				set.D.Store(dss.ID, dss)
+				set.D.Store(dt.ID, dt)
 			}
 		}(df)
 		tasks = append(tasks, task)
@@ -306,13 +308,13 @@ func importFile(c *gin.Context) {
 		<-task.Pipe
 		<-taskQueue
 		//todo goroute 导入，以下事务需在task完成后处理
-		ds, err := df.toDataset()
+		dt, err := df.toDataset()
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
 			return
 		}
-		err = ds.UpInsert()
+		err = dt.UpInsert()
 		if err != nil {
 			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 			res.FailErr(c, err)
@@ -320,8 +322,7 @@ func importFile(c *gin.Context) {
 		}
 
 		if true {
-			dss := ds.toService()
-			set.D.Store(dss.ID, dss)
+			set.D.Store(dt.ID, dt)
 		}
 	}(df)
 	res.DoneData(c, task)
@@ -378,20 +379,20 @@ func downloadDataset(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	did := c.Param("id")
-	ds := userSet.dataset(uid, did)
-	if ds == nil {
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
 		log.Errorf(`downloadDataset, %s's data service (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
-	file, err := os.Open(ds.URL)
+	file, err := os.Open(dt.Path)
 	if err != nil {
 		log.Errorf(`downloadTileset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
 		res.FailErr(c, err)
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+ds.ID+MBTILESEXT)
+	c.Header("Content-Disposition", "attachment; filename= "+dt.ID+MBTILESEXT)
 	io.Copy(c.Writer, file)
 	return
 }
@@ -961,12 +962,50 @@ func upInsertDataset(c *gin.Context) {
 	})
 }
 
+//deleteDatasets 删除数据集
 func deleteDatasets(c *gin.Context) {
 	res := NewRes()
-	did := c.Param("id")
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		log.Errorf(`deleteDatasets, %s's service not found ^^`, uid)
+		res.Fail(c, 4043)
+		return
+	}
+	ids := c.Param("id")
+	dids := strings.Split(ids, ",")
+	for _, did := range dids {
+		ds := userSet.dataset(uid, did)
+		if ds == nil {
+			log.Errorf(`deleteDatasets, %s's dataset (%s) not found ^^`, uid, did)
+			res.Fail(c, 4046)
+			return
+		}
+		set.D.Delete(did)
 
-	if code := checkDataset(did); code != 200 {
-		res.Fail(c, code)
+		err := db.Where("id = ?", did).Delete(Dataset{}).Error
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
+		// err = os.RemoveAll(ds.Path)
+		// if err != nil && !os.IsNotExist(err) {
+		// 	log.Errorf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, did, err)
+		// 	res.FailErr(c, err)
+		// 	return
+		// }
+		// err = os.Remove(ds.Path + ".zip")
+		// if err != nil && !os.IsNotExist(err) {
+		// 	log.Errorf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, did, err)
+		// 	res.FailErr(c, err)
+		// 	return
+		// }
+	}
+	did := ""
+	ds := userSet.dataset(uid, did)
+	if ds == nil {
+		res.Fail(c, 4046)
 		return
 	}
 

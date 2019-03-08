@@ -22,11 +22,11 @@ func listFonts(c *gin.Context) {
 	if user != ATLAS {
 		user = ATLAS
 	}
-	var fonts []*FontService
+	var fonts []*Font
 	set := userSet.service(user)
 	if set != nil {
 		set.F.Range(func(_, v interface{}) bool {
-			fonts = append(fonts, v.(*FontService))
+			fonts = append(fonts, v.(*Font))
 			return true
 		})
 	}
@@ -87,7 +87,7 @@ func uploadFont(c *gin.Context) {
 	}
 
 	if true {
-		fs := font.toService()
+		fs := font.Service()
 		set.F.Store(fs.ID, fs)
 	}
 	res.DoneData(c, gin.H{
@@ -163,7 +163,7 @@ func getGlyphs(c *gin.Context) {
 			res.Fail(c, 4047)
 			return
 		}
-		data, err := iv.(*FontService).Font(fontrange)
+		data, err := iv.(*Font).Font(fontrange)
 		if err != nil {
 			log.Errorf("getGlyphs, get pbf font error, details:%s ~", err)
 			res.Fail(c, 4005)
@@ -173,7 +173,7 @@ func getGlyphs(c *gin.Context) {
 
 	default: //multi fonts
 
-		var fss []*FontService
+		var fs []*Font
 		hasdefault := false
 		haslost := false
 		for _, font := range fonts {
@@ -186,26 +186,26 @@ func getGlyphs(c *gin.Context) {
 				haslost = true
 				continue
 			}
-			fss = append(fss, iv.(*FontService))
+			fs = append(fs, iv.(*Font))
 		}
 		//没有默认字体且有丢失字体,则加载默认字体
 		if !hasdefault && haslost {
 			iv, ok := set.F.Load(DEFAULTFONT)
 			if ok {
-				fs, ok := iv.(*FontService)
+				f, ok := iv.(*Font)
 				if ok {
-					fss = append(fss, fs)
+					fs = append(fs, f)
 				}
 			}
 		}
 
-		contents := make([][]byte, len(fss))
+		contents := make([][]byte, len(fs))
 		var wg sync.WaitGroup
 		//need define func, can't use sugar ":="
-		getFontPBF := func(fs *FontService, fontrange string, index int) {
+		getFontPBF := func(f *Font, fontrange string, index int) {
 			//fallbacks unchanging
 			defer wg.Done()
-			err := fs.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&contents[index])
+			err := f.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&contents[index])
 			if err != nil {
 				log.Error(err)
 				if err == sql.ErrNoRows {
@@ -214,9 +214,9 @@ func getGlyphs(c *gin.Context) {
 				return
 			}
 		}
-		for i, fs := range fss {
+		for i, f := range fs {
 			wg.Add(1)
-			go getFontPBF(fs, fontrange, i)
+			go getFontPBF(f, fontrange, i)
 		}
 		wg.Wait()
 

@@ -33,56 +33,56 @@ func (us *UserSet) service(uid string) *ServiceSet {
 	return uss
 }
 
-func (us *UserSet) style(uid, sid string) *StyleService {
+func (us *UserSet) style(uid, sid string) *Style {
 	set := us.service(uid)
 	if set != nil {
 		style, ok := set.S.Load(sid)
 		if ok {
-			service, ok := style.(*StyleService)
+			s, ok := style.(*Style)
 			if ok {
-				return service
+				return s
 			}
 		}
 	}
 	return nil
 }
 
-func (us *UserSet) font(uid, fid string) *FontService {
+func (us *UserSet) font(uid, fid string) *Font {
 	set := us.service(uid)
 	if set != nil {
 		font, ok := set.F.Load(fid)
 		if ok {
-			service, ok := font.(*FontService)
+			f, ok := font.(*Font)
 			if ok {
-				return service
+				return f
 			}
 		}
 	}
 	return nil
 }
 
-func (us *UserSet) tileset(uid, tid string) *TileService {
+func (us *UserSet) tileset(uid, tid string) *Tileset {
 	set := us.service(uid)
 	if set != nil {
 		tile, ok := set.T.Load(tid)
 		if ok {
-			service, ok := tile.(*TileService)
+			ts, ok := tile.(*Tileset)
 			if ok {
-				return service
+				return ts
 			}
 		}
 	}
 	return nil
 }
 
-func (us *UserSet) dataset(uid, did string) *DataService {
+func (us *UserSet) dataset(uid, did string) *Dataset {
 	set := us.service(uid)
 	if set != nil {
 		data, ok := set.D.Load(did)
 		if ok {
-			service, ok := data.(*DataService)
+			dt, ok := data.(*Dataset)
 			if ok {
-				return service
+				return dt
 			}
 		}
 	}
@@ -147,10 +147,10 @@ func LoadServiceSet(user string) (*ServiceSet, error) {
 }
 
 // AddStyles 添加styles目录下未入库的样式
-func (s *ServiceSet) AddStyles() error {
+func (ss *ServiceSet) AddStyles() error {
 	//遍历目录下所有styles
 	files := make(map[string]string)
-	dir := filepath.Join("styles", s.Owner)
+	dir := filepath.Join("styles", ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -175,7 +175,7 @@ func (s *ServiceSet) AddStyles() error {
 
 	//获取数据库中已有服务
 	var styles []Style
-	err = db.Where("owner = ?", s.Owner).Find(&styles).Error
+	err = db.Where("owner = ?", ss.Owner).Find(&styles).Error
 	if err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			return err
@@ -211,33 +211,31 @@ func (s *ServiceSet) AddStyles() error {
 }
 
 // ServeStyle 加载启动指定样式服务，load style service
-func (s *ServiceSet) ServeStyle(id string) error {
-	style := Style{}
-	err := db.Where("id = ?", id).First(style).Error
+func (ss *ServiceSet) ServeStyle(id string) error {
+	s := &Style{}
+	err := db.Where("id = ?", id).First(&s).Error
 	if err != nil {
 		return err
 	}
-	ss := style.toService()
-	s.S.Store(ss.ID, ss)
+	ss.S.Store(s.ID, s)
 	return nil
 }
 
 // ServeStyles 加载启动指定用户的全部样式服务
-func (s *ServiceSet) ServeStyles() error {
-	var styles []Style
-	err := db.Where("owner = ?", s.Owner).Find(&styles).Error
+func (ss *ServiceSet) ServeStyles() error {
+	var styles []*Style
+	err := db.Where("owner = ?", ss.Owner).Find(&styles).Error
 	if err != nil {
 		return err
 	}
-	for _, style := range styles {
-		ss := style.toService()
-		s.S.Store(ss.ID, ss)
+	for _, s := range styles {
+		ss.S.Store(s.ID, s)
 	}
 	return nil
 }
 
 // AddFonts 添加fonts目录下未入库的字体
-func (s *ServiceSet) AddFonts() error {
+func (ss *ServiceSet) AddFonts() error {
 
 	isValid := func(pbfonts string) bool {
 		pbfFile := filepath.Join(pbfonts, "0-255.pbf")
@@ -255,7 +253,7 @@ func (s *ServiceSet) AddFonts() error {
 
 	//遍历目录下所有fonts
 	files := make(map[string]string)
-	dir := filepath.Join("fonts", s.Owner)
+	dir := filepath.Join("fonts", ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -277,7 +275,7 @@ func (s *ServiceSet) AddFonts() error {
 	}
 
 	var fonts []Font
-	err = db.Where("owner = ?", s.Owner).Find(&fonts).Error
+	err = db.Where("owner = ?", ss.Owner).Find(&fonts).Error
 	if err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			return err
@@ -313,36 +311,35 @@ func (s *ServiceSet) AddFonts() error {
 }
 
 // ServeFont 加载启动指定字体服务，load font service
-func (s *ServiceSet) ServeFont(id string) error {
+func (ss *ServiceSet) ServeFont(id string) error {
 	font := Font{}
 	err := db.Where("id = ?", id).First(font).Error
 	if err != nil {
 		return err
 	}
-	fs := font.toService()
-	s.F.Store(fs.ID, fs)
+	fs := font.Service()
+	ss.F.Store(fs.ID, fs)
 	return nil
 }
 
 // ServeFonts 加载启动指定用户的字体服务，当前默认加载公共字体
-func (s *ServiceSet) ServeFonts() error {
-	var fonts []Font
-	err := db.Where("owner = ?", s.Owner).Find(&fonts).Error
+func (ss *ServiceSet) ServeFonts() error {
+	var fs []Font
+	err := db.Where("owner = ?", ss.Owner).Find(&fs).Error
 	if err != nil {
 		return err
 	}
-	for _, font := range fonts {
-		fs := font.toService()
-		s.F.Store(fs.ID, fs)
+	for _, f := range fs {
+		ss.F.Store(f.ID, f)
 	}
 	return nil
 }
 
 // AddTilesets 添加tilesets目录下未入库的MBTiles数据源或者未发布的可发布数据源(暂未实现)
-func (s *ServiceSet) AddTilesets() error {
+func (ss *ServiceSet) AddTilesets() error {
 	//遍历dir目录下所有.mbtiles
 	files := make(map[string]string)
-	dir := filepath.Join("tilesets", s.Owner)
+	dir := filepath.Join("tilesets", ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -361,7 +358,7 @@ func (s *ServiceSet) AddTilesets() error {
 	}
 	//获取数据库.mbtiles服务
 	var tss []Tileset
-	err = db.Where("owner = ?", s.Owner).Find(&tss).Error
+	err = db.Where("owner = ?", ss.Owner).Find(&tss).Error
 	if err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			return err
@@ -397,43 +394,34 @@ func (s *ServiceSet) AddTilesets() error {
 }
 
 // ServeTileset 从瓦片集目录库里加载tilesets服务集
-func (s *ServiceSet) ServeTileset(id string) error {
+func (ss *ServiceSet) ServeTileset(id string) error {
 	ts := Tileset{}
-	err := db.Where("id = ?", id).First(ts).Error
+	err := db.Where("id = ?", id).First(&ts).Error
 	if err != nil {
 		return err
 	}
-	tss, err := ts.toService()
-	if err != nil {
-		return err
-	}
-	s.T.Store(tss.ID, tss)
+	ss.T.Store(ts.ID, ts)
 	return nil
 }
 
 // ServeTilesets 加载用户tilesets服务集
-func (s *ServiceSet) ServeTilesets() error {
-	var tilesets []Tileset
-	err := db.Where("owner = ?", s.Owner).Find(&tilesets).Error
+func (ss *ServiceSet) ServeTilesets() error {
+	var tss []Tileset
+	err := db.Where("owner = ?", ss.Owner).Find(&tss).Error
 	if err != nil {
 		return err
 	}
-	for _, tileset := range tilesets {
-		tss, err := tileset.toService()
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		s.T.Store(tss.ID, tss)
+	for _, ts := range tss {
+		ss.T.Store(ts.ID, ts)
 	}
 	return nil
 }
 
 // AddDatasets 添加datasets目录下未入库的数据集
-func (s *ServiceSet) AddDatasets() error {
+func (ss *ServiceSet) AddDatasets() error {
 	//遍历dir目录下所有.mbtiles
 	files := make(map[string]string)
-	dir := filepath.Join("datasets", s.Owner)
+	dir := filepath.Join("datasets", ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -452,7 +440,7 @@ func (s *ServiceSet) AddDatasets() error {
 	}
 	//获取数据库.mbtiles服务
 	var dss []Dataset
-	err = db.Where("owner = ?", s.Owner).Find(&dss).Error
+	err = db.Where("owner = ?", ss.Owner).Find(&dss).Error
 	if err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			return err
@@ -513,27 +501,25 @@ func (s *ServiceSet) AddDatasets() error {
 }
 
 // ServeDataset 从数据集目录库里加载数据集服务
-func (s *ServiceSet) ServeDataset(id string) error {
-	ds := Dataset{}
-	err := db.Where("id = ?", id).First(ds).Error
+func (ss *ServiceSet) ServeDataset(id string) error {
+	dt := Dataset{}
+	err := db.Where("id = ?", id).First(dt).Error
 	if err != nil {
 		return err
 	}
-	dss := ds.toService()
-	s.D.Store(dss.ID, dss)
+	ss.D.Store(dt.ID, dt)
 	return nil
 }
 
 // ServeDatasets 加载用户数据集服务
-func (s *ServiceSet) ServeDatasets() error {
-	var datasets []Dataset
-	err := db.Where("owner = ?", s.Owner).Find(&datasets).Error
+func (ss *ServiceSet) ServeDatasets() error {
+	var dts []Dataset
+	err := db.Where("owner = ?", ss.Owner).Find(&dts).Error
 	if err != nil {
 		return err
 	}
-	for _, dataset := range datasets {
-		dss := dataset.toService()
-		s.D.Store(dss.ID, dss)
+	for _, dt := range dts {
+		ss.D.Store(dt.ID, dt)
 	}
 	return nil
 }

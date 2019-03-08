@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,48 +54,44 @@ type Field struct {
 //Fields 字段列表
 type Fields []Field
 
-// Dataset 数据集定义-后台
+// Dataset 数据集定义结构
 type Dataset struct {
 	ID        string `json:"id"`   //字段列表
 	Name      string `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
 	Alias     string `json:"alias"`
 	Tag       string `json:"tag"`
 	Owner     string `json:"owner"`
+	Public    bool   `json:"public"`
+	Path      string `json:"path"`
 	Count     int    `json:"count"`
-	Type      string `json:"type"`                    //字段列表
+	Type      string `json:"type"` //字段列表
+	BBox      orb.Bound
 	Fields    []byte `json:"fields" gorm:"type:json"` //字段列表
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Status    bool
+	TLayer    *TileLayer
 }
 
-// DataService 数据集定义-接口
-type DataService struct {
-	ID     string      `form:"id" json:"id"`         //字段列表
-	Name   string      `form:"name" json:"name"`     //字段列表// 数据集名称,现用于更方便的ID
-	Owner  string      `form:"owner" json:"owner"`   //字段列表// 显示标签
-	Type   string      `form:"type" json:"type"`     //字段列表
-	Fields interface{} `form:"fields" json:"fields"` //字段列表
-	BBox   orb.Bound
-
-	URL    string // geojson service
-	Hash   string
-	Status bool
-	TLayer *TileLayer
+//Service 加载服务
+func (dt *Dataset) Service() *Dataset {
+	// json.Unmarshal(ds.Fields, &out.Fields)
+	return dt
 }
 
 // NewTileLayer 新建服务层
-func (dts *DataService) NewTileLayer() (*TileLayer, error) {
+func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	tlayer := &TileLayer{
-		ID:   dts.ID,
-		Name: dts.Name,
+		ID:   dt.ID,
+		Name: dt.Name,
 	}
 	prd, ok := providers["atlas"]
 	if !ok {
 		return nil, fmt.Errorf("provider not found")
 	}
 	cfg := dict.Dict{}
-	cfg["name"] = dts.Name
-	cfg["tablename"] = strings.ToLower(dts.ID)
+	cfg["name"] = dt.Name
+	cfg["tablename"] = strings.ToLower(dt.ID)
 	err := prd.AddLayer(cfg)
 	if err != nil {
 		return nil, err
@@ -104,20 +99,20 @@ func (dts *DataService) NewTileLayer() (*TileLayer, error) {
 	tlayer.MinZoom = 0
 	tlayer.MaxZoom = 20
 	tlayer.Provider = prd
-	tlayer.ProviderLayerName = dts.Name
-	dts.TLayer = tlayer
+	tlayer.ProviderLayerName = dt.Name
+	dt.TLayer = tlayer
 	return tlayer, nil
 }
 
 // CacheMBTiles 新建服务层
-func (dts *DataService) CacheMBTiles(path string) error {
-	if dts.TLayer == nil {
-		_, err := dts.NewTileLayer()
+func (dt *Dataset) CacheMBTiles(path string) error {
+	if dt.TLayer == nil {
+		_, err := dt.NewTileLayer()
 		if err != nil {
 			return err
 		}
 	}
-	err := dts.UpdateExtent()
+	err := dt.UpdateExtent()
 	if err != nil {
 		log.Errorf(`update datasets extent error, details: %s`, err)
 	}
@@ -162,7 +157,7 @@ func (dts *DataService) CacheMBTiles(path string) error {
 
 	minzoom, maxzoom := 7, 9
 	for z := minzoom; z <= maxzoom; z++ {
-		tiles := tilecover.Bound(dts.BBox, maptile.Zoom(z))
+		tiles := tilecover.Bound(dt.BBox, maptile.Zoom(z))
 		log.Infof("zoom: %d, count: %d", z, len(tiles))
 		for t, v := range tiles {
 			if !v {
@@ -171,11 +166,11 @@ func (dts *DataService) CacheMBTiles(path string) error {
 			tile := slippy.NewTile(uint(t.Z), uint(t.X), uint(t.Y), TileBuffer, tegola.WebMercator)
 			// Check to see that the zxy is within the bounds of the map.
 			textent := geom.Extent(tile.Bounds())
-			if !dts.TLayer.Bounds.Contains(&textent) {
+			if !dt.TLayer.Bounds.Contains(&textent) {
 				continue
 			}
 
-			pbyte, err := dts.TLayer.Encode(context.Background(), tile)
+			pbyte, err := dt.TLayer.Encode(context.Background(), tile)
 			if err != nil {
 				errMsg := fmt.Sprintf("error marshalling tile: %v", err)
 				log.Error(errMsg)
@@ -198,8 +193,8 @@ func (dts *DataService) CacheMBTiles(path string) error {
 }
 
 // UpdateExtent 更新图层外边框
-func (dts *DataService) UpdateExtent() error {
-	tbname := strings.ToLower(dts.ID)
+func (dt *Dataset) UpdateExtent() error {
+	tbname := strings.ToLower(dt.ID)
 	var extent []byte
 	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM "%s";`, tbname)
 	err := db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
@@ -211,50 +206,28 @@ func (dts *DataService) UpdateExtent() error {
 		return err
 	}
 	bbox := ext.Geometry().Bound()
-	dts.BBox = bbox
-	dts.TLayer.Bounds = &geom.Extent{bbox.Left(), bbox.Bottom(), bbox.Right(), bbox.Top()}
+	dt.BBox = bbox
+	dt.TLayer.Bounds = &geom.Extent{bbox.Left(), bbox.Bottom(), bbox.Right(), bbox.Top()}
 	return nil
 }
 
-func (dts *DataService) toDataset() *Dataset {
-	out := &Dataset{
-		ID:    dts.ID,
-		Name:  dts.Name,
-		Owner: dts.Owner,
-		Type:  dts.Type,
-	}
-	out.Fields, _ = json.Marshal(dts.Fields)
-	return out
-}
-
-func (ds *Dataset) toService() *DataService {
-	out := &DataService{
-		ID:    ds.ID,
-		Name:  ds.Name,
-		Owner: ds.Owner,
-		Type:  ds.Type,
-	}
-	json.Unmarshal(ds.Fields, &out.Fields)
-	return out
-}
-
 //UpInsert 更新/创建数据集概要
-func (ds *Dataset) UpInsert() error {
-	if ds == nil {
+func (dt *Dataset) UpInsert() error {
+	if dt == nil {
 		return fmt.Errorf("datafile may not be nil")
 	}
 	tmp := &Dataset{}
-	err := db.Where("id = ?", ds.ID).First(tmp).Error
+	err := db.Where("id = ?", dt.ID).First(tmp).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			err = db.Create(ds).Error
+			err = db.Create(dt).Error
 			if err != nil {
 				return err
 			}
 		}
 		return err
 	}
-	err = db.Model(&Dataset{}).Update(ds).Error
+	err = db.Model(&Dataset{}).Update(dt).Error
 	if err != nil {
 		return err
 	}
@@ -262,18 +235,18 @@ func (ds *Dataset) UpInsert() error {
 }
 
 //getEncoding guess data file encoding
-func (ds *Dataset) getTags() []string {
+func (dt *Dataset) getTags() []string {
 	var tags []string
-	if ds == nil {
+	if dt == nil {
 		log.Errorf("datafile may not be nil")
 		return tags
 	}
 
 	datasets := []Dataset{}
-	err := db.Where("owner = ?", ds.Owner).Find(&datasets).Error
+	err := db.Where("owner = ?", dt.Owner).Find(&datasets).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`getTags, can not find user datafile, user: %s`, ds.Owner)
+			log.Errorf(`getTags, can not find user datafile, user: %s`, dt.Owner)
 			return tags
 		}
 		log.Errorf(`getTags, get data file info error, details: %s`, err)
@@ -313,11 +286,11 @@ func (ds *Dataset) getTags() []string {
 }
 
 // GetGeoJSON reads a data in the database
-func (ds *Dataset) GetGeoJSON(data *[]byte) error {
+func (dt *Dataset) GetGeoJSON(data *[]byte) error {
 	return nil
 }
 
 // GetJSONConfig load to config
-func (ds *Dataset) GetJSONConfig(data *[]byte) error {
+func (dt *Dataset) GetJSONConfig(data *[]byte) error {
 	return nil
 }

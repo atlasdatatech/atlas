@@ -31,15 +31,9 @@ type Font struct {
 	Path        string
 	Size        int64
 	Compression bool
-}
-
-//FontService struct for font service
-type FontService struct {
-	ID     string
-	Name   string
-	URL    string
-	Status bool
-	DB     *sql.DB
+	URL         string
+	Status      bool
+	DB          *sql.DB
 }
 
 // LoadFont 加载字体.
@@ -156,22 +150,17 @@ func packPBFonts(path string) error {
 	return nil
 }
 
-//toService 加载服务
-func (f *Font) toService() *FontService {
-	fs := &FontService{
-		ID:     f.ID,
-		Name:   f.Name,
-		URL:    f.Path,
-		Status: true,
-	}
+//Service 加载服务
+func (f *Font) Service() *Font {
 	// fs.DB
 	db, err := sql.Open("sqlite3", f.Path)
 	if err != nil {
 		log.Errorf("toService, font to service error, details:%s", err)
 		return nil
 	}
-	fs.DB = db
-	return fs
+	f.DB = db
+	f.Status = true
+	return f
 }
 
 //UpInsert 更新/创建样式存储
@@ -198,20 +187,10 @@ func (f *Font) UpInsert() error {
 	return nil
 }
 
-//转为存储
-func (fs *FontService) toFont() *Font {
-	out := &Font{
-		ID:   fs.ID,
-		Name: fs.Name,
-		Path: fs.URL,
-	}
-	return out
-}
-
 //Font 获取字体pbf切片
-func (fs *FontService) Font(fontrange string) ([]byte, error) {
+func (f *Font) Font(fontrange string) ([]byte, error) {
 	var data []byte
-	err := fs.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&data)
+	err := f.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&data)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
