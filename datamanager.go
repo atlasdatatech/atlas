@@ -1267,11 +1267,7 @@ func (df *Datafile) toGeojson() error {
 		}
 
 		params = append(params, absPath)
-		params = append(params, ">")
-
-		ext := filepath.Ext(absPath)
-		outfile := strings.TrimSuffix(absPath, ext)
-		params = append(params, outfile+".geojson")
+		//		params = append(params, ">")
 
 		if runtime.GOOS == "windows" {
 			decoder := mahonia.NewDecoder("gbk")
@@ -1279,8 +1275,10 @@ func (df *Datafile) toGeojson() error {
 			gbk = decoder.ConvertString(gbk)
 			params = strings.Split(gbk, ",")
 		}
-		// go func(task *ImportTask) {
+		fmt.Println(params)
 		cmd := exec.Command("togeojson", params...)
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
 		err = cmd.Start()
 		if err != nil {
 			return err
@@ -1288,6 +1286,14 @@ func (df *Datafile) toGeojson() error {
 		err = cmd.Wait()
 		if err != nil {
 			return err
+		}
+
+		ext := filepath.Ext(absPath)
+		outfile := strings.TrimSuffix(absPath, ext)
+
+		err = ioutil.WriteFile(outfile+".geojson", stdout.Bytes(), os.ModePerm)
+		if err != nil {
+			fmt.Printf("togeojson write geojson file failed,details: %s\n", err)
 		}
 	default:
 		return fmt.Errorf("not support format: %s", df.Format)
@@ -1452,12 +1458,16 @@ func createMbtiles(outfile string, infiles []string) error {
 		gbk = decoder.ConvertString(gbk)
 		params = strings.Split(gbk, ",")
 	}
+	fmt.Println(params)
 	cmd := exec.Command("tippecanoe", params...)
 	err = cmd.Start()
+	fmt.Println("cmd.start...")
 	if err != nil {
 		return err
 	}
 	err = cmd.Wait()
+	fmt.Println("cmd.wait...")
+	fmt.Println(err)
 	if err != nil {
 		return err
 	}
