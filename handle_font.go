@@ -18,45 +18,54 @@ import (
 //listFonts 获取字体服务列表
 func listFonts(c *gin.Context) {
 	res := NewRes()
-	user := c.Param("user")
-	if user != ATLAS {
-		user = ATLAS
+	uid := c.Param("user")
+	if uid != ATLAS {
+		uid = ATLAS
 	}
-	var fonts []*FontService
-	set := userSet.service(user)
-	if set != nil {
-		set.F.Range(func(_, v interface{}) bool {
-			fonts = append(fonts, v.(*FontService))
-			return true
-		})
+	set := userSet.service(uid)
+	if set == nil {
+		log.Warnf(`listFonts, %s's service not found ^^`, uid)
+		res.Fail(c, 4043)
+		return
 	}
+	var fonts []*Font
+	set.F.Range(func(_, v interface{}) bool {
+		fonts = append(fonts, v.(*Font))
+		return true
+	})
 	res.DoneData(c, fonts)
 }
 
 //uploadStyle 上传新样式
 func uploadFont(c *gin.Context) {
 	res := NewRes()
-	user := c.Param("user")
+	user := c.GetString(identityKey)
 	if user != ATLAS {
-		user = ATLAS
+		res.FailMsg(c, "no permission")
+		return
 	}
-	set := userSet.service(user)
+	uid := c.Param("user")
+	if uid != ATLAS {
+		res.FailMsg(c, "no perm")
+		return
+	}
+	set := userSet.service(uid)
 	if set == nil {
-		log.Errorf(`uploadFont, %s's service set not found`, user)
-		res.Fail(c, 4044)
+		log.Warnf(`uploadFont, %s's service not found ^^`, uid)
+		res.Fail(c, 4043)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadFont, %s get file error, details: %s`, user, err)
-		res.Fail(c, 4046)
+		log.Warnf(`uploadFont, %s get file error, details: %s`, uid, err)
+		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
-	dst := filepath.Join("fonts", user, file.Filename)
+	dst := filepath.Join("fonts", uid, file.Filename)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadFont, save %s's file error, details: %s`, user, err)
+		log.Errorf(`uploadFont, save %s's file error, details: %s`, uid, err)
 		res.Fail(c, 5002)
 		return
 	}
@@ -64,7 +73,7 @@ func uploadFont(c *gin.Context) {
 	switch lext {
 	case ".zip", ".pbfonts":
 	default:
-		log.Errorf(`uploadFont, %s's font format error (%s)`, user, file.Filename)
+		log.Errorf(`uploadFont, %s's font format error (%s)`, uid, file.Filename)
 		res.FailMsg(c, "上传格式错误,请上传zip/pbfonts格式")
 		return
 	}
@@ -73,42 +82,52 @@ func uploadFont(c *gin.Context) {
 	}
 	font, err := LoadFont(dst)
 	if err != nil {
-		log.Errorf("AddFonts, could not load font %s, details: %s", dst, err)
+		log.Errorf("uploadFont, could not load font %s, details: %s", dst, err)
 		res.FailErr(c, err)
 		return
 	}
 	//入库
 	err = font.UpInsert()
 	if err != nil {
-		log.Errorf(`AddFonts, upinsert font %s error, details: %s`, font.ID, err)
+		log.Errorf(`uploadFont, upinsert font %s error, details: %s`, font.ID, err)
 		res.FailErr(c, err)
 		return
 	}
 
-	if true {
-		fs := font.toService()
-		set.F.Store(fs.ID, fs)
+	err = font.Service()
+	if err != nil {
+		log.Errorf(`uploadFont,serve font (%s) to service error, details: %s`, font.ID, err)
+		res.FailErr(c, err)
+		return
 	}
-	res.DoneData(c, gin.H{
-		"id": font.ID,
-	})
+	set.F.Store(font.ID, font)
+	res.DoneData(c, font)
 }
 
 //upInsertStyle create a style
 func deleteFonts(c *gin.Context) {
 	res := NewRes()
+	user := c.GetString(identityKey)
+	if user != ATLAS {
+		res.FailMsg(c, "no permission")
+		return
+	}
 	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		log.Warnf(`deleteFonts, %s's service not found ^^`, uid)
+		res.Fail(c, 4043)
+		return
+	}
 	fontstack := c.Param("fontstack")
 	fonts := strings.Split(fontstack, ",")
-
 	for _, fid := range fonts {
 		font := userSet.font(uid, fid)
 		if font == nil {
 			log.Errorf(`deleteFonts, %s's font service (%s) not found ^^`, uid, fid)
-			res.Fail(c, 4044)
+			res.Fail(c, 4047)
 			return
 		}
-		set := userSet.service(uid)
 		set.F.Delete(fid)
 		err := db.Delete(&Font{}).Where("id = ?", fid).Error
 		if err != nil {
@@ -126,7 +145,6 @@ func deleteFonts(c *gin.Context) {
 			log.Errorf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, fid, err)
 		}
 	}
-
 	res.Done(c, "")
 }
 
@@ -136,14 +154,14 @@ func getGlyphs(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4045)
+		res.Fail(c, 4046)
 		return
 	}
 	fontstack := c.Param("fontstack")
 	fontrange := c.Param("range")
 	rgPat := `[\d]+-[\d]+.pbf$`
 	if ok, _ := regexp.MatchString(rgPat, fontrange); !ok {
-		log.Errorf("getGlyphs, range pattern error; range:%s; user:%s", fontrange, uid)
+		log.Warnf("getGlyphs, range pattern error; range:%s; user:%s", fontrange, uid)
 		res.Fail(c, 4005)
 		return
 	}
@@ -159,10 +177,10 @@ func getGlyphs(c *gin.Context) {
 		iv, ok := set.F.Load(fontstack)
 		if !ok {
 			log.Errorf("getGlyphs, fontstack is not found ~")
-			res.Fail(c, 4005)
+			res.Fail(c, 4047)
 			return
 		}
-		data, err := iv.(*FontService).Font(fontrange)
+		data, err := iv.(*Font).Font(fontrange)
 		if err != nil {
 			log.Errorf("getGlyphs, get pbf font error, details:%s ~", err)
 			res.Fail(c, 4005)
@@ -172,7 +190,7 @@ func getGlyphs(c *gin.Context) {
 
 	default: //multi fonts
 
-		var fss []*FontService
+		var fs []*Font
 		hasdefault := false
 		haslost := false
 		for _, font := range fonts {
@@ -185,26 +203,26 @@ func getGlyphs(c *gin.Context) {
 				haslost = true
 				continue
 			}
-			fss = append(fss, iv.(*FontService))
+			fs = append(fs, iv.(*Font))
 		}
 		//没有默认字体且有丢失字体,则加载默认字体
 		if !hasdefault && haslost {
 			iv, ok := set.F.Load(DEFAULTFONT)
 			if ok {
-				fs, ok := iv.(*FontService)
+				f, ok := iv.(*Font)
 				if ok {
-					fss = append(fss, fs)
+					fs = append(fs, f)
 				}
 			}
 		}
 
-		contents := make([][]byte, len(fss))
+		contents := make([][]byte, len(fs))
 		var wg sync.WaitGroup
 		//need define func, can't use sugar ":="
-		getFontPBF := func(fs *FontService, fontrange string, index int) {
+		getFontPBF := func(f *Font, fontrange string, index int) {
 			//fallbacks unchanging
 			defer wg.Done()
-			err := fs.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&contents[index])
+			err := f.db.QueryRow("select data from fonts where range = ?", fontrange).Scan(&contents[index])
 			if err != nil {
 				log.Error(err)
 				if err == sql.ErrNoRows {
@@ -213,9 +231,9 @@ func getGlyphs(c *gin.Context) {
 				return
 			}
 		}
-		for i, fs := range fss {
+		for i, f := range fs {
 			wg.Add(1)
-			go getFontPBF(fs, fontrange, i)
+			go getFontPBF(f, fontrange, i)
 		}
 		wg.Wait()
 

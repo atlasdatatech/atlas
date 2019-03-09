@@ -5,11 +5,10 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -50,14 +49,14 @@ func signup(c *gin.Context) {
 	user.Password = string(hashedPassword)
 	user.Email = strings.ToLower(body.Email)
 	//No verification required
-	user.JWT, user.JWTExpires, err = authMid.TokenGenerator(&user)
+	user.AccessToken, _, err = accessMid.TokenGenerator(user)
 	if err != nil {
 		log.Errorf(`signup, token generator error, details: '%s' ~`, err)
 		res.FailMsg(c, "signup, token generator error")
 		return
 	}
 
-	user.Group = defaultGroup
+	user.Group = USER
 	user.Activation = "yes"
 	var verifyURL string
 	if viper.GetBool("user.verification") {
@@ -101,10 +100,10 @@ func signup(c *gin.Context) {
 	CreatePaths(user.Name)
 	if casEnf != nil {
 		casEnf.LoadPolicy()
-		casEnf.AddGroupingPolicy(user.Name, user.Group)
+		casEnf.AddGroupingPolicy(user.Name, USER)
 		casEnf.SavePolicy()
 	}
-	res.DoneCode(c, 201)
+	res.Done(c, "注册成功，验证邮件已发送")
 }
 
 func addUser(c *gin.Context) {
@@ -142,7 +141,7 @@ func addUser(c *gin.Context) {
 	user.Department = body.Department
 	user.Company = body.Company
 	//No verification required
-	user.JWT, user.JWTExpires, err = authMid.TokenGenerator(&user)
+	user.AccessToken, _, err = accessMid.TokenGenerator(user)
 	if err != nil {
 		log.Errorf(`addUser, token generator error, details: '%s' ~`, err)
 		res.FailMsg(c, "addUser, token generator error")
@@ -159,7 +158,7 @@ func addUser(c *gin.Context) {
 		return
 	}
 	//add to user_group
-	res.DoneCode(c, 201)
+	res.Done(c, "")
 }
 
 func signin(c *gin.Context) {
@@ -177,7 +176,21 @@ func signin(c *gin.Context) {
 
 	body.Name = strings.ToLower(body.Name)
 
-	// attemptLogin
+	// attemptLogin abuseFilter
+	IPCountChan := make(chan int)
+	clientIP := c.ClientIP()
+	ttl := time.Now().Add(viper.GetDuration("user.attemptExpiration"))
+	go func(c chan int) {
+		var cnt int
+		db.Model(&Attempt{}).Where("ip = ? AND created_at > ?", clientIP, ttl).Count(&cnt)
+		c <- cnt
+	}(IPCountChan)
+	IPCount := <-IPCountChan
+	if IPCount > viper.GetInt("user.attempts") {
+		res.Fail(c, 4002)
+		return
+	}
+
 	user := User{}
 	if db.Where("name = ?", body.Name).Or("email = ?", body.Name).First(&user).RecordNotFound() {
 		res.Fail(c, 4041)
@@ -190,13 +203,14 @@ func signin(c *gin.Context) {
 		res.Fail(c, 4011)
 		return
 	}
-	loadServices(user.Name)
-	//Cookie
+
+	tokenString, expire, err := authMid.TokenGenerator(user)
+	//send cookie
 	if authMid.SendCookie {
-		maxage := int(user.JWTExpires.Unix() - time.Now().Unix())
+		maxage := int(expire.Unix() - time.Now().Unix())
 		c.SetCookie(
-			"Token",
-			user.JWT,
+			"token",
+			tokenString,
 			maxage,
 			"/",
 			authMid.CookieDomain,
@@ -204,12 +218,7 @@ func signin(c *gin.Context) {
 			authMid.CookieHTTPOnly,
 		)
 	}
-	res.DoneData(c, gin.H{
-		"token":  user.JWT,
-		"expire": user.JWTExpires.Format(time.RFC3339),
-		"user":   body.Name,
-		"role":   casEnf.GetRolesForUser(body.Name),
-	})
+	res.DoneData(c, user)
 }
 
 func sendReset(c *gin.Context) {
@@ -266,7 +275,7 @@ func sendReset(c *gin.Context) {
 		}
 	}()
 
-	res.Done(c, string(token))
+	res.Done(c, "")
 }
 
 func resetPassword(c *gin.Context) {
@@ -350,8 +359,9 @@ func verify(c *gin.Context) {
 
 func signout(c *gin.Context) {
 	res := NewRes()
+	//remove auth cookie
 	c.SetCookie(
-		"Token",
+		"token",
 		"",
 		0,
 		"/",
@@ -445,7 +455,7 @@ func updateUser(c *gin.Context) {
 	res.Done(c, "")
 }
 
-func jwtRefresh(c *gin.Context) {
+func authTokenRefresh(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("id")
 	if uid == "" {
@@ -457,20 +467,50 @@ func jwtRefresh(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	if err := db.Model(&User{}).Where("name = ?", uid).Update(User{JWT: tokenString, JWTExpires: expire}).Error; err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
+	// set cookie
+	if authMid.SendCookie {
+		maxage := int(expire.Unix() - time.Now().Unix())
+		c.SetCookie(
+			"token",
+			tokenString,
+			maxage,
+			"/",
+			authMid.CookieDomain,
+			authMid.SecureCookie,
+			authMid.CookieHTTPOnly,
+		)
 	}
-	_, err = c.Cookie("Token")
-	if err != nil {
-		log.Errorf("jwtRefresh, test cookie set: %s; user: %s", err, uid)
-	}
-
 	res.DoneData(c, gin.H{
 		"token":  tokenString,
 		"expire": expire.Format(time.RFC3339),
 	})
+}
+
+func accessTokenRefresh(c *gin.Context) {
+	res := NewRes()
+	uid := c.Param("id")
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	user := User{Name: uid}
+	tokenString, _, err := accessMid.TokenGenerator(user)
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
+	}
+	if err := db.Model(&User{}).Where("name = ?", uid).Update(User{AccessToken: tokenString}).Error; err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"token": tokenString,
+	})
+}
+
+func accessTokenAdd(c *gin.Context) {
+
 }
 
 func changePassword(c *gin.Context) {
@@ -497,8 +537,8 @@ func changePassword(c *gin.Context) {
 		}
 		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 		if err != nil {
-			log.Error(err)
-			res.Fail(c, 4011)
+			log.Warn(err)
+			res.FailMsg(c, "密码错误")
 			return
 		}
 	}
@@ -831,7 +871,7 @@ func createRole(c *gin.Context) {
 				res.Fail(c, 5001)
 				return
 			}
-			res.DoneCode(c, 201)
+			res.Done(c, "")
 			return
 		}
 		res.Fail(c, 5001)

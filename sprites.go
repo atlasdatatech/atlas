@@ -601,7 +601,7 @@ func GenIconsFromSprite(dir string) error {
 	_, err := os.Stat(iconsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.Mkdir(iconsDir, os.ModePerm)
+			err = os.MkdirAll(iconsDir, os.ModePerm)
 			if err != nil {
 				return err
 			}
@@ -613,9 +613,9 @@ func GenIconsFromSprite(dir string) error {
 	if err != nil {
 		return err
 	}
-	if len(items) > 0 {
-		return fmt.Errorf("icons dir not empty")
-	}
+	// if len(items) > 0 {
+	// 	return fmt.Errorf("icons dir not empty")
+	// }
 
 	//find max size sprites
 	tset := make(map[string]string)
@@ -690,9 +690,9 @@ func GenIconsFromSprite(dir string) error {
 		sp := image.Point{symbol.X, symbol.Y}
 		img := image.NewRGBA(image.Rect(0, 0, symbol.Width, symbol.Height))
 		draw.Draw(img, img.Bounds(), sprites, sp, draw.Src)
-		x := resize.Resize(uint(float32(symbol.Width)*2), uint(float32(symbol.Height)*2), img, resize.Lanczos3)
+		// x := resize.Resize(uint(float32(symbol.Width)*2), uint(float32(symbol.Height)*2), img, resize.Lanczos3)
 		var buf bytes.Buffer
-		err = png.Encode(&buf, x)
+		err = png.Encode(&buf, img)
 		if err != nil {
 			log.Error(err)
 			continue
@@ -703,4 +703,21 @@ func GenIconsFromSprite(dir string) error {
 		}
 	}
 	return nil
+}
+
+func autoAppendExt(pathfile string) string {
+	if _, err := os.Stat(pathfile); err == nil {
+		return pathfile
+	} else if _, err := os.Stat(pathfile + ".svg"); err == nil {
+		return pathfile + ".svg"
+	} else if _, err := os.Stat(pathfile + ".png"); err == nil {
+		return pathfile + ".png"
+	} else if _, err := os.Stat(pathfile + ".jpg"); err == nil {
+		return pathfile + ".jpg"
+	} else if _, err := os.Stat(pathfile + ".bmp"); err == nil {
+		return pathfile + ".bmp"
+	} else if _, err := os.Stat(pathfile + ".gif"); err == nil {
+		return pathfile + ".gif"
+	}
+	return ""
 }

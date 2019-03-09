@@ -64,7 +64,7 @@ func debugSetup() *gin.Engine {
 		}
 	}
 
-	authMid, err = initJWT()
+	authMid, err = initAuthJWT()
 	if err != nil {
 		log.Fatalf("init jwt error: %s", err)
 	}
@@ -76,7 +76,13 @@ func debugSetup() *gin.Engine {
 
 	initSystemUser()
 	initTaskRouter()
-	loadServices(ATLAS)
+	{
+		pubs, err := LoadServiceSet(ATLAS)
+		if err != nil {
+			log.Fatalf("load %s's service set error, details: %s", ATLAS, err)
+		}
+		userSet.Store(ATLAS, pubs)
+	}
 
 	return setupRouter()
 }

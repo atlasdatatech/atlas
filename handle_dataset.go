@@ -36,15 +36,30 @@ func listDatasets(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
-	var dss []*DataService
+	var dts []*Dataset
 	set.D.Range(func(_, v interface{}) bool {
-		dss = append(dss, v.(*DataService))
+		dts = append(dts, v.(*Dataset))
 		return true
 	})
-	res.DoneData(c, dss)
+
+	if uid != ATLAS && "true" == c.Query("public") {
+		set := userSet.service(ATLAS)
+		if set != nil {
+			set.D.Range(func(_, v interface{}) bool {
+				dt, ok := v.(*Dataset)
+				if ok {
+					if dt.Public {
+						dts = append(dts, dt)
+					}
+				}
+				return true
+			})
+		}
+	}
+	res.DoneData(c, dts)
 }
 
 func getDatasetInfo(c *gin.Context) {
@@ -54,7 +69,8 @@ func getDatasetInfo(c *gin.Context) {
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
-		res.Fail(c, 4044)
+		log.Warnf(`getDatasetInfo, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
 	res.DoneData(c, ds)
@@ -65,13 +81,13 @@ func oneClickImport(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -112,6 +128,7 @@ func oneClickImport(c *gin.Context) {
 		// 	df.Format = ".geojson"
 		// }
 		// log.Infof(`%s convert to geojson takes :%v`, srcfile, time.Since(st))
+		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
@@ -124,7 +141,7 @@ func oneClickImport(c *gin.Context) {
 		go func(df *Datafile) {
 			<-task.Pipe //wait finish
 			<-taskQueue
-			task.State = "finish"
+			task.Status = "finish"
 			task.save()
 			if task.Err != "" {
 				log.Error(task.Err)
@@ -132,14 +149,14 @@ func oneClickImport(c *gin.Context) {
 			}
 			t := time.Since(st)
 			log.Infof("one key import time cost: %v", t)
-			ds, err := df.toDataset()
+			dt, err := df.toDataset()
 			if err != nil {
 				log.Error(err)
 				res.FailErr(c, err)
 				return
 			}
 
-			err = ds.UpInsert()
+			err = dt.UpInsert()
 			if err != nil {
 				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 				res.FailErr(c, err)
@@ -147,8 +164,7 @@ func oneClickImport(c *gin.Context) {
 			}
 
 			if true {
-				dss := ds.toService()
-				set.D.Store(dss.ID, dss)
+				set.D.Store(dt.ID, dt)
 			}
 		}(df)
 		tasks = append(tasks, task)
@@ -162,13 +178,13 @@ func uploadFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4046)
+		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
+		res.Fail(c, 4048)
 		return
 	}
 	filename := file.Filename
@@ -196,6 +212,7 @@ func uploadFile(c *gin.Context) {
 	}
 	var dfbinds []*DatafileBind
 	for _, df := range dtfiles {
+		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
@@ -211,7 +228,7 @@ func previewFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	id := c.Param("id")
@@ -249,7 +266,7 @@ func importFile(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
-		res.Fail(c, 4044)
+		res.Fail(c, 4043)
 		return
 	}
 	dp := &DatafileBind{}
@@ -293,13 +310,13 @@ func importFile(c *gin.Context) {
 		<-task.Pipe
 		<-taskQueue
 		//todo goroute 导入，以下事务需在task完成后处理
-		ds, err := df.toDataset()
+		dt, err := df.toDataset()
 		if err != nil {
 			log.Error(err)
 			res.FailErr(c, err)
 			return
 		}
-		err = ds.UpInsert()
+		err = dt.UpInsert()
 		if err != nil {
 			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 			res.FailErr(c, err)
@@ -307,8 +324,7 @@ func importFile(c *gin.Context) {
 		}
 
 		if true {
-			dss := ds.toService()
-			set.D.Store(dss.ID, dss)
+			set.D.Store(dt.ID, dt)
 		}
 	}(df)
 	res.DoneData(c, task)
@@ -333,7 +349,6 @@ func taskQuery(c *gin.Context) {
 }
 
 func taskStreamQuery(c *gin.Context) {
-
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)
 	if ok {
@@ -365,20 +380,20 @@ func downloadDataset(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	did := c.Param("id")
-	ds := userSet.dataset(uid, did)
-	if ds == nil {
-		log.Errorf(`downloadDataset, %s's data service (%s) not found ^^`, uid, did)
-		res.Fail(c, 4044)
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
+		log.Warnf(`downloadDataset, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
-	file, err := os.Open(ds.URL)
+	file, err := os.Open(dt.Path)
 	if err != nil {
-		log.Errorf(`downloadTileset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
+		log.Errorf(`downloadDataset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
 		res.FailErr(c, err)
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+ds.ID+".mbtiles")
+	c.Header("Content-Disposition", "attachment; filename= "+dt.ID+MBTILESEXT)
 	io.Copy(c.Writer, file)
 	return
 }
@@ -389,8 +404,8 @@ func viewDataset(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		log.Errorf("tilesets id(%s) not exist in the service", did)
-		res.Fail(c, 4044)
+		log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
 	//"china-z7.rjA5dSCmR"
@@ -705,7 +720,6 @@ func cubeQuery(c *gin.Context) {
 }
 
 func queryExec(c *gin.Context) {
-
 	res := NewRes()
 	var body struct {
 		SQL string `form:"sql" json:"sql" binding:"required"`
@@ -948,28 +962,32 @@ func upInsertDataset(c *gin.Context) {
 	})
 }
 
+//deleteDatasets 删除数据集
 func deleteDatasets(c *gin.Context) {
 	res := NewRes()
-	did := c.Param("id")
-
-	if code := checkDataset(did); code != 200 {
-		res.Fail(c, code)
+	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		log.Errorf(`deleteDatasets, %s's service not found ^^`, uid)
+		res.Fail(c, 4043)
 		return
 	}
-
-	var body struct {
-		ID string `form:"id" json:"id" binding:"required"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, 4001)
-		return
-	}
-	err = db.Where("id = ?", body.ID).Delete(&Bank{}).Error
-	if err != nil {
-		log.Errorf("delete data : %s; dataid: %s", err, body.ID)
-		res.Fail(c, 5001)
-		return
+	ids := c.Param("id")
+	dids := strings.Split(ids, ",")
+	for _, did := range dids {
+		ds := userSet.dataset(uid, did)
+		if ds == nil {
+			log.Errorf(`deleteDatasets, %s's dataset (%s) not found ^^`, uid, did)
+			res.Fail(c, 4046)
+			return
+		}
+		set.D.Delete(did)
+		err := db.Where("id = ?", did).Delete(Dataset{}).Error
+		if err != nil {
+			log.Error(err)
+			res.Fail(c, 5001)
+			return
+		}
 	}
 	res.Done(c, "")
 }
@@ -1006,7 +1024,8 @@ func createTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		log.Warnf(`createTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
 	tl, err := dts.NewTileLayer()
@@ -1026,7 +1045,8 @@ func getTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
 	// lookup our Map
@@ -1043,7 +1063,7 @@ func getTileLayer(c *gin.Context) {
 	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
 	y := uint(placeholder)
 
-	if dts.TLayer == nil {
+	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
 			log.Error(err)
@@ -1052,7 +1072,7 @@ func getTileLayer(c *gin.Context) {
 		}
 	}
 
-	if dts.TLayer.FilterByZoom(z) {
+	if dts.tlayer.FilterByZoom(z) {
 		log.Errorf("map (%v) has no layer, at zoom %v", did, z)
 		return
 	}
@@ -1062,12 +1082,12 @@ func getTileLayer(c *gin.Context) {
 	{
 		// Check to see that the zxy is within the bounds of the map.
 		textent := geom.Extent(tile.Bounds())
-		if !dts.TLayer.Bounds.Contains(&textent) {
+		if !dts.tlayer.Bounds.Contains(&textent) {
 			return
 		}
 	}
 
-	pbyte, err := dts.TLayer.Encode(c.Request.Context(), tile)
+	pbyte, err := dts.tlayer.Encode(c.Request.Context(), tile)
 	if err != nil {
 		switch err {
 		case context.Canceled:
@@ -1102,10 +1122,11 @@ func getTileLayerJSON(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		res.Fail(c, 4044)
+		log.Warnf(`getTileLayerJSON, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
-	if dts.TLayer == nil {
+	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
 			log.Error(err)
@@ -1114,11 +1135,11 @@ func getTileLayerJSON(c *gin.Context) {
 		}
 		dts.UpdateExtent()
 	}
-	zoom := (dts.TLayer.MinZoom + dts.TLayer.MaxZoom) / 2
+	zoom := (dts.tlayer.MinZoom + dts.tlayer.MaxZoom) / 2
 	attr := "atlas realtime tile layer"
 	tileJSON := tilejson.TileJSON{
 		Attribution: &attr,
-		Bounds:      dts.TLayer.Bounds.Extent(),
+		Bounds:      dts.tlayer.Bounds.Extent(),
 		Center:      [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(zoom)},
 		Format:      "pbf",
 		Name:        &dts.Name,
@@ -1129,22 +1150,22 @@ func getTileLayerJSON(c *gin.Context) {
 		Data:        make([]string, 0),
 	}
 
-	tileJSON.MinZoom = dts.TLayer.MinZoom
-	tileJSON.MaxZoom = dts.TLayer.MaxZoom
+	tileJSON.MinZoom = dts.tlayer.MinZoom
+	tileJSON.MaxZoom = dts.tlayer.MaxZoom
 	//	build our vector layer details
 	layer := tilejson.VectorLayer{
 		Version: 2,
 		Extent:  4096,
-		ID:      dts.TLayer.MVTName(),
-		Name:    dts.TLayer.MVTName(),
-		MinZoom: dts.TLayer.MinZoom,
-		MaxZoom: dts.TLayer.MaxZoom,
+		ID:      dts.tlayer.MVTName(),
+		Name:    dts.tlayer.MVTName(),
+		MinZoom: dts.tlayer.MinZoom,
+		MaxZoom: dts.tlayer.MaxZoom,
 		Tiles: []string{
-			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.TLayer.MVTName()),
+			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.tlayer.MVTName()),
 		},
 	}
 
-	switch dts.TLayer.GeomType.(type) {
+	switch dts.tlayer.GeomType.(type) {
 	case geom.Point, geom.MultiPoint:
 		layer.GeometryType = tilejson.GeomTypePoint
 	case geom.Line, geom.LineString, geom.MultiLineString:
@@ -1188,7 +1209,7 @@ func getTileMap(c *gin.Context) {
 	did := c.Param("id")
 	// ds := userSet.dataset(uid, did)
 	// if ds == nil {
-	// 	res.Fail(c, 4044)
+	// 	res.Fail(c, 4046)
 	// 	return
 	// }
 	// lookup our Map

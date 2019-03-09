@@ -78,7 +78,7 @@ type Bank struct {
 	Brc       string     `json:"机构号" gorm:"column:机构号;index"`
 	No        string     `json:"编码" gorm:"column:编码"`
 	Name      string     `json:"名称" gorm:"column:名称;index"`
-	State     string     `json:"营业状态" gorm:"column:营业状态"`
+	Status    string     `json:"营业状态" gorm:"column:营业状态"`
 	Region    string     `json:"行政区" gorm:"column:行政区"`
 	Type      string     `json:"网点类型" gorm:"column:网点类型"`
 	Depart    string     `json:"营业部" gorm:"column:营业部"`

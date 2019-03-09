@@ -16,11 +16,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// PBFONTEXT pbf fonts package format
-const PBFONTEXT = ".pbfonts"
-
-// DEFAULTFONT 默认字体
-const DEFAULTFONT = "Noto Sans Regular"
+const (
+	// PBFONTEXT pbf fonts package format
+	PBFONTEXT = ".pbfonts"
+	// DEFAULTFONT 默认字体
+	DEFAULTFONT = "Noto Sans Regular"
+)
 
 //Font struct for pbf font save
 type Font struct {
@@ -29,16 +30,10 @@ type Font struct {
 	Owner       string `json:"owner" gorm:"index"`
 	Path        string
 	Size        int64
+	URL         string
 	Compression bool
-}
-
-//FontService struct for font service
-type FontService struct {
-	ID    string
-	Name  string
-	URL   string
-	State bool
-	DB    *sql.DB
+	Status      bool
+	db          *sql.DB
 }
 
 // LoadFont 加载字体.
@@ -73,14 +68,12 @@ func LoadFont(path string) (*Font, error) {
 	return out, nil
 }
 
-//SetupPBFonts 初始化配置PBFont库
+//packPBFonts 初始化打包PBFont库
 func packPBFonts(path string) error {
 	fStat, err := os.Stat(path)
 	if err != nil {
-		log.Errorf(`packPBFonts, read path stat info error, details: %s`, err)
 		return err
 	}
-
 	//dir,zip,ttf
 	if !fStat.IsDir() {
 		ext := filepath.Ext(path)
@@ -155,26 +148,19 @@ func packPBFonts(path string) error {
 	return nil
 }
 
-//toService 加载服务
-func (f *Font) toService() *FontService {
-	fs := &FontService{
-		ID:    f.ID,
-		Name:  f.Name,
-		URL:   f.Path,
-		State: true,
-	}
+//Service 加载服务
+func (f *Font) Service() error {
 	// fs.DB
 	db, err := sql.Open("sqlite3", f.Path)
 	if err != nil {
-		log.Errorf("toService, font to service error, details:%s", err)
-		return nil
+		return err
 	}
-	fs.DB = db
-	return fs
+	f.db = db
+	f.Status = true
+	return nil
 }
 
 //UpInsert 更新/创建样式存储
-//create or update upload data file info into database
 func (f *Font) UpInsert() error {
 	if f == nil {
 		return fmt.Errorf("style may not be nil")
@@ -197,20 +183,10 @@ func (f *Font) UpInsert() error {
 	return nil
 }
 
-//转为存储
-func (fs *FontService) toFont() *Font {
-	out := &Font{
-		ID:   fs.ID,
-		Name: fs.Name,
-		Path: fs.URL,
-	}
-	return out
-}
-
 //Font 获取字体pbf切片
-func (fs *FontService) Font(fontrange string) ([]byte, error) {
+func (f *Font) Font(fontrange string) ([]byte, error) {
 	var data []byte
-	err := fs.DB.QueryRow("select data from fonts where range = ?", fontrange).Scan(&data)
+	err := f.db.QueryRow("select data from fonts where range = ?", fontrange).Scan(&data)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -220,6 +196,7 @@ func (fs *FontService) Font(fontrange string) ([]byte, error) {
 	return data, nil
 }
 
+//getFontsPBF 查找字符集
 func getFontsPBF(fontPath string, fontstack string, fontrange string, fallbacks []string) []byte {
 	fonts := strings.Split(fontstack, ",")
 	contents := make([][]byte, len(fonts))
@@ -304,11 +281,7 @@ func getFontsPBF(fontPath string, fontstack string, fontrange string, fallbacks 
 	return pbf
 }
 
-//Combine combine glyph (SDF) PBFs to one
-//Returns a re-encoded PBF with the combined
-//font faces, composited using array order
-//to determine glyph priority.
-//@param buffers An array of SDF PBFs.
+//Combine 多字体请求合并
 func Combine(buffers [][]byte, fontstack []string) ([]byte, error) {
 	coverage := make(map[uint32]bool)
 	result := &Glyphs{}

@@ -31,12 +31,21 @@
 		srid = 4326   
 
 	[jwt]
-		realm="atlasmap"
+	[jwt.auth]
+		realm="atlascloud-auth"
 		key="salta-atad-6221"
-		timeOut="720h"
-		timeMax="72000h"
-		lookup="header:Authorization, query:token, cookie:Token"
-		headName="Bearer"
+		timeOut="1h"
+		timeMax="24h"
+		lookup="header:Authorization, cookie:token"
+		headName = "Bearer"
+
+	[jwt.access]
+		realm="atlascloud-access"
+		key="salta-atad-1226"
+		timeOut="65535h"
+		timeMax="655350h"
+		lookup="query:token"
+		headName = "Bearer"
 		
 	[smtp]
 		[smtp.from]
