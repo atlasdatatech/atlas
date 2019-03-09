@@ -203,13 +203,6 @@ func signin(c *gin.Context) {
 		res.Fail(c, 4011)
 		return
 	}
-	ss, err := LoadServiceSet(user.Name)
-	if err != nil {
-		log.Errorf(`signin, %s's service set load error, details: %s`, user.Name, err)
-		res.FailMsg(c, "用户服务加载失败")
-		return
-	}
-	userSet.Store(ss.Owner, ss)
 
 	tokenString, expire, err := authMid.TokenGenerator(user)
 	//send cookie

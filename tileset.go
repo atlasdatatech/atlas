@@ -178,28 +178,26 @@ func LoadTileset(tileset string) (*Tileset, error) {
 
 // Service creates a new StyleService instance.
 //loadService 创建更新瓦片集服务
-func (ts *Tileset) Service() (*Tileset, error) {
+func (ts *Tileset) Service() error {
 	//Saves last modified mbtiles time for setting Last-Modified header
 	fStat, err := os.Stat(ts.Path)
 	if err != nil {
-		return nil, fmt.Errorf("could not read file stats for mbtiles file: %s", ts.Path)
+		// return fmt.Errorf("could not read file stats for mbtiles file: %s", ts.Path)
+		return err
 	}
 	db, err := sql.Open("sqlite3", ts.Path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ts.db = db
 	ts.Timestamp = fStat.ModTime().Round(time.Second)
 	ts.Status = true
-	return ts, nil
+	return nil
 }
 
 //UpInsert 创建更新瓦片集服务
 //create or update upload data file info into database
 func (ts *Tileset) UpInsert() error {
-	if ts == nil {
-		return fmt.Errorf("datafile may not be nil")
-	}
 	tmp := &Tileset{}
 	err := db.Where("id = ?", ts.ID).First(tmp).Error
 	if err != nil {

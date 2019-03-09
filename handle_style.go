@@ -27,6 +27,7 @@ func listStyles(c *gin.Context) {
 	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
+		log.Warnf("uploadStyle, %s's service not found ^^", uid)
 		res.Fail(c, 4043)
 		return
 	}
@@ -55,22 +56,22 @@ func listStyles(c *gin.Context) {
 	res.DoneData(c, styles)
 }
 
-//getStyleInfo get user's style info by id
+//getStyleInfo 获取样式信息
 func getStyleInfo(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Warnf(`getStyleInfo, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	res.DoneData(c, style)
+	res.DoneData(c, s)
 }
 
-//getStyleThumbnial get user's style thumbnail by id
+//getStyleThumbnial 获取样式缩略图
 func getStyleThumbnial(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
@@ -78,14 +79,14 @@ func getStyleThumbnial(c *gin.Context) {
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
-		log.Errorf("getStyle, style not exist in the service, sid: %s ^^", sid)
+		log.Warnf(`getStyleThumbnial, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	file := filepath.Join(s.Path, "thumbnail.jpg")
 	buf, err := ioutil.ReadFile(file)
 	if err != nil {
-		log.Errorf(`getStyleThumbnial, read %s's style (%s) thumbnail.jpg error, details: %s`, uid, sid, err)
+		log.Errorf(`getStyleThumbnial, read %s's style (%s) thumbnail error, details: %s`, uid, sid, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -98,14 +99,14 @@ func publicStyle(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Errorf(`publicStyle, %s's style service (%s) not found ^^`, uid, sid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Warnf(`publicStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	if style.Public {
-		res.FailMsg(c, "already public")
+	if s.Public {
+		res.FailMsg(c, "style already public")
 		return
 	}
 
@@ -114,10 +115,11 @@ func publicStyle(c *gin.Context) {
 	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
 	casEnf.AddPolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
 	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
-	style.Public = true
-	err := db.Model(&Style{}).Where("id = ?", style.ID).Update(Style{Public: true}).Error
+
+	s.Public = true
+	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
 	if err != nil {
-		log.Errorf(`update style db error, details: %s`, err)
+		log.Errorf(`publicStyle, update %s's style (%s) error, details: %s`, uid, s.ID, err)
 		res.Fail(c, 5001)
 		return
 	}
@@ -130,14 +132,14 @@ func privateStyle(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Errorf(`publicStyle, %s's style service (%s) not found ^^`, uid, sid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Warnf(`privateStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	if !style.Public {
-		res.FailMsg(c, "already private")
+	if !s.Public {
+		res.FailMsg(c, "style already private")
 		return
 	}
 
@@ -146,10 +148,10 @@ func privateStyle(c *gin.Context) {
 	casEnf.RemovePolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
 	// casEnf.RemovePolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
 	// casEnf.RemovePolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
-	style.Public = false
-	err := db.Model(&Style{}).Where("id = ?", style.ID).Update(Style{Public: false}).Error
+	s.Public = false
+	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
 	if err != nil {
-		log.Errorf(`update style db error, details: %s`, err)
+		log.Errorf(`privateStyle, update %s's style (%s) error, details: %s`, uid, s.ID, err)
 		res.Fail(c, 5001)
 		return
 	}
@@ -161,19 +163,27 @@ func uploadStyle(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
+	set := userSet.service(uid)
+	if set == nil {
+		log.Warnf("uploadStyle, %s's service not found ^^", uid)
+		res.Fail(c, 4043)
+		return
+	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadStyle, get form: %s; user: %s`, err, uid)
+		log.Warnf(`uploadStyle, read %s's upload file error, details: %s`, uid, err)
 		res.Fail(c, 4048)
 		return
 	}
+
 	ext := filepath.Ext(file.Filename)
 	if ".zip" != strings.ToLower(ext) {
-		log.Errorf(`uploadStyle, style format error, details: %s; user: %s`, file.Filename, uid)
-		res.FailMsg(c, "上传格式错误,请上传zip压缩包格式")
+		log.Warnf(`uploadStyle, %s's uploaded format error, details: %s`, uid, file.Filename)
+		res.FailMsg(c, "上传格式错误, 请上传样式文件的zip压缩包")
 		return
 	}
+
 	name := strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
 	styleid := name + "." + id
@@ -183,60 +193,53 @@ func uploadStyle(c *gin.Context) {
 		res.Fail(c, 5002)
 		return
 	}
+
 	//unzip upload files
 	styledir := UnZipToDir(dst)
 	//更新服务
-	style, err := LoadStyle(styledir)
+	s, err := LoadStyle(styledir)
 	if err != nil {
-		log.Errorf("AddStyles, could not load style %s, details: %s", styledir, err)
+		log.Warnf(`uploadStyle, load style error, details: %s`, err)
 		res.FailErr(c, err)
 		return
 	}
-	style.Owner = uid
+	s.Owner = uid
 	//入库
-	err = style.UpInsert()
+	err = s.UpInsert()
 	if err != nil {
-		log.Errorf(`AddStyles, upinsert style %s error, details: %s`, style.ID, err)
+		log.Errorf(`uploadStyle, save style error, details: %s`, err)
+		res.FailErr(c, err)
+		return
 	}
 	//加载服务,todo 用户服务无需预加载
-	if true {
-		set := userSet.service(uid)
-		if set == nil {
-			log.Errorf("%s's service set not found", uid)
-			res.FailMsg(c, "加载服务失败")
-			return
-		}
-		set.S.Store(style.ID, style)
-	}
-
-	res.DoneData(c, gin.H{
-		"id": style.ID,
-	})
+	s.Service()
+	set.S.Store(s.ID, s)
+	res.DoneData(c, s)
 }
 
-//uploadStyle 上传新样式
+//replaceStyle 上传替换样式
 func replaceStyle(c *gin.Context) {
 	res := NewRes()
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	set := userSet.service(uid)
-	if set == nil {
-		log.Errorf(`replaceStyle, %s's service set not found ^^`, uid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Warnf(`replaceStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4043)
 		return
 	}
 	// style source
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`replaceStyle, get form: %s; user: %s`, err, uid)
+		log.Warnf(`replaceStyle, read %s's upload file error, details: %s`, uid, err)
 		res.Fail(c, 4048)
 		return
 	}
 	ext := filepath.Ext(file.Filename)
 	if ".zip" != strings.ToLower(ext) {
-		log.Errorf(`replaceStyle, style format error, details: %s; user: %s`, file.Filename, uid)
-		res.FailMsg(c, "上传格式错误,请上传zip压缩包格式")
+		log.Warnf(`replaceStyle, %s's uploaded format error, details: %s`, uid, file.Filename)
+		res.FailMsg(c, "上传格式错误, 请上传样式文件的zip压缩包")
 		return
 	}
 	dst := filepath.Join("styles", uid, sid+".zip")
@@ -250,7 +253,7 @@ func replaceStyle(c *gin.Context) {
 	//更新服务
 	style, err := LoadStyle(styledir)
 	if err != nil {
-		log.Errorf("replaceStyle, could not load style %s, details: %s", styledir, err)
+		log.Errorf("replaceStyle, load style error, details: %s", err)
 		res.FailErr(c, err)
 		return
 	}
@@ -261,6 +264,8 @@ func replaceStyle(c *gin.Context) {
 		log.Errorf(`AddStyles, upinsert style %s error, details: %s`, style.ID, err)
 	}
 	//加载服务,todo 用户服务无需预加载
+	style.Service()
+	set := userSet.service(uid)
 	set.S.Store(style.ID, style)
 	res.Done(c, "")
 }
@@ -271,15 +276,20 @@ func downloadStyle(c *gin.Context) {
 	// uid := c.GetString(identityKey)
 	uid := c.Param("user")
 	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Errorf(`downloadStyle, %s's style service (%s) not found ^^`, uid, sid)
+	s := userSet.style(uid, sid)
+	if s == nil {
+		log.Errorf(`downloadStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	reader := style.PackStyle()
+	reader, err := s.PackStyle()
+	if err != nil {
+		log.Errorf(`downloadStyle, pack %s's style (%s) error ^^`, uid, sid)
+		res.FailErr(c, err)
+		return
+	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+style.ID+".zip")
+	c.Header("Content-Disposition", "attachment; filename= "+s.ID+".zip")
 	io.Copy(c.Writer, reader)
 	return
 }
@@ -292,14 +302,14 @@ func uploadIcons(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`uploadIcons, %s's style service (%s) not found ^^`, uid, sid)
+		log.Warnf(`uploadIcons, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	// Multipart form
 	form, err := c.MultipartForm()
 	if err != nil {
-		log.Errorf(`uploadIcons, get form: %s; user: %s`, err, uid)
+		log.Warnf(`uploadIcons, read %s's upload icons error, details: %s`, uid, err)
 		res.Fail(c, 400)
 		return
 	}
@@ -316,7 +326,7 @@ func uploadIcons(c *gin.Context) {
 	for _, file := range files {
 		dst := filepath.Join(dir, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
-			log.Errorf(`uploadIcons, upload file: %s; user: %s`, err, uid)
+			log.Errorf(`uploadIcons, save %s's upload file error, details: %s`, uid, err)
 			res.Fail(c, 5002)
 			return
 		}
@@ -347,7 +357,7 @@ func getIcon(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf("getIcon, style not exist in the service, sid: %s ^^", sid)
+		log.Warnf(`getIcon, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
@@ -356,7 +366,7 @@ func getIcon(c *gin.Context) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		regen := c.Param("regenerate")
 		if regen != "true" {
-			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
+			res.FailMsg(c, `icons not exist, if you want regenerate from sprite.json/png, set regenerate param true`)
 			return
 		}
 		err := GenIconsFromSprite(style.Path)
@@ -391,7 +401,7 @@ func updateIcon(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf("updateIcon, style not exist in the service, sid: %s ^^", sid)
+		log.Errorf("updateIcon, %s's style (%s) not found ^^", uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
@@ -431,11 +441,13 @@ func updateIcon(c *gin.Context) {
 	case ".svg":
 		buf, err := svg2svg(pathfile, body.Scale)
 		if err != nil {
+			log.Errorf(`updateIcon, svg2svg convert error, details: %s`, err)
 			res.FailErr(c, err)
 			return
 		}
 		err = ioutil.WriteFile(pathfile, buf, os.ModePerm)
 		if err != nil {
+			log.Errorf(`updateIcon, write svg2svg output error, details: %s`, err)
 			res.FailErr(c, err)
 			return
 		}
@@ -500,7 +512,7 @@ func deleteIcons(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`updateSprite, %s's style service (%s) not found ^^`, uid, sid)
+		log.Errorf(`updateSprite, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
@@ -560,14 +572,14 @@ func uploadSprite(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`uploadSprite, %s's style service (%s) not found ^^`, uid, sid)
+		log.Warnf(`uploadSprite, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	// Multipart form
 	form, err := c.MultipartForm()
 	if err != nil {
-		log.Errorf(`uploadSprite, get form: %s; user: %s`, err, uid)
+		log.Warnf(`uploadSprite, read %s's upload files error, details: %s`, uid, err)
 		res.Fail(c, 400)
 		return
 	}
@@ -576,7 +588,7 @@ func uploadSprite(c *gin.Context) {
 	for _, file := range files {
 		dst := filepath.Join(style.Path, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
-			log.Errorf(`uploadSprite, upload file: %s; user: %s`, err, uid)
+			log.Errorf(`uploadSprite, save %s's upload file (%s) error, details: %s`, uid, file.Filename, err)
 			res.Fail(c, 5002)
 			return
 		}
@@ -594,14 +606,14 @@ func updateSprite(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`updateSprite, %s's style service (%s) not found ^^`, uid, sid)
+		log.Warnf(`updateSprite, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	sprite := c.Param("name")
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
-		log.Errorf(`updateSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
+		log.Warnf(`updateSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
 		res.Fail(c, 4004)
 		return
 	}
@@ -621,14 +633,15 @@ func getSprite(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`getSprite, %s's style service (%s) not found ^^`, uid, sid)
+		log.Warnf(`getSprite, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	sprite := c.Param("name")
+	fmt := c.Param("fmt")
+	sprite := "sprite" + fmt
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
-		log.Errorf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
+		log.Warnf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
 		res.Fail(c, 4004)
 		return
 	}
@@ -674,7 +687,7 @@ func deleteStyle(c *gin.Context) {
 	for _, sid := range sids {
 		style := userSet.style(uid, sid)
 		if style == nil {
-			log.Errorf(`deleteStyle, %s's style service (%s) not found ^^`, uid, sid)
+			log.Warnf(`deleteStyle, %s's style (%s) not found ^^`, uid, sid)
 			res.Fail(c, 4044)
 			return
 		}
@@ -688,15 +701,15 @@ func deleteStyle(c *gin.Context) {
 		}
 		err = os.RemoveAll(style.Path)
 		if err != nil && !os.IsNotExist(err) {
-			log.Errorf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, sid, err)
-			res.FailErr(c, err)
-			return
+			log.Warnf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, sid, err)
+			// res.FailErr(c, err)
+			// return
 		}
 		err = os.Remove(style.Path + ".zip")
 		if err != nil && !os.IsNotExist(err) {
-			log.Errorf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, sid, err)
-			res.FailErr(c, err)
-			return
+			log.Warnf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, sid, err)
+			// res.FailErr(c, err)
+			// return
 		}
 	}
 
@@ -711,13 +724,15 @@ func getStyle(c *gin.Context) {
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
-		log.Errorf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+		log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	var style Root
 	if err := json.Unmarshal(s.Data, &style); err != nil {
-		fmt.Println(err)
+		log.Errorf(`getStyle, unmarshal %s's style (%s) error, details: %s ^^`, uid, sid, err)
+		res.FailErr(c, err)
+		return
 	}
 	baseurl := rootURL(c.Request)
 	fixURL := func(url string) string {
@@ -741,23 +756,23 @@ func getStyle(c *gin.Context) {
 func cloneStyle(c *gin.Context) {
 	res := NewRes()
 	self := c.GetString(identityKey)
+	set := userSet.service(self)
+	if set == nil {
+		log.Warnf("cloneStyle, %s's service not found ^^", self)
+		res.Fail(c, 4043)
+		return
+	}
 	uid := c.Param("user")
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf("copyStyle, %s's style service (%s) not found ^^", uid, sid)
+		log.Warnf("cloneStyle, %s's style (%s) not found ^^", uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
 	if !style.Public {
-		log.Errorf("copyStyle, %s's style service (%s) not public ^^", uid, sid)
+		log.Warnf("cloneStyle, %s copy %s's style (%s) is not public ^^", self, uid, sid)
 		res.Fail(c, 4044)
-		return
-	}
-	set := userSet.service(self)
-	if set == nil {
-		log.Errorf("copyStyle, %s's service set not found ^^", uid)
-		res.Fail(c, 4043)
 		return
 	}
 
@@ -770,13 +785,13 @@ func cloneStyle(c *gin.Context) {
 	ns.Path = filepath.Join("styles", self, ns.ID)
 	err := DirCopy(style.Path, ns.Path)
 	if err != nil {
-		log.Errorf("copyStyle, copy %s's styledir to new (%s) error ^^", uid, ns.Path)
+		log.Errorf("cloneStyle, copy %s's styledir to new (%s) error ^^", uid, ns.Path)
 		res.FailErr(c, err)
 		return
 	}
 	err = ns.UpInsert()
 	if err != nil {
-		log.Errorf("copyStyle, upinsert %s's new style error ^^", self)
+		log.Errorf("cloneStyle, upinsert %s's new style error ^^", self)
 		res.FailErr(c, err)
 		return
 	}
@@ -792,7 +807,7 @@ func viewStyle(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf("viewStyle, style not exist in the service, sid: %s ^^", sid)
+		log.Warnf("viewStyle, %s's style (%s) not found ^^", uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
@@ -812,7 +827,7 @@ func updateStyle(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`updateStyle, get %s's style service (%s) error`, uid, sid)
+		log.Warnf(`updateStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
@@ -820,7 +835,7 @@ func updateStyle(c *gin.Context) {
 	var data json.RawMessage
 	err := decoder.Decode(&data)
 	if err != nil {
-		log.Errorf("decode style error, details:%s", err)
+		log.Errorf("decode %s's style (%s) error, details:%s", uid, sid, err)
 		res.FailMsg(c, "decode style error")
 		return
 	}
@@ -836,7 +851,7 @@ func saveStyle(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Errorf(`updateStyle, get %s's style service (%s) error`, uid, sid)
+		log.Warnf(`updateStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}

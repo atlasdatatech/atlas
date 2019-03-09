@@ -665,6 +665,7 @@ func setupRouter() *gin.Engine {
 		styles.GET("/:user/info/:id/", getStyleInfo)
 		styles.GET("/:user/thumbnail/:id/", getStyleThumbnial)
 		styles.GET("/:user/x/:id/", getStyle)
+		styles.GET("/:user/x/:id/sprite:fmt", getSprite)
 		styles.POST("/:user/upload/", uploadStyle)
 		styles.POST("/:user/public/:id/", publicStyle)
 		styles.POST("/:user/private/:id/", privateStyle)
@@ -675,7 +676,6 @@ func setupRouter() *gin.Engine {
 		styles.GET("/:user/download/:id/", downloadStyle)
 		styles.POST("/:user/delete/:ids/", deleteStyle)
 
-		styles.GET("/:user/sprite/:id/:name", getSprite)
 		styles.POST("/:user/sprite/:id/", uploadSprite)
 		styles.POST("/:user/sprite/:id/:name", updateSprite)
 		styles.GET("/:user/icon/:id/:name/", getIcon)
@@ -838,6 +838,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("load %s's service set error, details: %s", ATLAS, err)
 		}
+		pubs.AppendStyles()
+		pubs.AppendFonts()
+		pubs.AppendTilesets()
 		userSet.Store(ATLAS, pubs)
 	}
 

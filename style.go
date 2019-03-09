@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-spatial/tegola/mapbox/style"
-
 	"github.com/fogleman/gg"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
@@ -28,80 +26,20 @@ type Style struct {
 	Summary   string          `json:"summary"`
 	Owner     string          `json:"owner" gorm:"index"`
 	Public    bool            `json:"public"`
-	BaseID    string          `json:"baseID" gorm:"index"`
 	Path      string          `json:"path"`
 	Size      int64           `json:"size"`
+	Base      string          `json:"base" gorm:"index"`
 	URL       string          `json:"url"`
 	Status    bool            `json:"status"`
-	Data      json.RawMessage `json:"data" gorm:"type:json"`
+	Data      json.RawMessage `json:"-" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 //Service 加载服务
-func (s *Style) Service() *Style {
-	var output style.Root
-	// read the response body
-	if err := json.Unmarshal(s.Data, &output); err != nil {
-		fmt.Println(err)
-	}
-	fmt.Printf("%v", output)
-	// if len(s.Data) > 0 {
-	// 	err := json.Unmarshal(s.Data, &out.Data)
-	// 	if err != nil {
-	// 		log.Errorf("unmarshal style json error, details:%s", err)
-	// 	}
-	// }
-	// items, err := ioutil.ReadDir(s.Path)
-	// if err != nil {
-	// 	return out
-	// }
-	// for _, item := range items {
-	// 	if item.IsDir() {
-	// 		continue
-	// 	}
-	// 	name := item.Name()
-	// 	lname := strings.ToLower(name)
-	// 	switch lname {
-	// 	case "thumbnail.jpg":
-	// 		f := filepath.Join(s.Path, name)
-	// 		buf, err := ioutil.ReadFile(f)
-	// 		if err != nil {
-	// 			log.Error(err)
-	// 		}
-	// 		out.Thumbnail = buf
-	// 	case "sprite.png":
-	// 		f := filepath.Join(s.Path, name)
-	// 		buf, err := ioutil.ReadFile(f)
-	// 		if err != nil {
-	// 			log.Error(err)
-	// 		}
-	// 		out.SpritePNG = buf
-	// 	case "sprite@2x.png":
-	// 		f := filepath.Join(s.Path, name)
-	// 		buf, err := ioutil.ReadFile(f)
-	// 		if err != nil {
-	// 			log.Error(err)
-	// 		}
-	// 		out.SpritePNG2 = buf
-	// 	case "sprite.json":
-	// 		f := filepath.Join(s.Path, name)
-	// 		buf, err := ioutil.ReadFile(f)
-	// 		if err != nil {
-	// 			log.Error(err)
-	// 		}
-	// 		out.SpriteJSON = buf
-	// 	case "sprite@2x.json":
-	// 		f := filepath.Join(s.Path, name)
-	// 		buf, err := ioutil.ReadFile(f)
-	// 		if err != nil {
-	// 			log.Error(err)
-	// 		}
-	// 		out.SpriteJSON2 = buf
-	// 	}
-	// }
+func (s *Style) Service() error {
 	s.Status = true
-	return s
+	return nil
 }
 
 //Copy 服务拷贝
@@ -113,25 +51,24 @@ func (s *Style) Copy() *Style {
 }
 
 //PackStyle 打包样式
-func (s *Style) PackStyle() *bytes.Buffer {
+func (s *Style) PackStyle() (*bytes.Buffer, error) {
 	// Create a buffer to write our archive to.
 	buf := new(bytes.Buffer)
 	// Create a new zip archive.
 	w := zip.NewWriter(buf)
-
+	// defer w.Close()
 	// Add some files to the archive.
 	style, err := json.Marshal(s.Data)
 	if err != nil {
-		log.Errorf("marshal style json error, details:%s", err)
+		return nil, err
 	}
 	f, err := w.Create("style.json")
 	if err != nil {
-		log.Error(err)
-		return buf
+		return nil, err
 	}
 	_, err = f.Write(style)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
 
 	dir := filepath.Join(s.Path, "icons")
@@ -144,18 +81,18 @@ func (s *Style) PackStyle() *bytes.Buffer {
 			file := item.Name()
 			buf, err := ioutil.ReadFile(filepath.Join(dir, file))
 			if err != nil {
-				log.Error(err)
+				log.Warn(err)
 				continue
 			}
 			f, err := w.Create(filepath.Join("icons", file))
 			if err != nil {
-				log.Error(err)
+				log.Warn(err)
 				continue
 			}
 
 			_, err = f.Write(buf)
 			if err != nil {
-				log.Error(err)
+				log.Warn(err)
 			}
 		}
 	} else {
@@ -165,13 +102,13 @@ func (s *Style) PackStyle() *bytes.Buffer {
 	// Make sure to check the error on Close.
 	err = w.Close()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	err = ioutil.WriteFile(filepath.Join(s.Path, "style.zip"), buf.Bytes(), os.ModePerm)
-	if err != nil {
-		fmt.Printf("write zip style file failed,details: %s\n", err)
-	}
-	return buf
+	// err = ioutil.WriteFile(filepath.Join(s.Path, "style.zip"), buf.Bytes(), os.ModePerm)
+	// if err != nil {
+	// 	fmt.Printf("write zip style file failed,details: %s\n", err)
+	// }
+	return buf, nil
 }
 
 //GenSprite 生成sprites
@@ -250,24 +187,20 @@ func LoadStyle(styleDir string) (*Style, error) {
 	styleFile := filepath.Join(styleDir, "style.json")
 	fStat, err := os.Stat(styleFile)
 	if err != nil {
-		log.Errorf(`LoadStyle, read style file info error, details: %s`, err)
 		return nil, err
 	}
 	//read style.json
 	styleBuf, err := ioutil.ReadFile(styleFile)
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
 
 	name := filepath.Base(styleDir)
-	// id, _ := shortid.Generate()
 	out := &Style{
-		ID:        name, //id==name
+		ID:        name,
 		Version:   "8",
 		Name:      name,
-		Owner:     ATLAS,
-		BaseID:    styleFile, //should not add / at the end
+		Base:      styleFile,
 		Path:      styleDir,
 		Size:      fStat.Size(),
 		UpdatedAt: fStat.ModTime(),
@@ -280,9 +213,6 @@ func LoadStyle(styleDir string) (*Style, error) {
 //UpInsert 创建更新样式存储
 //create or update upload data file info into database
 func (s *Style) UpInsert() error {
-	if s == nil {
-		return fmt.Errorf("style may not be nil")
-	}
 	tmp := &Style{}
 	err := db.Where("id = ?", s.ID).First(tmp).Error
 	if err != nil {

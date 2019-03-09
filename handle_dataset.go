@@ -69,6 +69,7 @@ func getDatasetInfo(c *gin.Context) {
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
+		log.Warnf(`getDatasetInfo, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
@@ -85,7 +86,7 @@ func oneClickImport(c *gin.Context) {
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
+		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
 		res.Fail(c, 4048)
 		return
 	}
@@ -182,7 +183,7 @@ func uploadFile(c *gin.Context) {
 	}
 	file, err := c.FormFile("file")
 	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
+		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
 		res.Fail(c, 4048)
 		return
 	}
@@ -211,6 +212,7 @@ func uploadFile(c *gin.Context) {
 	}
 	var dfbinds []*DatafileBind
 	for _, df := range dtfiles {
+		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
@@ -347,7 +349,6 @@ func taskQuery(c *gin.Context) {
 }
 
 func taskStreamQuery(c *gin.Context) {
-
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)
 	if ok {
@@ -381,13 +382,13 @@ func downloadDataset(c *gin.Context) {
 	did := c.Param("id")
 	dt := userSet.dataset(uid, did)
 	if dt == nil {
-		log.Errorf(`downloadDataset, %s's data service (%s) not found ^^`, uid, did)
+		log.Warnf(`downloadDataset, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
 	file, err := os.Open(dt.Path)
 	if err != nil {
-		log.Errorf(`downloadTileset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
+		log.Errorf(`downloadDataset, open %s's tileset (%s) error, details: %s ^^`, uid, did, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -403,7 +404,7 @@ func viewDataset(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		log.Errorf("tilesets id(%s) not exist in the service", did)
+		log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
@@ -719,7 +720,6 @@ func cubeQuery(c *gin.Context) {
 }
 
 func queryExec(c *gin.Context) {
-
 	res := NewRes()
 	var body struct {
 		SQL string `form:"sql" json:"sql" binding:"required"`
@@ -982,46 +982,12 @@ func deleteDatasets(c *gin.Context) {
 			return
 		}
 		set.D.Delete(did)
-
 		err := db.Where("id = ?", did).Delete(Dataset{}).Error
 		if err != nil {
 			log.Error(err)
 			res.Fail(c, 5001)
 			return
 		}
-		// err = os.RemoveAll(ds.Path)
-		// if err != nil && !os.IsNotExist(err) {
-		// 	log.Errorf(`deleteStyle, remove %s's style dir (%s) error, details:%s ^^`, uid, did, err)
-		// 	res.FailErr(c, err)
-		// 	return
-		// }
-		// err = os.Remove(ds.Path + ".zip")
-		// if err != nil && !os.IsNotExist(err) {
-		// 	log.Errorf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, did, err)
-		// 	res.FailErr(c, err)
-		// 	return
-		// }
-	}
-	did := ""
-	ds := userSet.dataset(uid, did)
-	if ds == nil {
-		res.Fail(c, 4046)
-		return
-	}
-
-	var body struct {
-		ID string `form:"id" json:"id" binding:"required"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		res.Fail(c, 4001)
-		return
-	}
-	err = db.Where("id = ?", body.ID).Delete(&Bank{}).Error
-	if err != nil {
-		log.Errorf("delete data : %s; dataid: %s", err, body.ID)
-		res.Fail(c, 5001)
-		return
 	}
 	res.Done(c, "")
 }
@@ -1058,6 +1024,7 @@ func createTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
+		log.Warnf(`createTileLayer, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
@@ -1078,6 +1045,7 @@ func getTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
+		log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
@@ -1095,7 +1063,7 @@ func getTileLayer(c *gin.Context) {
 	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
 	y := uint(placeholder)
 
-	if dts.TLayer == nil {
+	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
 			log.Error(err)
@@ -1104,7 +1072,7 @@ func getTileLayer(c *gin.Context) {
 		}
 	}
 
-	if dts.TLayer.FilterByZoom(z) {
+	if dts.tlayer.FilterByZoom(z) {
 		log.Errorf("map (%v) has no layer, at zoom %v", did, z)
 		return
 	}
@@ -1114,12 +1082,12 @@ func getTileLayer(c *gin.Context) {
 	{
 		// Check to see that the zxy is within the bounds of the map.
 		textent := geom.Extent(tile.Bounds())
-		if !dts.TLayer.Bounds.Contains(&textent) {
+		if !dts.tlayer.Bounds.Contains(&textent) {
 			return
 		}
 	}
 
-	pbyte, err := dts.TLayer.Encode(c.Request.Context(), tile)
+	pbyte, err := dts.tlayer.Encode(c.Request.Context(), tile)
 	if err != nil {
 		switch err {
 		case context.Canceled:
@@ -1154,10 +1122,11 @@ func getTileLayerJSON(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
+		log.Warnf(`getTileLayerJSON, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4046)
 		return
 	}
-	if dts.TLayer == nil {
+	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
 			log.Error(err)
@@ -1166,11 +1135,11 @@ func getTileLayerJSON(c *gin.Context) {
 		}
 		dts.UpdateExtent()
 	}
-	zoom := (dts.TLayer.MinZoom + dts.TLayer.MaxZoom) / 2
+	zoom := (dts.tlayer.MinZoom + dts.tlayer.MaxZoom) / 2
 	attr := "atlas realtime tile layer"
 	tileJSON := tilejson.TileJSON{
 		Attribution: &attr,
-		Bounds:      dts.TLayer.Bounds.Extent(),
+		Bounds:      dts.tlayer.Bounds.Extent(),
 		Center:      [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(zoom)},
 		Format:      "pbf",
 		Name:        &dts.Name,
@@ -1181,22 +1150,22 @@ func getTileLayerJSON(c *gin.Context) {
 		Data:        make([]string, 0),
 	}
 
-	tileJSON.MinZoom = dts.TLayer.MinZoom
-	tileJSON.MaxZoom = dts.TLayer.MaxZoom
+	tileJSON.MinZoom = dts.tlayer.MinZoom
+	tileJSON.MaxZoom = dts.tlayer.MaxZoom
 	//	build our vector layer details
 	layer := tilejson.VectorLayer{
 		Version: 2,
 		Extent:  4096,
-		ID:      dts.TLayer.MVTName(),
-		Name:    dts.TLayer.MVTName(),
-		MinZoom: dts.TLayer.MinZoom,
-		MaxZoom: dts.TLayer.MaxZoom,
+		ID:      dts.tlayer.MVTName(),
+		Name:    dts.tlayer.MVTName(),
+		MinZoom: dts.tlayer.MinZoom,
+		MaxZoom: dts.tlayer.MaxZoom,
 		Tiles: []string{
-			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.TLayer.MVTName()),
+			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.tlayer.MVTName()),
 		},
 	}
 
-	switch dts.TLayer.GeomType.(type) {
+	switch dts.tlayer.GeomType.(type) {
 	case geom.Point, geom.MultiPoint:
 		layer.GeometryType = tilejson.GeomTypePoint
 	case geom.Line, geom.LineString, geom.MultiLineString:

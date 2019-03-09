@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"fmt"
 	"os"
@@ -56,27 +57,27 @@ type Fields []Field
 
 // Dataset 数据集定义结构
 type Dataset struct {
-	ID        string `json:"id"`   //字段列表
-	Name      string `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
-	Alias     string `json:"alias"`
-	Tag       string `json:"tag"`
-	Owner     string `json:"owner"`
-	Public    bool   `json:"public"`
-	Path      string `json:"path"`
-	Count     int    `json:"count"`
-	Type      string `json:"type"` //字段列表
-	BBox      orb.Bound
-	Fields    []byte `json:"fields" gorm:"type:json"` //字段列表
+	ID        string          `json:"id"`   //字段列表
+	Name      string          `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
+	Alias     string          `json:"alias"`
+	Tag       string          `json:"tag"`
+	Owner     string          `json:"owner"`
+	Public    bool            `json:"public"`
+	Path      string          `json:"path"`
+	Count     int             `json:"count"`
+	Type      string          `json:"type"` //字段列表
+	BBox      orb.Bound       `json:"bbox"`
+	Status    bool            `json:"status"`
+	Fields    json.RawMessage `json:"-" gorm:"type:json"` //字段列表
+	tlayer    *TileLayer
 	CreatedAt time.Time
 	UpdatedAt time.Time
-	Status    bool
-	TLayer    *TileLayer
 }
 
 //Service 加载服务
-func (dt *Dataset) Service() *Dataset {
-	// json.Unmarshal(ds.Fields, &out.Fields)
-	return dt
+func (dt *Dataset) Service() error {
+	dt.Status = true
+	return nil
 }
 
 // NewTileLayer 新建服务层
@@ -100,13 +101,13 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	tlayer.MaxZoom = 20
 	tlayer.Provider = prd
 	tlayer.ProviderLayerName = dt.Name
-	dt.TLayer = tlayer
+	dt.tlayer = tlayer
 	return tlayer, nil
 }
 
 // CacheMBTiles 新建服务层
 func (dt *Dataset) CacheMBTiles(path string) error {
-	if dt.TLayer == nil {
+	if dt.tlayer == nil {
 		_, err := dt.NewTileLayer()
 		if err != nil {
 			return err
@@ -166,11 +167,11 @@ func (dt *Dataset) CacheMBTiles(path string) error {
 			tile := slippy.NewTile(uint(t.Z), uint(t.X), uint(t.Y), TileBuffer, tegola.WebMercator)
 			// Check to see that the zxy is within the bounds of the map.
 			textent := geom.Extent(tile.Bounds())
-			if !dt.TLayer.Bounds.Contains(&textent) {
+			if !dt.tlayer.Bounds.Contains(&textent) {
 				continue
 			}
 
-			pbyte, err := dt.TLayer.Encode(context.Background(), tile)
+			pbyte, err := dt.tlayer.Encode(context.Background(), tile)
 			if err != nil {
 				errMsg := fmt.Sprintf("error marshalling tile: %v", err)
 				log.Error(errMsg)
@@ -207,7 +208,7 @@ func (dt *Dataset) UpdateExtent() error {
 	}
 	bbox := ext.Geometry().Bound()
 	dt.BBox = bbox
-	dt.TLayer.Bounds = &geom.Extent{bbox.Left(), bbox.Bottom(), bbox.Right(), bbox.Top()}
+	dt.tlayer.Bounds = &geom.Extent{bbox.Left(), bbox.Bottom(), bbox.Right(), bbox.Top()}
 	return nil
 }
 
