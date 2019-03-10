@@ -526,48 +526,49 @@ func (ss *ServiceSet) AppendDatasets() error {
 		_, ok := quickmap[id]
 		if !ok {
 			//加载文件
-			datafiles, err := LoadDatafile(file)
+			datafiles, err := LoadDatasets(file)
 			if err != nil {
 				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库、导入、加载服务
-			for _, df := range datafiles {
-				df.Owner = ss.Owner
-				dp := df.getPreview()
-				df.Update(dp)
-				df.Overwrite = true
-				err = df.UpInsert()
+			for _, dt := range datafiles {
+				dt.Owner = ss.Owner
+				// err := df.getPreview()
 				if err != nil {
 					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
 				}
-				task := df.dataImport()
+				err = dt.UpInsert()
+				if err != nil {
+					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+				}
+				task := dt.dataImport()
 				if task.Err != "" {
 					log.Error(err)
 					<-task.Pipe
 					<-taskQueue
 					continue
 				}
-				go func(df *Datafile) {
+				go func(dt *Dataset) {
 					<-task.Pipe
 					<-taskQueue
-					ds, err := df.toDataset()
+					err := dt.updateFromTable()
 					if err != nil {
 						log.Error(err)
 						return
 					}
-					err = ds.UpInsert()
+					err = dt.UpInsert()
 					if err != nil {
 						log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 						return
 					}
-					err = ds.Service()
+					err = dt.Service()
 					if err != nil {
 						log.Error(err)
 						return
 					}
-					ss.D.Store(ds.ID, ds)
-				}(df)
+					ss.D.Store(dt.ID, dt)
+				}(dt)
 				count++
 			}
 		}

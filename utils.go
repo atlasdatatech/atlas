@@ -452,7 +452,6 @@ func UnZipToDir(zipfile string) string {
 	}
 	defer zr.Close()
 	decoder := mahonia.NewDecoder("gbk")
-
 	for _, f := range zr.File {
 		name := decoder.ConvertString(f.Name)
 		info := f.FileInfo()
@@ -465,7 +464,8 @@ func UnZipToDir(zipfile string) string {
 			}
 			continue
 		}
-
+		ext := filepath.Ext(name)
+		pn = strings.TrimSuffix(pn, ext) + strings.ToLower(ext)
 		w, err := os.Create(pn)
 		if err != nil {
 			log.Warnf("Cannot unzip %s: %v", zipfile, err)

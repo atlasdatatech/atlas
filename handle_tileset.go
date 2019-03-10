@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -229,14 +230,14 @@ func publishTileset(c *gin.Context) {
 		return
 	}
 	log.Info("receive finished...")
-	dtfiles, err := LoadDatafile(dst)
+	dts, err := LoadDatasets(dst)
 	if err != nil {
 		log.Errorf(`publishTileset, loading datafile error, details: %s`, err)
 		res.FailErr(c, err)
 		return
 	}
 	var inputfiles []string
-	for _, df := range dtfiles {
+	for _, df := range dts {
 		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
@@ -247,7 +248,7 @@ func publishTileset(c *gin.Context) {
 		case ".geojson":
 			infile = df.Path
 		case ".shp", ".kml", ".gpx":
-			err := df.toGeojson()
+			// err := df.toGeojson()
 			if err != nil {
 				log.Errorf(`publishTileset, convert to geojson error, details: %s`, err)
 				continue
@@ -261,7 +262,7 @@ func publishTileset(c *gin.Context) {
 	//publish to mbtiles
 	log.Println("start create mbtiles")
 	outfile := filepath.Join("tilesets", uid, name+"."+id+MBTILESEXT)
-	err = createMbtiles(outfile, inputfiles)
+	err = toMbtiles(outfile, inputfiles)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
@@ -332,14 +333,14 @@ func rePublishTileset(c *gin.Context) {
 		return
 	}
 
-	dtfiles, err := LoadDatafile(dst)
+	dts, err := LoadDatasets(dst)
 	if err != nil {
 		log.Errorf(`rePublishTileset, loading datafile error, details: %s`, err)
 		res.FailErr(c, err)
 		return
 	}
 	var inputfiles []string
-	for _, df := range dtfiles {
+	for _, df := range dts {
 		df.Owner = uid
 		err = df.UpInsert()
 		if err != nil {
@@ -350,7 +351,7 @@ func rePublishTileset(c *gin.Context) {
 		case ".geojson":
 			infile = df.Path
 		case ".shp", ".kml", ".gpx":
-			err := df.toGeojson()
+			// err := df.toGeojson()
 			if err != nil {
 				log.Errorf(`rePublishTileset, convert to geojson error, details: %s`, err)
 				continue
@@ -363,7 +364,7 @@ func rePublishTileset(c *gin.Context) {
 	}
 	//publish to mbtiles
 	outfile := filepath.Join("tilesets", uid, ntid+MBTILESEXT)
-	err = createMbtiles(outfile, inputfiles)
+	err = toMbtiles(outfile, inputfiles)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
@@ -449,7 +450,6 @@ func createTileset(c *gin.Context) {
 func updateTileset(c *gin.Context) {
 	res := NewRes()
 	res.FailMsg(c, "系统维护")
-	return
 	// id := c.GetString(identityKey)
 	uid := c.Param("user")
 	tid := c.Param("id")
@@ -595,10 +595,6 @@ func getTileJSON(c *gin.Context) {
 		}
 	}
 
-	if ts.HasUTFGrid {
-		out["grids"] = []string{fmt.Sprintf("%s.json", tileurl)}
-	}
-
 	c.JSON(http.StatusOK, out)
 }
 
@@ -631,41 +627,43 @@ func getTile(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	// split path components to extract tile coordinates x, y and z
-	pcs := strings.Split(c.Request.URL.Path[1:], "/")
-	// we are expecting at least "tilesets", :user , :id, :z, :x, :y + .ext
-	size := len(pcs)
-	if size < 5 || pcs[4] == "" {
+	c.Param("z")
+	c.Param("x")
+	c.Param("y")
+
+	// lookup our Map
+	placeholder, err := strconv.ParseUint(c.Param("z"), 10, 32)
+	if err != nil || placeholder > 22 {
 		res.Fail(c, 4003)
 		return
 	}
-	z, x, y := pcs[size-3], pcs[size-2], pcs[size-1]
-	tc, ext, err := tileCoordFromString(z, x, y)
-	if err != nil {
-		log.Error(err)
+	z := uint(placeholder)
+	placeholder, err = strconv.ParseUint(c.Param("x"), 10, 32)
+	if err != nil || placeholder >= (1<<z) {
 		res.Fail(c, 4003)
 		return
 	}
+	x := uint(placeholder)
+	ypbf := c.Param("y")
+	ys := strings.Split(ypbf, ".")
+	if len(ys) != 2 {
+		res.Fail(c, 4003)
+		return
+	}
+	placeholder, err = strconv.ParseUint(ys[0], 10, 32)
+	if err != nil || placeholder >= (1<<z) {
+		res.Fail(c, 4003)
+		return
+	}
+	y := uint(placeholder)
 
 	var data []byte
 	// flip y to match the spec
-	tc.y = (1 << uint64(tc.z)) - 1 - tc.y
-	isGrid := ext == ".json"
-	switch {
-	case !isGrid:
-		data, err = ts.Tile(c.Request.Context(), tc.z, tc.x, tc.y)
-	// case isGrid && tss.Tileset.HasUTFGrid():
-	// 	err = tss.Tileset.GetGrid(tc.z, tc.x, tc.y, &data)
-	default:
-		err = fmt.Errorf("no grid supplied by tile database")
-	}
+	y = (1 << z) - 1 - y
+	data, err = ts.Tile(c.Request.Context(), z, x, y)
 	if err != nil {
-		// augment error info
 		t := "tile"
-		if isGrid {
-			t = "grid"
-		}
-		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, tc.z, tc.x, tc.y, err)
+		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, z, x, y, err)
 		log.Error(err)
 		res.Fail(c, 5004)
 		return
@@ -689,18 +687,9 @@ func getTile(c *gin.Context) {
 		}
 	}
 
-	if isGrid {
-		c.Header("Content-Type", "application/json")
-		if ts.UTFGridCompression == ZLIB {
-			c.Header("Content-Encoding", "deflate")
-		} else {
-			c.Header("Content-Encoding", "gzip")
-		}
-	} else {
-		c.Header("Content-Type", ts.Format.ContentType())
-		if ts.Format == PBF {
-			c.Header("Content-Encoding", "gzip")
-		}
+	c.Header("Content-Type", ts.Format.ContentType())
+	if ts.Format == PBF {
+		c.Header("Content-Encoding", "gzip")
 	}
 	c.Writer.Write(data)
 }

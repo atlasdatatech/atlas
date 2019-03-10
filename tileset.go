@@ -2,14 +2,11 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
-	"compress/zlib"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -75,26 +72,23 @@ func (t TileFormat) ContentType() string {
 
 //Tileset 样式库
 type Tileset struct {
-	ID                 string     `json:"id" gorm:"primary_key"`
-	Version            string     `json:"version"`
-	Name               string     `json:"name" gorm:"not null"`
-	Tag                string     `json:"tag"`
-	Owner              string     `json:"owner" gorm:"index;not null"`
-	Format             TileFormat // tile format: PNG, JPG, PBF, WEBP
-	Public             bool       `json:"public"`
-	Path               string     `json:"path"`
-	URL                string     // tile format: PNG, JPG, PBF, WEBP
-	Size               int64      `json:"size"`
-	HasUTFGrid         bool       // true if mbtiles file contains additional tables with UTFGrid data
-	UTFGridCompression TileFormat // compression (GZIP or ZLIB) of UTFGrids
-	HasUTFGridData     bool
-	Layers             []byte    `json:"data" ` //gorm:"type:json"
-	JSON               []byte    `json:"json" ` //gorm:"column:json;type:json"
-	Status             bool      // true if UTFGrids have corresponding key / value data that need to be joined and returned with the UTFGrid
-	db                 *sql.DB   // database connection for mbtiles file
-	Timestamp          time.Time // timestamp of file, for cache control headers
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	ID        string     `json:"id" gorm:"primary_key"`
+	Version   string     `json:"version"`
+	Name      string     `json:"name" gorm:"not null"`
+	Tag       string     `json:"tag"`
+	Owner     string     `json:"owner" gorm:"index;not null"`
+	Format    TileFormat `json:"format"`
+	Public    bool       `json:"public"`
+	Path      string     `json:"path"`
+	URL       string     `json:"url"`
+	Size      int64      `json:"size"`
+	Layers    []byte     `json:"layers" ` //gorm:"type:json"
+	JSON      []byte     `json:"json" `   //gorm:"column:json;type:json"
+	Status    bool       `json:"status"`
+	db        *sql.DB    // database connection for mbtiles file
+	Timestamp time.Time  // timestamp of file, for cache control headers
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 //LoadTileset 创建更新瓦片集服务
@@ -139,40 +133,6 @@ func LoadTileset(tileset string) (*Tileset, error) {
 		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
 	}
 	out.Format = format
-	// UTFGrids
-	// first check to see if requisite tables exist
-	var count int
-	err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grids'").Scan(&count)
-	if err != nil {
-		return nil, err
-	}
-	if count == 1 {
-		// query a sample grid to detect type
-		var gridData []byte
-		err = db.QueryRow("select grid from grids where grid is not null LIMIT 1").Scan(&gridData)
-		if err != nil {
-			if err != sql.ErrNoRows {
-				return nil, fmt.Errorf("could not read sample grid to determine type: %v", err)
-			}
-		} else {
-			out.HasUTFGrid = true
-			out.UTFGridCompression, err = detectTileFormat(gridData)
-			if err != nil {
-				return nil, fmt.Errorf("could not determine UTF Grid compression type: %v", err)
-			}
-
-			// Check to see if grid_data view exists
-			count = 0 // prevent use of prior value
-			err = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='view' AND name = 'grid_data'").Scan(&count)
-			if err != nil {
-				return nil, err
-			}
-			if count == 1 {
-				out.HasUTFGridData = true
-			}
-		}
-	}
-
 	return out, nil
 }
 
@@ -218,7 +178,7 @@ func (ts *Tileset) UpInsert() error {
 
 // Tile reads a tile with tile identifiers z, x, y into provided *[]byte.
 // data will be nil if the tile does not exist in the database
-func (ts *Tileset) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error) {
+func (ts *Tileset) Tile(ctx context.Context, z, x, y uint) ([]byte, error) {
 	var data []byte
 	err := ts.db.QueryRow("select tile_data from tiles where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(&data)
 	if err != nil {
@@ -228,94 +188,6 @@ func (ts *Tileset) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, e
 		return nil, err
 	}
 	return data, nil
-}
-
-// GetGrid reads a UTFGrid with identifiers z, x, y into provided *[]byte. data
-// will be nil if the grid does not exist in the database, and an error will be
-// raised. This merges in grid key data, if any exist The data is returned in
-// the original compression encoding (zlib or gzip)
-func (ts *Tileset) GetGrid(z uint8, x uint, y uint, data *[]byte) error {
-	if !ts.HasUTFGrid {
-		return errors.New("Tileset does not contain UTFgrids")
-	}
-
-	err := ts.db.QueryRow("select grid from grids where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(data)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			*data = nil // If this tile does not exist in the database, return empty bytes
-			return nil
-		}
-		return err
-	}
-
-	if ts.HasUTFGridData {
-		keydata := make(map[string]interface{})
-		var (
-			key   string
-			value []byte
-		)
-
-		rows, err := ts.db.Query("select key_name, key_json FROM grid_data where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y)
-		if err != nil {
-			return fmt.Errorf("cannot fetch grid data: %v", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			err := rows.Scan(&key, &value)
-			if err != nil {
-				return fmt.Errorf("could not fetch grid data: %v", err)
-			}
-			valuejson := make(map[string]interface{})
-			json.Unmarshal(value, &valuejson)
-			keydata[key] = valuejson
-		}
-
-		if len(keydata) == 0 {
-			return nil // there is no key data for this tile, return
-		}
-
-		var (
-			zreader io.ReadCloser  // instance of zlib or gzip reader
-			zwriter io.WriteCloser // instance of zlip or gzip writer
-			buf     bytes.Buffer
-		)
-		reader := bytes.NewReader(*data)
-
-		if ts.UTFGridCompression == ZLIB {
-			zreader, err = zlib.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			zwriter = zlib.NewWriter(&buf)
-		} else {
-			zreader, err = gzip.NewReader(reader)
-			if err != nil {
-				return err
-			}
-			zwriter = gzip.NewWriter(&buf)
-		}
-
-		var utfjson map[string]interface{}
-		jsonDecoder := json.NewDecoder(zreader)
-		jsonDecoder.Decode(&utfjson)
-		zreader.Close()
-
-		// splice the key data into the UTF json
-		utfjson["data"] = keydata
-		if err != nil {
-			return err
-		}
-
-		// now re-encode to original zip encoding
-		jsonEncoder := json.NewEncoder(zwriter)
-		err = jsonEncoder.Encode(utfjson)
-		if err != nil {
-			return err
-		}
-		zwriter.Close()
-		*data = buf.Bytes()
-	}
-	return nil
 }
 
 // GetInfo reads the metadata table into a map, casting their values into
@@ -447,59 +319,6 @@ func stringToFloats(str string) ([]float64, error) {
 		out = append(out, value)
 	}
 	return out, nil
-}
-
-type tileCoord struct {
-	z    uint8
-	x, y uint
-}
-
-// tileCoordFromString parses and returns tileCoord coordinates and an optional
-// extension from the three parameters. The parameter z is interpreted as the
-// web mercator zoom level, it is supposed to be an unsigned integer that will
-// fit into 8 bit. The parameters x and y are interpreted as longitude and
-// latitude tile indices for that zoom level, both are supposed be integers in
-// the integer interval [0,2^z). Additionally, y may also have an optional
-// filename extension (e.g. "42.png") which is removed before parsing the
-// number, and returned, too. In case an error occured during parsing or if the
-// values are not in the expected interval, the returned error is non-nil.
-func tileCoordFromString(z, x, y string) (tc tileCoord, ext string, err error) {
-	var z64 uint64
-	if z64, err = strconv.ParseUint(z, 10, 8); err != nil {
-		err = fmt.Errorf("cannot parse zoom level: %v", err)
-		return
-	}
-	tc.z = uint8(z64)
-	const (
-		errMsgParse = "cannot parse %s coordinate axis: %v"
-		errMsgOOB   = "%s coordinate (%d) is out of bounds for zoom level %d"
-	)
-	ux, err := strconv.ParseUint(x, 10, 32)
-	if err != nil {
-		err = fmt.Errorf(errMsgParse, "first", err)
-		return
-	}
-	if ux >= (1 << z64) {
-		err = fmt.Errorf(errMsgOOB, "x", tc.x, tc.z)
-		return
-	}
-	tc.x = uint(ux)
-	s := y
-	if l := strings.LastIndex(s, "."); l >= 0 {
-		s, ext = s[:l], s[l:]
-	}
-	uy, err := strconv.ParseUint(s, 10, 32)
-	if err != nil {
-		err = fmt.Errorf(errMsgParse, "y", err)
-		return
-	}
-
-	if uy >= (1 << z64) {
-		err = fmt.Errorf(errMsgOOB, "y", tc.y, tc.z)
-		return
-	}
-	tc.y = uint(uy)
-	return
 }
 
 //SetupMBTileTables 初始化配置MBTile库

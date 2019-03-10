@@ -28,11 +28,11 @@ type Font struct {
 	ID          string `json:"id" gorm:"primary_key"`
 	Name        string `json:"name" gorm:"unique;not null;unique_index"`
 	Owner       string `json:"owner" gorm:"index"`
-	Path        string
-	Size        int64
-	URL         string
-	Compression bool
-	Status      bool
+	Path        string `json:"path"`
+	Size        int64  `json:"size"`
+	URL         string `json:"url"`
+	Compression bool   `json:"compression"`
+	Status      bool   `json:"status"`
 	db          *sql.DB
 }
 

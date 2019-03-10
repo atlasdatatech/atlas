@@ -166,8 +166,7 @@ func initDb() (*gorm.DB, error) {
 	//gorm自动构建用户表
 	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
-	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Datafile{}, &Tileset{}, &Dataset{}, &Task{})
-	pg.AutoMigrate(&TileLayer{})
+	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &Task{})
 	return pg, nil
 }
 
@@ -733,8 +732,6 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/:user/preview/:id/", previewFile)
 		datasets.POST("/:user/import/:id/", importFile)
 		datasets.POST("/:user/import/", oneClickImport)
-		datasets.GET("/:user/task/:id/", taskQuery)
-		datasets.GET("/:user/task/:id/stream/", taskStreamQuery)
 		datasets.POST("/:user/update/:id/", upInsertDataset)
 		datasets.GET("/:user/download/:id/", downloadDataset)
 		datasets.POST("/:user/delete/:id/", deleteDatasets)
@@ -754,6 +751,14 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/:user/x/:id/:z/:x/:y", getTileLayer)
 		datasets.POST("/:user/x/:id/", createTileLayer)
 
+	}
+	tasks := r.Group("/tasks")
+	tasks.Use(AuthMidHandler(authMid))
+	tasks.Use(UserMidHandler())
+	{
+		tasks.GET("/:user/", listTasks)
+		tasks.GET("/:user/info/:id/", taskQuery)
+		tasks.GET("/:user/stream/:id/", taskStreamQuery)
 	}
 	//utilroute
 	utilroute := r.Group("/util")
