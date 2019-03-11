@@ -386,7 +386,8 @@ func initAuthJWT() (*JWTMiddleware, error) {
 		//这个指定了提供当前时间的函数，也可以自定义
 		TimeFunc: time.Now,
 		//设置Cookie
-		SendCookie: true,
+		SendCookie:        true,
+		SendAuthorization: true,
 		//禁止abort
 		DisabledAbort: true,
 	}

@@ -213,10 +213,13 @@ func signin(c *gin.Context) {
 			tokenString,
 			maxage,
 			"/",
-			"*",
+			"",
 			authMid.SecureCookie,
 			authMid.CookieHTTPOnly,
 		)
+	}
+	if authMid.SendAuthorization {
+		c.Header("Authorization", authMid.TokenHeadName+" "+tokenString)
 	}
 	res.DoneData(c, user)
 }
