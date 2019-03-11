@@ -535,6 +535,7 @@ func setupRouter() *gin.Engine {
 	config.AllowOrigins = []string{"*"}
 	config.AllowWildcard = true
 	config.AllowCredentials = true
+	config.AddAllowHeaders("Authorization")
 	r.Use(cors.New(config))
 	//public root
 	r.Use(static.Serve("/", static.LocalFile("./public", true)))

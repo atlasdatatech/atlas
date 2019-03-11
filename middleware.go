@@ -8,6 +8,7 @@ import (
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 // AuthMidHandler makes  the Middleware interface.
@@ -15,6 +16,7 @@ func AuthMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := mw.GetClaimsFromJWT(c)
 		if err != nil {
+			log.Errorf("get token error,%s", err)
 			// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
 			if !mw.DisabledAbort {
 				c.JSON(http.StatusUnauthorized, gin.H{

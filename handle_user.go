@@ -213,7 +213,7 @@ func signin(c *gin.Context) {
 			tokenString,
 			maxage,
 			"/",
-			"",
+			authMid.CookieDomain,
 			authMid.SecureCookie,
 			authMid.CookieHTTPOnly,
 		)
