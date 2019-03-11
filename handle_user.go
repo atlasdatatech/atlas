@@ -221,6 +221,7 @@ func signin(c *gin.Context) {
 	if authMid.SendAuthorization {
 		c.Header("Authorization", authMid.TokenHeadName+" "+tokenString)
 	}
+	user.JWT = tokenString
 	res.DoneData(c, user)
 }
 

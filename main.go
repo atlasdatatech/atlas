@@ -532,7 +532,7 @@ func setupRouter() *gin.Engine {
 	//cors
 	config := cors.DefaultConfig()
 	// config.AllowAllOrigins = true
-	config.AllowOrigins = []string{"http://localhost*", "http://127.0.0.1*", "http://47.100.237.57*", "http://www.atlasdata.cn", "http://atlasdata.cn"}
+	config.AllowOrigins = []string{"*"}
 	config.AllowWildcard = true
 	config.AllowCredentials = true
 	r.Use(cors.New(config))
