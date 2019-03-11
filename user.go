@@ -38,7 +38,7 @@ type User struct {
 	VerificationToken string    `json:"-"`
 
 	AccessToken string `json:"access_token"`
-	JWT         string `json:"jwt" gorm:"-"`
+	JWT         string `json:"jwt" gorm:"jwt"`
 
 	CreatedAt time.Time `json:"-"`
 	UpdatedAt time.Time `json:"-"`

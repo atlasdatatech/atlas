@@ -222,6 +222,13 @@ func signin(c *gin.Context) {
 		c.Header("Authorization", authMid.TokenHeadName+" "+tokenString)
 	}
 	user.JWT = tokenString
+	go func() {
+		err = db.Model(&User{}).Where("name = ?", user.Name).Update(User{JWT: tokenString}).Error
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	}()
 	res.DoneData(c, user)
 }
 
