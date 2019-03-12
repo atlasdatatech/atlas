@@ -504,7 +504,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 		ext := filepath.Ext(name)
 		lext := strings.ToLower(ext)
 		switch lext {
-		case ".csv", ".geojson", ".shp", ".kml", ".gpx":
+		case CSVEXT, GEOJSONEXT, SHPEXT, KMLEXT, GPXEXT:
 			files[strings.TrimSuffix(name, ext)] = filepath.Join(dir, name)
 		}
 	}
@@ -527,33 +527,40 @@ func (ss *ServiceSet) AppendDatasets() error {
 		_, ok := quickmap[id]
 		if !ok {
 			//加载文件
-			dt, err := LoadDataset(file)
+			base := filepath.Base(file)
+			ext := filepath.Ext(base)
+			name := strings.TrimSuffix(base, ext)
+			lext := strings.ToLower(ext)
+			// 获取所有记录
+			ds := &DataSource{
+				ID:     name,
+				Name:   name,
+				Format: lext,
+				Path:   file,
+			}
+			err := ds.LoadFrom()
 			if err != nil {
 				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库、导入、加载服务
-			dt.Owner = ss.Owner
-			err = dt.UpInsert()
+			ds.Owner = ss.Owner
+			err = ds.Insert()
 			if err != nil {
 				log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
 			}
-			task := dt.dataImport()
+			task := ds.Import()
 			if task.Err != "" {
 				log.Error(err)
 				<-task.Pipe
 				<-taskQueue
 				continue
 			}
-			go func(dt *Dataset) {
+			go func(ds *DataSource) {
 				<-task.Pipe
 				<-taskQueue
-				err := dt.updateFromTable()
-				if err != nil {
-					log.Error(err)
-					return
-				}
-				err = dt.UpInsert()
+				dt := ds.toDataset()
+				err = dt.Insert()
 				if err != nil {
 					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 					return
@@ -564,7 +571,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 					return
 				}
 				ss.D.Store(dt.ID, dt)
-			}(dt)
+			}(ds)
 			count++
 		}
 	}

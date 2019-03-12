@@ -178,7 +178,7 @@ func uploadStyle(c *gin.Context) {
 	}
 
 	ext := filepath.Ext(file.Filename)
-	if ".zip" != strings.ToLower(ext) {
+	if ZIPEXT != strings.ToLower(ext) {
 		log.Warnf(`uploadStyle, %s's uploaded format error, details: %s`, uid, file.Filename)
 		res.FailMsg(c, "上传格式错误, 请上传样式文件的zip压缩包")
 		return
@@ -187,7 +187,7 @@ func uploadStyle(c *gin.Context) {
 	name := strings.TrimSuffix(file.Filename, ext)
 	id, _ := shortid.Generate()
 	styleid := name + "." + id
-	dst := filepath.Join("styles", uid, styleid+".zip")
+	dst := filepath.Join("styles", uid, styleid+ZIPEXT)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadStyle, upload file: %s; user: %s`, err, id)
 		res.Fail(c, 5002)
@@ -237,12 +237,12 @@ func replaceStyle(c *gin.Context) {
 		return
 	}
 	ext := filepath.Ext(file.Filename)
-	if ".zip" != strings.ToLower(ext) {
+	if ZIPEXT != strings.ToLower(ext) {
 		log.Warnf(`replaceStyle, %s's uploaded format error, details: %s`, uid, file.Filename)
 		res.FailMsg(c, "上传格式错误, 请上传样式文件的zip压缩包")
 		return
 	}
-	dst := filepath.Join("styles", uid, sid+".zip")
+	dst := filepath.Join("styles", uid, sid+ZIPEXT)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`replaceStyle, upload file: %s; user: %s`, err, uid)
 		res.Fail(c, 5002)
@@ -289,7 +289,7 @@ func downloadStyle(c *gin.Context) {
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+s.ID+".zip")
+	c.Header("Content-Disposition", "attachment; filename= "+s.ID+ZIPEXT)
 	io.Copy(c.Writer, reader)
 	return
 }
@@ -705,7 +705,7 @@ func deleteStyle(c *gin.Context) {
 			// res.FailErr(c, err)
 			// return
 		}
-		err = os.Remove(style.Path + ".zip")
+		err = os.Remove(style.Path + ZIPEXT)
 		if err != nil && !os.IsNotExist(err) {
 			log.Warnf(`deleteStyle, remove %s's style .zip (%s) error, details:%s ^^`, uid, sid, err)
 			// res.FailErr(c, err)

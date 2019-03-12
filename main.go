@@ -161,12 +161,11 @@ func initDb() (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init gorm pg error, details: %s", err)
 	}
-
 	log.Info("init gorm pg successfully")
 	//gorm自动构建用户表
 	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
-	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &Task{})
+	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
 	return pg, nil
 }
 
