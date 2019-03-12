@@ -68,7 +68,7 @@ type Dataset struct {
 	Geotype   string          `json:"geotype"`
 	BBox      orb.Bound       `json:"bbox"`
 	Status    bool            `json:"status"`
-	Fields    json.RawMessage `json:"-" gorm:"type:json"` //字段列表
+	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
 	Rows      [][]string      `json:"rows" gorm:"-"`
 	tlayer    *TileLayer
 	CreatedAt time.Time
@@ -289,38 +289,26 @@ func (dt *Dataset) getTags() []string {
 
 // LoadFromCSV 从csv数据文件加载数据集信息
 func (dt *Dataset) LoadFromCSV() error {
-	file := dt.Path
-	encoding := dt.Encoding
-	if encoding == "" {
-		encoding = likelyEncoding(file)
+	if dt.Encoding == "" {
+		dt.Encoding = likelyEncoding(dt.Path)
 	}
-	reader, err := os.Open(file)
+	file, err := os.Open(dt.Path)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	var csvReader *csv.Reader
-	switch encoding {
-	case "gbk", "big5", "gb18030": //buf reader convert
-		decoder := mahonia.NewDecoder(encoding)
-		if decoder == nil {
-			log.Errorf(`create %s encoder error`, encoding)
-			csvReader = csv.NewReader(reader)
-		} else {
-			dreader := decoder.NewReader(reader)
-			csvReader = csv.NewReader(dreader)
-		}
-	default:
-		csvReader = csv.NewReader(reader)
+	defer file.Close()
+	reader, err := csvReader(file, dt.Encoding)
+	if err != nil {
+		return err
 	}
-	headers, err := csvReader.Read()
+	headers, err := reader.Read()
 	if err != nil {
 		return err
 	}
 	var records [][]string
 	var rowNum, preNum int
 	for {
-		row, err := csvReader.Read()
+		row, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
@@ -425,7 +413,6 @@ func (dt *Dataset) LoadFromCSV() error {
 	dt.Format = ".csv"
 	dt.Total = rowNum
 	dt.Geotype = x + "," + y
-	dt.Encoding = encoding
 	dt.Rows = records
 	flds, err := json.Marshal(fields)
 	if err == nil {
@@ -436,59 +423,25 @@ func (dt *Dataset) LoadFromCSV() error {
 
 // LoadFromJSON 从geojson数据文件加载数据集信息
 func (dt *Dataset) LoadFromJSON() error {
-	file := dt.Path
-	encoding := dt.Encoding
-	if encoding == "" {
-		encoding = likelyEncoding(file)
+	if dt.Encoding == "" {
+		dt.Encoding = likelyEncoding(dt.Path)
 	}
-	reader, err := os.Open(file)
+	file, err := os.Open(dt.Path)
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
-	var dec *json.Decoder
-	switch encoding {
-	case "gbk", "big5", "gb18030": //buf reader convert
-		decoder := mahonia.NewDecoder(encoding)
-		if decoder == nil {
-			log.Errorf(`create %s encoder error`, encoding)
-			dec = json.NewDecoder(reader)
-		} else {
-			dreader := decoder.NewReader(reader)
-			dec = json.NewDecoder(dreader)
-		}
-	default:
-		dec = json.NewDecoder(reader)
+	defer file.Close()
+
+	dec, err := jsonDecoder(file, dt.Encoding)
+	if err != nil {
+		return err
 	}
+
 	s := time.Now()
-	//geojson第一个大括号 {
-	_, err = dec.Token()
-out:
-	for {
-		t, err := dec.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		switch v := t.(type) {
-		case string:
-			if v == "features" {
-				t, err := dec.Token()
-				if err != nil {
-					return err
-				}
-				d, ok := t.(json.Delim)
-				if ok {
-					ds := d.String()
-					fmt.Println(ds)
-					if ds == "[" {
-						break out
-					}
-				}
-			}
-		}
+
+	err = movetoFeatures(dec)
+	if err != nil {
+		return err
 	}
 
 	prepRow := func(ft *geojson.Feature) []string {
@@ -510,11 +463,17 @@ out:
 				} else {
 					s = "null"
 				}
-			default: //string/map[string]interface{}/nil
+
+			case map[string]interface{}, []interface{}:
+				buf, err := json.Marshal(v)
+				if err == nil {
+					s = string(buf)
+				}
+			default: //string/map[string]interface{}/[]interface{}/nil->对象/数组都作string处理
 				if v == nil {
 					s = ""
 				} else {
-					s = v.(string)
+					s, _ = v.(string)
 				}
 			}
 			row = append(row, s)
@@ -556,7 +515,7 @@ out:
 			t = "bool" //or 'timestamp with time zone'
 		case float64:
 			t = "float"
-		default: //string/map[string]interface{}/nil
+		default: //string/map[string]interface{}/[]interface{}/nil->对象/数组都作string处理
 			t = "string"
 		}
 		fields = append(fields, Field{
@@ -564,11 +523,10 @@ out:
 			Type: t,
 		})
 	}
-
 	dt.Format = ".geojson"
 	dt.Total = rowNum
 	dt.Geotype = geoType
-	dt.Encoding = encoding
+	dt.Rows = rows
 	flds, err := json.Marshal(fields)
 	if err == nil {
 		dt.Fields = flds
@@ -659,10 +617,43 @@ func (dt *Dataset) LoadFromShp() error {
 	dt.Size = size
 	dt.Geotype = geoType
 	dt.Total = fcount
+	dt.Encoding = encoding
+	dt.Rows = rows
 	jfs, err := json.Marshal(fields)
-	dt.Fields = jfs
-
+	if err == nil {
+		dt.Fields = jfs
+	} else {
+		log.Error(err)
+	}
 	return nil
+}
+
+func csvReader(r io.Reader, encoding string) (*csv.Reader, error) {
+	switch encoding {
+	case "gbk", "big5", "gb18030":
+		decoder := mahonia.NewDecoder(encoding)
+		if decoder == nil {
+			return csv.NewReader(r), fmt.Errorf(`create %s encoder error`, encoding)
+		}
+		dreader := decoder.NewReader(r)
+		return csv.NewReader(dreader), nil
+	default:
+		return csv.NewReader(r), nil
+	}
+}
+
+func jsonDecoder(r io.Reader, encoding string) (*json.Decoder, error) {
+	switch encoding {
+	case "gbk", "big5", "gb18030": //buf reader convert
+		mdec := mahonia.NewDecoder(encoding)
+		if mdec == nil {
+			return json.NewDecoder(r), fmt.Errorf(`create %s encoder error`, encoding)
+		}
+		mdreader := mdec.NewReader(r)
+		return json.NewDecoder(mdreader), nil
+	default:
+		return json.NewDecoder(r), nil
+	}
 }
 
 // LoadDataset 从文件加载数据集
@@ -676,7 +667,6 @@ func LoadDataset(file string) (*Dataset, error) {
 	ext := filepath.Ext(base)
 	id := strings.TrimSuffix(base, ext)
 	name := strings.TrimSuffix(id, filepath.Ext(id))
-
 	dt := &Dataset{
 		ID:     id,
 		Name:   name,
@@ -684,7 +674,6 @@ func LoadDataset(file string) (*Dataset, error) {
 		Path:   file,
 		Size:   stat.Size(),
 	}
-
 	switch ext {
 	case ".csv":
 		err := dt.LoadFromCSV()
@@ -755,6 +744,103 @@ func LoadDatasets(dir string) ([]*Dataset, error) {
 	return dts, nil
 }
 
+//getCreateHeaders auto add 'gid' & 'geom'
+func (dt *Dataset) getCreateHeaders() []string {
+	var fts []string
+	fields := []Field{}
+	err := json.Unmarshal(dt.Fields, &fields)
+	if err != nil {
+		log.Errorf(`createDataTable, Unmarshal fields error, details:%s`, err)
+		return fts
+	}
+	fts = append(fts, "gid serial primary key")
+	for _, v := range fields {
+		var t string
+		switch v.Type {
+		case Bool:
+			t = "BOOL"
+		case Int:
+			t = "INT4"
+		case Float:
+			t = "NUMERIC"
+		case Date:
+			t = "TIMESTAMPTZ"
+		default:
+			t = "TEXT"
+		}
+		fts = append(fts, v.Name+" "+t)
+	}
+	if dt.Geotype != "" {
+		dbtype := dt.Geotype
+		if strings.Contains(dt.Geotype, ",") {
+			dbtype = Point
+		}
+		fts = append(fts, fmt.Sprintf("geom geometry(%s,4326)", dbtype))
+	}
+	return fts
+}
+
+func (dt *Dataset) createDataTable() error {
+	tableName := strings.ToLower(dt.ID)
+	st := fmt.Sprintf(`DELETE FROM datasets WHERE id='%s';`, dt.ID)
+	err := db.Exec(st).Error
+	if err != nil {
+		log.Errorf(`createDataTable, delete dataset error, details:%s`, err)
+		return err
+	}
+	err = db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS "%s";`, tableName)).Error
+	if err != nil {
+		log.Errorf(`createDataTable, drop table error, details:%s`, err)
+		return err
+	}
+	headers := dt.getCreateHeaders()
+	st = fmt.Sprintf(`CREATE TABLE "%s" (%s);`, tableName, strings.Join(headers, ","))
+	log.Infoln(st)
+	err = db.Exec(st).Error
+	if err != nil {
+		log.Errorf(`importData, create table error, details:%s`, err)
+		return err
+	}
+	return nil
+}
+
+func (dt *Dataset) getColumnTypes() ([]*sql.ColumnType, error) {
+	tableName := strings.ToLower(dt.ID)
+	var st string
+	fields := []Field{}
+	err := json.Unmarshal(dt.Fields, &fields)
+	if err != nil {
+		st = fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0`, tableName)
+	} else {
+		var headers []string
+		for _, v := range fields {
+			headers = append(headers, v.Name)
+		}
+		st = fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, strings.Join(headers, ","), tableName)
+	}
+
+	rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		return nil, err
+	}
+
+	var pureColumns []*sql.ColumnType
+
+	for _, col := range cols {
+		switch col.Name() {
+		case "gid", "geom":
+			continue
+		}
+		pureColumns = append(pureColumns, col)
+	}
+	return pureColumns, nil
+}
+
 //dataImport import geojson or csv data, can transform from gcj02 or bd09
 func (dt *Dataset) dataImport() *Task {
 	task := &Task{
@@ -776,171 +862,66 @@ func (dt *Dataset) dataImport() *Task {
 		tableName := strings.ToLower(dt.ID)
 		switch dt.Format {
 		case ".csv", ".geojson":
-			st := fmt.Sprintf(`DELETE FROM datasets WHERE id='%s';`, dt.ID)
-			err := db.Exec(st).Error
-			if err != nil {
-				log.Errorf(`dataImport, delete dataset error, details:%s`, err)
-			}
-			err = db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS "%s";`, tableName)).Error
-			if err != nil {
-				log.Errorf(`dataImport, drop table error, details:%s`, err)
-			}
-			//csv geom type is "Point"
-			flds := []Field{}
-			json.Unmarshal(dt.Fields, &flds)
-			err = createTable(tableName, flds, dt.Geotype)
-			if err != nil {
-				log.Errorf(`importData, create table error, details:%s`, err)
-				task.Err = err.Error()
-				task.Pipe <- struct{}{}
-				return
-			}
-
-			prepHeader := func(fields []Field) []string {
-				var headers []string
-				for _, v := range fields {
-					headers = append(headers, v.Name)
-				}
-				return headers
-			}
-			headers := prepHeader(flds)
-
-			st = fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, strings.Join(headers, ","), tableName)
-			rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
+			err := dt.createDataTable()
 			if err != nil {
 				task.Err = err.Error()
 				task.Pipe <- struct{}{}
 				return
 			}
-			defer rows.Close()
-			cols, err := rows.ColumnTypes()
+			cols, err := dt.getColumnTypes()
 			if err != nil {
 				task.Err = err.Error()
 				task.Pipe <- struct{}{}
 				return
+			}
+			var headers []string
+			for _, col := range cols {
+				headers = append(headers, col.Name())
 			}
 			switch dt.Format {
 			case ".csv":
-				formatBool := func(v string) string {
-					if v == "" {
-						return "null"
-					}
-					str := strings.ToLower(v)
-					switch str {
-					case "true", "false", "yes", "no", "1", "0":
-					default:
-						return "null"
-					}
-					return "'" + str + "'"
-				}
-				formatInt := func(v string) string {
-					if v == "" {
-						return "null"
-					}
-					i64, err := strconv.ParseInt(v, 10, 64)
-					if err != nil {
-						f, err := strconv.ParseFloat(v, 64)
-						if err != nil {
-							return "null"
-						}
-						i64 = int64(f)
-					}
-					return strconv.FormatInt(i64, 10)
-				}
-				formatFloat := func(v string) string {
-					if v == "" {
-						return "null"
-					}
-					f, err := strconv.ParseFloat(v, 64)
-					if err != nil {
-						return "null"
-					}
-					return strconv.FormatFloat(f, 'g', -1, 64)
-				}
-				formatDate := func(v string) string {
-					if v == "" {
-						return "null"
-					}
-					//string shoud filter the invalid time values
-					return "'" + v + "'"
-				}
-				formatString := func(v string) string {
-					if v == "" {
-						return "null"
-					}
-					return "'" + v + "'"
-				}
 				prepValues := func(row []string, cols []*sql.ColumnType) string {
 					var vals []string
 					for i, col := range cols {
-						// fmt.Println(i, col.DatabaseTypeName(), col.Name())
-						var s string
-						switch col.DatabaseTypeName() {
-						case "BOOL":
-							s = formatBool(row[i])
-						case "INT4":
-							s = formatInt(row[i])
-						case "NUMERIC": //number
-							s = formatFloat(row[i])
-						case "TIMESTAMPTZ":
-							s = formatDate(row[i])
-						default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
-							s = formatString(row[i])
-						}
+						s := stringFormat(col.DatabaseTypeName(), row[i])
 						vals = append(vals, s)
 					}
 					return strings.Join(vals, ",")
 				}
 				t := time.Now()
-				reader, err := os.Open(dt.Path)
+				file, err := os.Open(dt.Path)
 				if err != nil {
 					task.Err = `open data file error`
 					task.Pipe <- struct{}{}
 					return
 				}
-				defer reader.Close()
-				var csvReader *csv.Reader
-				switch dt.Encoding {
-				case "gbk", "big5", "gb18030":
-					decoder := mahonia.NewDecoder(dt.Encoding)
-					if decoder == nil {
-						log.Errorf(`create %s encoder error`, dt.Encoding)
-						csvReader = csv.NewReader(reader)
-					} else {
-						dreader := decoder.NewReader(reader)
-						csvReader = csv.NewReader(dreader)
-					}
-				default:
-					csvReader = csv.NewReader(reader)
-				}
-
-				csvHeaders, err := csvReader.Read()
+				defer file.Close()
+				reader, err := csvReader(file, dt.Encoding)
+				csvHeaders, err := reader.Read()
 				if err != nil {
-					task.Err = fmt.Sprintf(`dataImport, csvReader read headers failed: %s`, err)
+					task.Err = fmt.Sprintf(`dataImport, read headers failed: %s`, err)
 					task.Pipe <- struct{}{}
 					return
 				}
-				if len(headers) != len(csvHeaders) {
+				if len(cols) != len(csvHeaders) {
 					log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
 					task.Err = `dbfield len != csvheader len`
 					task.Pipe <- struct{}{}
 					return
 				}
-
-				prepIndex := func(headers []string, name string) int {
-					for i, col := range headers {
-						if col == name {
+				prepIndex := func(cols []*sql.ColumnType, name string) int {
+					for i, col := range cols {
+						if col.Name() == name {
 							return i
 						}
 					}
 					return -1
 				}
-
 				ix, iy := -1, -1
 				xy := strings.Split(dt.Geotype, ",")
 				if len(xy) == 2 {
-					ix = prepIndex(headers, xy[0])
-					iy = prepIndex(headers, xy[1])
+					ix = prepIndex(cols, xy[0])
+					iy = prepIndex(cols, xy[1])
 				}
 				isgeom := (ix != -1 && iy != -1)
 				if isgeom {
@@ -948,16 +929,15 @@ func (dt *Dataset) dataImport() *Task {
 				}
 				tt := time.Since(t)
 				log.Info(`process headers and get count, `, tt)
-				count := 0
 				var vals []string
 				task.Status = "processing"
 				t = time.Now()
+				count := 0
 				for {
-					row, err := csvReader.Read()
+					row, err := reader.Read()
 					if err == io.EOF {
 						break
 					}
-					count++
 					if err != nil {
 						continue
 					}
@@ -977,7 +957,22 @@ func (dt *Dataset) dataImport() *Task {
 					} else {
 						vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 					}
+					if count%1000 == 0 {
+						go func(vs []string) {
+							t := time.Now()
+							st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+							query := db.Exec(st)
+							err := query.Error
+							if err != nil {
+								task.Err = err.Error()
+							}
+							log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
+						}(vals)
+						var nvals []string
+						vals = nvals
+					}
 					task.Progress = int(count / dt.Total / 5)
+					count++
 				}
 				fmt.Println(`csv process `, time.Since(t))
 				t = time.Now()
@@ -989,187 +984,42 @@ func (dt *Dataset) dataImport() *Task {
 					log.Errorf(`task failed, details:%s`, err)
 					task.Status = "failed"
 				}
-				fmt.Println(`csv insert `, time.Since(t))
-
-				task.Succeed = int(query.RowsAffected)
+				log.Infof("csv insert %d rows, takes: %v/n", count, time.Since(t))
+				task.Succeed = count
 				task.Progress = 100
 				task.Status = "finished"
 				task.Err = ""
 				task.Pipe <- struct{}{}
 				return
 			case ".geojson":
-				formatBool := func(v interface{}) string {
-					if v == nil {
-						return "null"
-					}
-					if b, ok := v.(bool); ok {
-						return strconv.FormatBool(b)
-					}
-					//string
-					str := strings.ToLower(v.(string))
-					switch str {
-					case "true", "false", "yes", "no", "1", "0":
-					default:
-						return "null"
-					}
-					return "'" + str + "'"
-				}
-				formatInt := func(v interface{}) string {
-					if v == nil {
-						return "null"
-					}
-					if i, ok := v.(int); ok {
-						return strconv.FormatInt(int64(i), 10)
-					}
-					if f, ok := v.(float64); ok {
-						return strconv.FormatFloat(f, 'g', -1, 64)
-					}
-					//string
-					i, err := strconv.ParseInt(v.(string), 10, 64)
-					if err != nil {
-						return strconv.FormatInt(i, 10)
-					}
-					return "null"
-				}
-				formatFloat := func(v interface{}) string {
-					if v == nil {
-						return "null"
-					}
-					if f, ok := v.(float64); ok {
-						return strconv.FormatFloat(f, 'g', -1, 64)
-					}
-					if i, ok := v.(int); ok {
-						return strconv.FormatInt(int64(i), 10)
-					}
-					//string
-					f, err := strconv.ParseFloat(v.(string), 64)
-					if err != nil {
-						return strconv.FormatFloat(f, 'g', -1, 64)
-					}
-					return "null"
-				}
-				formatDate := func(v interface{}) string {
-					if v == nil {
-						return "null"
-					}
-					if i64, ok := v.(int64); ok {
-						d := time.Unix(i64, 0).Format("2006-01-02 15:04:05")
-						return "'" + d + "'"
-					}
-					if i, ok := v.(int); ok {
-						d := time.Unix(int64(i), 0).Format("2006-01-02 15:04:05")
-						return "'" + d + "'"
-					}
-					//string shoud filter the invalid time values
-					if s, ok := v.(string); ok {
-						return "'" + s + "'"
-					}
-					return "null"
-				}
-				formatString := func(v interface{}) string {
-					if v == nil {
-						return "null"
-					}
-					if s, ok := v.(string); ok {
-						return "'" + s + "'"
-					}
-					if f, ok := v.(float64); ok {
-						s := strconv.FormatFloat(f, 'g', -1, 64)
-						return "'" + s + "'"
-					}
-					if i, ok := v.(int); ok {
-						s := strconv.FormatInt(int64(i), 10)
-						return "'" + s + "'"
-					}
-					if b, ok := v.(bool); ok {
-						s := strconv.FormatBool(b)
-						return "'" + s + "'"
-					}
-					return "null"
-				}
 				prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
 					var vals []string
 					for i, col := range cols {
-						// fmt.Println(i, col.DatabaseTypeName(), col.Name())
-						v := props[headers[i]]
-						var s string
-						switch col.DatabaseTypeName() {
-						case "BOOL":
-							s = formatBool(v)
-						case "INT4":
-							s = formatInt(v)
-						case "NUMERIC":
-							s = formatFloat(v)
-						case "TIMESTAMPTZ":
-							s = formatDate(v)
-						default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
-							s = formatString(v)
-						}
+						s := interfaceFormat(col.DatabaseTypeName(), props[headers[i]])
 						vals = append(vals, s)
 					}
 					return strings.Join(vals, ",")
 				}
-				reader, err := os.Open(dt.Path)
+				s := time.Now()
+				file, err := os.Open(dt.Path)
 				if err != nil {
 					task.Err = `open data file error`
 					task.Pipe <- struct{}{}
 					return
 				}
-				defer reader.Close()
-				var decoder *json.Decoder
-				switch dt.Encoding {
-				case "gbk", "big5", "gb18030": //buf reader convert
-					mdec := mahonia.NewDecoder(dt.Encoding)
-					if mdec == nil {
-						log.Errorf(`create %s encoder error`, dt.Encoding)
-						decoder = json.NewDecoder(reader)
-					} else {
-						mdreader := mdec.NewReader(reader)
-						decoder = json.NewDecoder(mdreader)
-					}
-				default:
-					decoder = json.NewDecoder(reader)
-				}
-				s := time.Now()
-				//geojson第一个大括号 {
-				_, err = decoder.Token()
+				defer file.Close()
+				decoder, err := jsonDecoder(file, dt.Encoding)
 				if err != nil {
-					task.Err = `read data file error`
+					task.Err = `open data file error`
 					task.Pipe <- struct{}{}
 					return
 				}
-			out:
-				for {
-					t, err := decoder.Token()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						task.Err = `read data file error`
-						task.Pipe <- struct{}{}
-						return
-					}
-					switch v := t.(type) {
-					case string:
-						if v == "features" {
-							t, err := decoder.Token()
-							if err != nil {
-								task.Err = `read data file error`
-								task.Pipe <- struct{}{}
-								return
-							}
-							d, ok := t.(json.Delim)
-							if ok {
-								ds := d.String()
-								fmt.Println(ds)
-								if ds == "[" {
-									break out
-								}
-							}
-						}
-					}
+				err = movetoFeatures(decoder)
+				if err != nil {
+					task.Err = `open data file error`
+					task.Pipe <- struct{}{}
+					return
 				}
-
 				type Feature struct {
 					Type       string                 `json:"type"`
 					Geometry   json.RawMessage        `json:"geometry"`
@@ -1209,17 +1059,19 @@ func (dt *Dataset) dataImport() *Task {
 					// }
 					// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
 					// gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
-					gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, ft.Geometry)
+					gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
 					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
+					// fmt.Printf(`(%s,%s)/n`, rval, gval)
 					if rowNum%1000 == 0 {
 						go func(vs []string) {
+							t := time.Now()
 							st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-							// log.Println(st)
 							query := db.Exec(st)
-							err = query.Error
+							err := query.Error
 							if err != nil {
 								task.Err = err.Error()
 							}
+							log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
 						}(vals)
 						var nvals []string
 						vals = nvals
@@ -1414,40 +1266,6 @@ func (dt *Dataset) updateFromTable() error {
 	dt.Total = cnt
 	dt.Fields = jfs
 	return nil
-}
-
-func createTable(name string, fields []Field, geoType string) error {
-	prepHeader := func(fields []Field, geoType string) string {
-		var fts []string
-		fts = append(fts, "gid serial primary key")
-		for _, v := range fields {
-			var t string
-			switch v.Type {
-			case Bool:
-				t = "BOOL"
-			case Int:
-				t = "INT4"
-			case Float:
-				t = "NUMERIC"
-			case Date:
-				t = "TIMESTAMPTZ"
-			default:
-				t = "TEXT"
-			}
-			fts = append(fts, v.Name+" "+t)
-		}
-		if geoType != "none" {
-			if strings.Contains(geoType, ",") {
-				geoType = Point
-			}
-			fts = append(fts, fmt.Sprintf("geom geometry(%s,4326)", geoType))
-		}
-		return strings.Join(fts, ",")
-	}
-	headers := prepHeader(fields, geoType)
-	st := fmt.Sprintf(`CREATE TABLE "%s" (%s);`, name, headers)
-	log.Info(st)
-	return db.Exec(st).Error
 }
 
 func getDatafiles(dir string) (map[string]int64, error) {
@@ -1646,6 +1464,221 @@ func toMbtiles(outfile string, infiles []string) error {
 	fmt.Println(err)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func interfaceFormat(t string, v interface{}) string {
+
+	formatBool := func(v interface{}) string {
+		if v == nil {
+			return "null"
+		}
+		if b, ok := v.(bool); ok {
+			return strconv.FormatBool(b)
+		}
+		//string
+		str := strings.ToLower(v.(string))
+		switch str {
+		case "true", "false", "yes", "no", "1", "0":
+		default:
+			return "null"
+		}
+		return "'" + str + "'"
+	}
+	formatInt := func(v interface{}) string {
+		if v == nil {
+			return "null"
+		}
+		if i, ok := v.(int); ok {
+			return strconv.FormatInt(int64(i), 10)
+		}
+		if f, ok := v.(float64); ok {
+			return strconv.FormatFloat(f, 'g', -1, 64)
+		}
+		//string
+		i, err := strconv.ParseInt(v.(string), 10, 64)
+		if err != nil {
+			return strconv.FormatInt(i, 10)
+		}
+		return "null"
+	}
+	formatFloat := func(v interface{}) string {
+		if v == nil {
+			return "null"
+		}
+		if f, ok := v.(float64); ok {
+			return strconv.FormatFloat(f, 'g', -1, 64)
+		}
+		if i, ok := v.(int); ok {
+			return strconv.FormatInt(int64(i), 10)
+		}
+		//string
+		f, err := strconv.ParseFloat(v.(string), 64)
+		if err != nil {
+			return strconv.FormatFloat(f, 'g', -1, 64)
+		}
+		return "null"
+	}
+	formatDate := func(v interface{}) string {
+		if v == nil {
+			return "null"
+		}
+		if i64, ok := v.(int64); ok {
+			d := time.Unix(i64, 0).Format("2006-01-02 15:04:05")
+			return "'" + d + "'"
+		}
+		if i, ok := v.(int); ok {
+			d := time.Unix(int64(i), 0).Format("2006-01-02 15:04:05")
+			return "'" + d + "'"
+		}
+		//string shoud filter the invalid time values
+		if s, ok := v.(string); ok {
+			return "'" + s + "'"
+		}
+		return "null"
+	}
+	formatString := func(v interface{}) string {
+		if v == nil {
+			return "null"
+		}
+		if s, ok := v.(string); ok {
+			s = strings.Replace(s, "'", "''", -1)
+			return "'" + s + "'"
+		}
+		if f, ok := v.(float64); ok {
+			s := strconv.FormatFloat(f, 'g', -1, 64)
+			return "'" + s + "'"
+		}
+		if i, ok := v.(int); ok {
+			s := strconv.FormatInt(int64(i), 10)
+			return "'" + s + "'"
+		}
+		if b, ok := v.(bool); ok {
+			s := strconv.FormatBool(b)
+			return "'" + s + "'"
+		}
+		return "null"
+	}
+
+	switch t {
+	case "BOOL":
+		return formatBool(v)
+	case "INT4":
+		return formatInt(v)
+	case "NUMERIC":
+		return formatFloat(v)
+	case "TIMESTAMPTZ":
+		return formatDate(v)
+	default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
+		return formatString(v)
+	}
+}
+
+func stringFormat(t, v string) string {
+
+	formatBool := func(v string) string {
+		if v == "" {
+			return "null"
+		}
+		str := strings.ToLower(v)
+		switch str {
+		case "true", "false", "yes", "no", "1", "0":
+		default:
+			return "null"
+		}
+		return "'" + str + "'"
+	}
+
+	formatInt := func(v string) string {
+		if v == "" {
+			return "null"
+		}
+		i64, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return "null"
+			}
+			i64 = int64(f)
+		}
+		return strconv.FormatInt(i64, 10)
+	}
+
+	formatFloat := func(v string) string {
+		if v == "" {
+			return "null"
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return "null"
+		}
+		return strconv.FormatFloat(f, 'g', -1, 64)
+	}
+
+	formatDate := func(v string) string {
+		if v == "" {
+			return "null"
+		}
+		//string shoud filter the invalid time values
+		return "'" + v + "'"
+	}
+
+	formatString := func(v string) string {
+		if v == "" {
+			return "null"
+		}
+		if replace := true; replace {
+			v = strings.Replace(v, "'", "''", -1)
+		}
+		return "'" + v + "'"
+	}
+
+	switch t {
+	case "BOOL":
+		return formatBool(v)
+	case "INT4":
+		return formatInt(v)
+	case "NUMERIC": //number
+		return formatFloat(v)
+	case "TIMESTAMPTZ":
+		return formatDate(v)
+	default: //string->"TEXT" "VARCHAR","BOOL",datetime->"TIMESTAMPTZ",pq.StringArray->"_VARCHAR"
+		return formatString(v)
+	}
+}
+
+//movetoFeatures move decoder to features
+func movetoFeatures(decoder *json.Decoder) error {
+	_, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+out:
+	for {
+		t, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		switch v := t.(type) {
+		case string:
+			if v == "features" {
+				t, err := decoder.Token()
+				if err != nil {
+					return err
+				}
+				d, ok := t.(json.Delim)
+				if ok {
+					ds := d.String()
+					if ds == "[" {
+						break out
+					}
+				}
+			}
+		}
 	}
 	return nil
 }

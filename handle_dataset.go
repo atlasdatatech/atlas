@@ -193,43 +193,36 @@ func uploadFile(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	file, err := c.FormFile("file")
+	info, err := saveUploadFile(c)
 	if err != nil {
-		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
-		res.Fail(c, 4048)
-		return
-	}
-	filename := file.Filename
-	ext := filepath.Ext(filename)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".csv", ".geojson", ".kml", ".gpx", ".zip":
-	default:
-		res.FailMsg(c, "未知数据格式, 请使用csv/geojson/kml/gpx/shapefile(zip)格式.")
-		return
-	}
-	name := strings.TrimSuffix(filename, ext)
-	id, _ := shortid.Generate()
-	dst := filepath.Join("datasets", uid, name+"."+id+lext)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
-		res.Fail(c, 5002)
-		return
-	}
-
-	dts, err := LoadDatasets(dst)
-	if err != nil {
-		log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
+		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
+
+	var dts []*Dataset
+	switch info.ext {
+	case ".zip":
+		dir := UnZipToDir(info.dst)
+		dts, err = LoadDatasets(dir)
+		if err != nil {
+			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
+			res.FailErr(c, err)
+			return
+		}
+	case ".csv", ".geojson", ".kml", ".gpx":
+		dt, err := LoadDataset(info.dst)
+		if err != nil {
+			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
+			res.FailErr(c, err)
+			return
+		}
+		dts = append(dts, dt)
+	}
+
 	for _, dt := range dts {
 		dt.Owner = uid
 		err = dt.UpInsert()
-		if err != nil {
-			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-		}
-		// err := dt.getPreview()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 		}
@@ -245,9 +238,15 @@ func previewFile(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
+	encoding := strings.ToLower(c.Query("encoding"))
+	switch encoding {
+	case "utf-8", "gbk", "big5", "gb18030":
+	default:
+		encoding = "utf-8"
+	}
 	id := c.Param("id")
-	df := &Dataset{}
-	err := db.Where("id = ?", id).First(df).Error
+	dt := &Dataset{}
+	err := db.Where("id = ?", id).First(dt).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 			log.Errorf(`dataPreview, can not find datafile, id: %s`, id)
@@ -258,23 +257,24 @@ func previewFile(c *gin.Context) {
 		res.Fail(c, 5001)
 		return
 	}
-	encoding := strings.ToLower(c.Query("encoding"))
-	switch encoding {
-	case "":
-	case "utf-8", "gbk", "big5":
-		df.Encoding = encoding
+	err = nil
+	switch dt.Format {
+	case ".csv":
+		err = dt.LoadFromCSV()
+	case ".geojson":
+		err = dt.LoadFromJSON()
+	case ".shp":
+		err = dt.LoadFromShp()
 	default:
-		df.Encoding = "gb18030"
+		err = fmt.Errorf("unkown format")
 	}
-	switch df.Format {
-	case ".csv", ".geojson", ".shp":
-		// err := df.getPreview()
-		if err != nil {
-		}
-		res.DoneData(c, df)
-	default:
-		res.DoneData(c, "unkown format")
+	if err != nil {
+		log.Error(err)
+		res.FailErr(c, err)
+		return
 	}
+	res.DoneData(c, dt.Rows)
+	return
 }
 
 func importFile(c *gin.Context) {
@@ -317,7 +317,6 @@ func importFile(c *gin.Context) {
 			res.FailErr(c, err)
 			return
 		}
-
 		err = dt.Service()
 		if err == nil {
 			set.D.Store(dt.ID, dt)

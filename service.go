@@ -503,7 +503,8 @@ func (ss *ServiceSet) AppendDatasets() error {
 		name := item.Name()
 		ext := filepath.Ext(name)
 		lext := strings.ToLower(ext)
-		if strings.Compare(".geojson", lext) == 0 || strings.Compare(".zip", lext) == 0 {
+		switch lext {
+		case ".csv", ".geojson", ".shp", ".kml", ".gpx":
 			files[strings.TrimSuffix(name, ext)] = filepath.Join(dir, name)
 		}
 	}
@@ -526,51 +527,45 @@ func (ss *ServiceSet) AppendDatasets() error {
 		_, ok := quickmap[id]
 		if !ok {
 			//加载文件
-			datafiles, err := LoadDatasets(file)
+			dt, err := LoadDataset(file)
 			if err != nil {
 				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库、导入、加载服务
-			for _, dt := range datafiles {
-				dt.Owner = ss.Owner
-				// err := df.getPreview()
+			dt.Owner = ss.Owner
+			err = dt.UpInsert()
+			if err != nil {
+				log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+			}
+			task := dt.dataImport()
+			if task.Err != "" {
+				log.Error(err)
+				<-task.Pipe
+				<-taskQueue
+				continue
+			}
+			go func(dt *Dataset) {
+				<-task.Pipe
+				<-taskQueue
+				err := dt.updateFromTable()
 				if err != nil {
-					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+					log.Error(err)
+					return
 				}
 				err = dt.UpInsert()
 				if err != nil {
-					log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+					return
 				}
-				task := dt.dataImport()
-				if task.Err != "" {
+				err = dt.Service()
+				if err != nil {
 					log.Error(err)
-					<-task.Pipe
-					<-taskQueue
-					continue
+					return
 				}
-				go func(dt *Dataset) {
-					<-task.Pipe
-					<-taskQueue
-					err := dt.updateFromTable()
-					if err != nil {
-						log.Error(err)
-						return
-					}
-					err = dt.UpInsert()
-					if err != nil {
-						log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-						return
-					}
-					err = dt.Service()
-					if err != nil {
-						log.Error(err)
-						return
-					}
-					ss.D.Store(dt.ID, dt)
-				}(dt)
-				count++
-			}
+				ss.D.Store(dt.ID, dt)
+			}(dt)
+			count++
 		}
 	}
 
