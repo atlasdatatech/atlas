@@ -864,11 +864,6 @@ func (ds *DataSource) Import() *Task {
 				task.Status = "importing"
 				t = time.Now()
 				st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-<<<<<<< HEAD
-				// log.Println(st)
-=======
-				log.Println(st)
->>>>>>> 16e0b6fdd5e54f5535ea1a9035e4bea260271787
 				query := db.Exec(st)
 				err = query.Error
 				if err != nil {
