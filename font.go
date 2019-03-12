@@ -78,7 +78,7 @@ func packPBFonts(path string) error {
 	if !fStat.IsDir() {
 		ext := filepath.Ext(path)
 		switch strings.ToLower(ext) {
-		case ".zip":
+		case ZIPEXT:
 		case ".ttf":
 		}
 		return fmt.Errorf("not support format ~")

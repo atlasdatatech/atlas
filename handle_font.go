@@ -71,13 +71,13 @@ func uploadFont(c *gin.Context) {
 	}
 	lext := strings.ToLower(ext)
 	switch lext {
-	case ".zip", ".pbfonts":
+	case ZIPEXT, ".pbfonts":
 	default:
 		log.Errorf(`uploadFont, %s's font format error (%s)`, uid, file.Filename)
 		res.FailMsg(c, "上传格式错误,请上传zip/pbfonts格式")
 		return
 	}
-	if lext == ".zip" {
+	if lext == ZIPEXT {
 		dst = UnZipToDir(dst)
 	}
 	font, err := LoadFont(dst)

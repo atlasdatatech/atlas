@@ -194,6 +194,64 @@ func replaceTileset(c *gin.Context) {
 }
 
 //publishTileset 上传并发布服务集
+func publish(c *gin.Context) (*Tileset, error) {
+	uid := c.Param("user")
+	if runtime.GOOS == "windows" {
+		return nil, fmt.Errorf("current windows server does not support this func")
+	}
+	dss, err := sources4ts(c)
+	if err != nil {
+		return nil, err
+	}
+	var inputfiles []string
+	for _, ds := range dss {
+		ds.Owner = uid
+		err = ds.Insert()
+		if err != nil {
+			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
+		}
+		inputfiles = append(inputfiles, ds.Path)
+	}
+	//publish to mbtiles
+	log.Println("start create mbtiles")
+	name := ""
+	if len(dss) == 1 {
+		name = dss[0].ID
+	} else if len(dss) > 1 {
+		name = dss[0].Tag + filepath.Ext(dss[0].ID)
+	} else {
+		return nil, fmt.Errorf("no available data source")
+	}
+	outfile := filepath.Join("tilesets", uid, name+MBTILESEXT)
+	err = toMbtiles(outfile, inputfiles)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	log.Info("mbtiles created...")
+	//加载mbtiles
+	ts, err := LoadTileset(outfile)
+	if err != nil {
+		log.Errorf("publishTileset, could not load the new tileset %s, details: %s", outfile, err)
+		return nil, err
+	}
+	//入库
+	ts.Owner = uid
+	err = ts.UpInsert()
+	if err != nil {
+		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, outfile, err)
+	}
+	//加载服务,todo 用户服务无需预加载
+	err = ts.Service()
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	return ts, nil
+}
+
+//publishTileset 上传并发布服务集
 func publishTileset(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("user")
@@ -202,89 +260,7 @@ func publishTileset(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	if runtime.GOOS == "windows" {
-		res.FailMsg(c, "current windows server does not support this func")
-		return
-	}
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4048)
-		return
-	}
-	filename := file.Filename
-	ext := filepath.Ext(filename)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".geojson", ".zip", ".kml", ".gpx":
-	default:
-		res.FailMsg(c, "未知数据格式, 请使用geojson/shapefile(zip)/kml/gpx等数据.")
-		return
-	}
-	name := strings.TrimSuffix(filename, ext)
-	id, _ := shortid.Generate()
-	dst := filepath.Join("tilesets", uid, name+"."+id+lext)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
-		res.Fail(c, 5002)
-		return
-	}
-	log.Info("receive finished...")
-	dts, err := LoadDatasets(dst)
-	if err != nil {
-		log.Errorf(`publishTileset, loading datafile error, details: %s`, err)
-		res.FailErr(c, err)
-		return
-	}
-	var inputfiles []string
-	for _, df := range dts {
-		df.Owner = uid
-		err = df.UpInsert()
-		if err != nil {
-			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-		}
-		var infile string
-		switch df.Format {
-		case ".geojson":
-			infile = df.Path
-		case ".shp", ".kml", ".gpx":
-			// err := df.toGeojson()
-			if err != nil {
-				log.Errorf(`publishTileset, convert to geojson error, details: %s`, err)
-				continue
-			}
-			infile = strings.TrimSuffix(df.Path, df.Format) + ".geojson"
-		default:
-			continue
-		}
-		inputfiles = append(inputfiles, infile)
-	}
-	//publish to mbtiles
-	log.Println("start create mbtiles")
-	outfile := filepath.Join("tilesets", uid, name+"."+id+MBTILESEXT)
-	err = toMbtiles(outfile, inputfiles)
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-
-	log.Info("mbtiles created...")
-	//加载mbtiles
-	ts, err := LoadTileset(outfile)
-	if err != nil {
-		log.Errorf("uploadTileset, could not load tileset %s, details: %s", dst, err)
-		res.FailErr(c, err)
-		return
-	}
-	//入库
-	ts.Owner = uid
-	err = ts.UpInsert()
-	if err != nil {
-		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, dst, err)
-	}
-	//加载服务,todo 用户服务无需预加载
-	err = ts.Service()
+	ts, err := publish(c)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
@@ -304,96 +280,17 @@ func rePublishTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	if runtime.GOOS == "windows" {
-		res.FailMsg(c, "current windows server does not support this func")
-		return
-	}
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Errorf(`uploadFiles, gin form file error, details: %s`, err)
-		res.Fail(c, 4048)
-		return
-	}
-	filename := file.Filename
-	ext := filepath.Ext(filename)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".geojson", ".zip", ".kml", ".gpx":
-	default:
-		res.FailMsg(c, "未知数据格式, 请使用geojson/shapefile(zip)/kml/gpx等数据.")
-		return
-	}
-	name := strings.TrimSuffix(filename, ext)
-	ntid, _ := shortid.Generate()
-	ntid = name + "." + ntid
-	dst := filepath.Join("tilesets", uid, ntid+lext)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
-		res.Fail(c, 5002)
-		return
-	}
-
-	dts, err := LoadDatasets(dst)
-	if err != nil {
-		log.Errorf(`rePublishTileset, loading datafile error, details: %s`, err)
-		res.FailErr(c, err)
-		return
-	}
-	var inputfiles []string
-	for _, df := range dts {
-		df.Owner = uid
-		err = df.UpInsert()
-		if err != nil {
-			log.Errorf(`rePublishTileset, upinsert datafile info error, details: %s`, err)
-		}
-		var infile string
-		switch df.Format {
-		case ".geojson":
-			infile = df.Path
-		case ".shp", ".kml", ".gpx":
-			// err := df.toGeojson()
-			if err != nil {
-				log.Errorf(`rePublishTileset, convert to geojson error, details: %s`, err)
-				continue
-			}
-			infile = strings.TrimSuffix(df.Path, df.Format) + ".geojson"
-		default:
-			continue
-		}
-		inputfiles = append(inputfiles, infile)
-	}
-	//publish to mbtiles
-	outfile := filepath.Join("tilesets", uid, ntid+MBTILESEXT)
-	err = toMbtiles(outfile, inputfiles)
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-	//加载mbtiles
-	tile, err := LoadTileset(outfile)
-	if err != nil {
-		log.Errorf("rePublishTileset, could not load tileset %s, details: %s", dst, err)
-		res.FailErr(c, err)
-		return
-	}
-	tile.ID = tid
-	tile.Owner = uid
-	//入库
-	err = tile.UpInsert()
-	if err != nil {
-		log.Errorf(`rePublishTileset, upinsert tileset %s error, details: %s`, dst, err)
-	}
-	//加载服务,todo 用户服务无需预加载
-	err = tile.Service()
+	newts, err := publish(c)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
 	set := userSet.service(uid)
-	set.T.Store(tile.ID, tile)
-	res.DoneData(c, tile)
+	newts.ID = ts.ID
+	set.T.Store(newts.ID, newts)
+	ts.Clean()
+	res.DoneData(c, newts)
 }
 
 //createTileset 从数据集创建服务集

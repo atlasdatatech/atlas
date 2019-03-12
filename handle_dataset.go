@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +24,6 @@ import (
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/teris-io/shortid"
 
 	"github.com/gin-gonic/gin"
 )
@@ -76,45 +74,6 @@ func getDatasetInfo(c *gin.Context) {
 	res.DoneData(c, ds)
 }
 
-type upFileInfo struct {
-	id   string
-	name string
-	ext  string
-	dst  string
-	size int64
-}
-
-func saveUploadFile(c *gin.Context) (*upFileInfo, error) {
-	uid := c.Param("user")
-	file, err := c.FormFile("file")
-	if err != nil {
-		log.Warnf(`uploadFiles, read %s's upload file error, details: %s`, uid, err)
-		return nil, err
-	}
-	filename := file.Filename
-	ext := filepath.Ext(filename)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case ".csv", ".geojson", ".kml", ".gpx", ".zip":
-	default:
-		return nil, fmt.Errorf("unsupport format")
-	}
-	name := strings.TrimSuffix(filename, ext)
-	name = strings.Replace(strings.TrimSpace(name), " ", "", -1)
-	id, _ := shortid.Generate()
-	dst := filepath.Join("datasets", uid, name+"."+id+lext)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		return nil, fmt.Errorf(`uploadFiles, saving uploaded file error, details: %s`, err)
-	}
-	info := &upFileInfo{
-		id:   id,
-		name: name,
-		ext:  ext,
-		dst:  dst,
-	}
-	return info, nil
-}
-
 func oneClickImport(c *gin.Context) {
 	res := NewRes()
 	uid := c.Param("user")
@@ -123,38 +82,24 @@ func oneClickImport(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	info, err := saveUploadFile(c)
+	dss, err := sources4dt(c)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
-	var dts []*Dataset
-	switch info.ext {
-	case ".zip":
-		dir := UnZipToDir(info.dst)
-		dts, err = LoadDatasets(dir)
-		if err != nil {
-			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
-			res.FailErr(c, err)
-			return
-		}
-	case ".csv", ".geojson", ".kml", ".gpx":
-		dt, err := LoadDataset(info.dst)
-		if err != nil {
-			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
-			res.FailErr(c, err)
-			return
-		}
-		dts = append(dts, dt)
-	}
-
 	var tasks []*Task
-	for _, dt := range dts {
-		dt.Owner = uid
+	for _, ds := range dss {
+		ds.Owner = uid
+		go func() {
+			err := ds.Insert()
+			if err != nil {
+				log.Error(err)
+			}
+		}()
 		st := time.Now()
-		task := dt.dataImport()
-		go func(dt *Dataset) {
+		task := ds.Import()
+		go func(ds *DataSource) {
 			<-task.Pipe //wait finish
 			<-taskQueue
 			task.Status = "finish"
@@ -165,11 +110,8 @@ func oneClickImport(c *gin.Context) {
 			}
 			t := time.Since(st)
 			log.Infof("one key import time cost: %v", t)
-			err := dt.updateFromTable()
-			if err != nil {
-				log.Error(err)
-			}
-			err = dt.UpInsert()
+			dt := ds.toDataset()
+			err = dt.Insert()
 			if err != nil {
 				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 				res.FailErr(c, err)
@@ -179,7 +121,8 @@ func oneClickImport(c *gin.Context) {
 			if err == nil {
 				set.D.Store(dt.ID, dt)
 			}
-		}(dt)
+
+		}(ds)
 		tasks = append(tasks, task)
 		//todo goroute 导入，以下事务需在task完成后处理
 	}
@@ -194,41 +137,20 @@ func uploadFile(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	info, err := saveUploadFile(c)
+	dss, err := sources4dt(c)
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
-
-	var dts []*Dataset
-	switch info.ext {
-	case ".zip":
-		dir := UnZipToDir(info.dst)
-		dts, err = LoadDatasets(dir)
-		if err != nil {
-			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
-			res.FailErr(c, err)
-			return
-		}
-	case ".csv", ".geojson", ".kml", ".gpx":
-		dt, err := LoadDataset(info.dst)
-		if err != nil {
-			log.Errorf(`uploadFiles, loading datafile error, details: %s`, err)
-			res.FailErr(c, err)
-			return
-		}
-		dts = append(dts, dt)
-	}
-
-	for _, dt := range dts {
-		dt.Owner = uid
-		err = dt.UpInsert()
+	for _, ds := range dss {
+		ds.Owner = uid
+		err = ds.Insert()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 		}
 	}
-	res.DoneData(c, dts)
+	res.DoneData(c, dss)
 }
 
 func previewFile(c *gin.Context) {
@@ -245,8 +167,8 @@ func previewFile(c *gin.Context) {
 	default:
 	}
 	id := c.Param("id")
-	dt := &Dataset{}
-	err := db.Where("id = ?", id).First(dt).Error
+	ds := &DataSource{}
+	err := db.Where("id = ?", id).First(ds).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
 			log.Errorf(`dataPreview, can not find datafile, id: %s`, id)
@@ -257,15 +179,15 @@ func previewFile(c *gin.Context) {
 		res.Fail(c, 5001)
 		return
 	}
-	dt.Encoding = encoding
+	ds.Encoding = encoding
 	err = nil
-	switch dt.Format {
-	case ".csv":
-		err = dt.LoadFromCSV()
-	case ".geojson":
-		err = dt.LoadFromJSON()
-	case ".shp":
-		err = dt.LoadFromShp()
+	switch ds.Format {
+	case CSVEXT:
+		err = ds.LoadFromCSV()
+	case GEOJSONEXT:
+		err = ds.LoadFromJSON()
+	case SHPEXT:
+		err = ds.LoadFromShp()
 	default:
 		err = fmt.Errorf("unkown format")
 	}
@@ -274,7 +196,7 @@ func previewFile(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	res.DoneData(c, dt.Rows)
+	res.DoneData(c, ds.Rows)
 	return
 }
 
@@ -286,14 +208,14 @@ func importFile(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	dt := &Dataset{}
-	err := c.Bind(dt)
+	ds := &DataSource{}
+	err := c.Bind(ds)
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 4001)
 		return
 	}
-	task := dt.dataImport()
+	task := ds.Import()
 	if task.Err != "" {
 		log.Error(task.Err)
 		res.FailMsg(c, task.Err)
@@ -301,17 +223,12 @@ func importFile(c *gin.Context) {
 		<-taskQueue
 		return
 	}
-	go func(dt *Dataset) {
+	go func(ds *DataSource) {
 		<-task.Pipe
 		<-taskQueue
 		//todo goroute 导入，以下事务需在task完成后处理
-		err := dt.updateFromTable()
-		if err != nil {
-			log.Error(err)
-			res.FailErr(c, err)
-			return
-		}
-		err = dt.UpInsert()
+		dt := ds.toDataset()
+		err = dt.Insert()
 		if err != nil {
 			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 			res.FailErr(c, err)
@@ -321,7 +238,7 @@ func importFile(c *gin.Context) {
 		if err == nil {
 			set.D.Store(dt.ID, dt)
 		}
-	}(dt)
+	}(ds)
 	res.DoneData(c, task)
 }
 
@@ -1084,7 +1001,7 @@ func getTileLayerJSON(c *gin.Context) {
 			res.FailMsg(c, "tilelayer empty")
 			return
 		}
-		dts.UpdateExtent()
+		dts.Bound()
 	}
 	zoom := (dts.tlayer.MinZoom + dts.tlayer.MaxZoom) / 2
 	attr := "atlas realtime tile layer"
