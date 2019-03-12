@@ -38,7 +38,10 @@ import (
 )
 
 //BUFSIZE 16M
-const BUFSIZE int64 = 1 << 24
+const (
+	BUFSIZE   int64 = 1 << 24
+	PREROWNUM       = 7
+)
 
 // Field 字段
 type Field struct {
@@ -92,7 +95,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 		return nil, fmt.Errorf("provider not found")
 	}
 	cfg := dict.Dict{}
-	cfg["name"] = dt.Name
+	cfg["name"] = dt.ID
 	cfg["tablename"] = strings.ToLower(dt.ID)
 	err := prd.AddLayer(cfg)
 	if err != nil {
@@ -101,7 +104,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	tlayer.MinZoom = 0
 	tlayer.MaxZoom = 20
 	tlayer.Provider = prd
-	tlayer.ProviderLayerName = dt.Name
+	tlayer.ProviderLayerName = dt.ID
 	dt.tlayer = tlayer
 	return tlayer, nil
 }
@@ -315,7 +318,7 @@ func (dt *Dataset) LoadFromCSV() error {
 		if err != nil {
 			continue
 		}
-		if preNum < 7 {
+		if preNum < PREROWNUM {
 			records = append(records, row)
 			preNum++
 		}
@@ -413,6 +416,7 @@ func (dt *Dataset) LoadFromCSV() error {
 	dt.Format = ".csv"
 	dt.Total = rowNum
 	dt.Geotype = x + "," + y
+	dt.Crs = "WGS84"
 	dt.Rows = records
 	flds, err := json.Marshal(fields)
 	if err == nil {
@@ -436,78 +440,63 @@ func (dt *Dataset) LoadFromJSON() error {
 	if err != nil {
 		return err
 	}
-
 	s := time.Now()
-
 	err = movetoFeatures(dec)
 	if err != nil {
 		return err
 	}
 
-	prepRow := func(ft *geojson.Feature) []string {
+	prepAttrRow := func(fields []Field, props geojson.Properties) []string {
 		var row []string
-		for _, v := range ft.Properties {
+		for _, field := range fields {
 			var s string
-			switch v.(type) {
-			case bool:
-				val, ok := v.(bool) // Alt. non panicking version
-				if ok {
-					s = strconv.FormatBool(val)
-				} else {
-					s = "null"
-				}
-			case float64:
-				val, ok := v.(float64) // Alt. non panicking version
-				if ok {
-					s = strconv.FormatFloat(val, 'g', -1, 64)
-				} else {
-					s = "null"
-				}
-
-			case map[string]interface{}, []interface{}:
-				buf, err := json.Marshal(v)
-				if err == nil {
-					s = string(buf)
-				}
-			default: //string/map[string]interface{}/[]interface{}/nil->对象/数组都作string处理
-				if v == nil {
-					s = ""
-				} else {
-					s, _ = v.(string)
+			v, ok := props[field.Name]
+			if ok {
+				switch v.(type) {
+				case bool:
+					val, ok := v.(bool) // Alt. non panicking version
+					if ok {
+						s = strconv.FormatBool(val)
+					} else {
+						s = "null"
+					}
+				case float64:
+					val, ok := v.(float64) // Alt. non panicking version
+					if ok {
+						s = strconv.FormatFloat(val, 'g', -1, 64)
+					} else {
+						s = "null"
+					}
+				case map[string]interface{}, []interface{}:
+					buf, err := json.Marshal(v)
+					if err == nil {
+						s = string(buf)
+					}
+				default: //string/map[string]interface{}/[]interface{}/nil->对象/数组都作string处理
+					if v == nil {
+						s = ""
+					} else {
+						s, _ = v.(string)
+					}
 				}
 			}
 			row = append(row, s)
 		}
 		return row
 	}
-	ft := &geojson.Feature{}
+
 	var rows [][]string
 	var rowNum, preNum int
-	for dec.More() {
-		if preNum < 7 {
-			err := dec.Decode(ft)
-			if err != nil {
-				log.Errorf(`Decode error, details:%s`, err)
-				continue
-			}
-			rows = append(rows, prepRow(ft))
-			preNum++
-		} else {
-			var ft struct {
-				Type string `json:"type"`
-			}
-			err := dec.Decode(&ft)
-			if err != nil {
-				log.Errorf(`Decode error, details:%s`, err)
-				continue
-			}
-		}
-		rowNum++
+	ft := &geojson.Feature{}
+	err = dec.Decode(ft)
+	if err != nil {
+		log.Errorf(`geojson data format error, details:%s`, err)
+		return err
 	}
-	fmt.Printf("total features %d, takes: %v\n", rowNum, time.Since(s))
-
-	var fields []Field
+	rowNum++
+	preNum++
 	geoType := ft.Geometry.GeoJSONType()
+	var fields []Field
 	for k, v := range ft.Properties {
 		var t string
 		switch v.(type) {
@@ -523,9 +512,38 @@ func (dt *Dataset) LoadFromJSON() error {
 			Type: t,
 		})
 	}
+
+	row := prepAttrRow(fields, ft.Properties)
+	rows = append(rows, row)
+
+	for dec.More() {
+		if preNum < PREROWNUM {
+			ft := &geojson.Feature{}
+			err := dec.Decode(ft)
+			if err != nil {
+				log.Errorf(`geojson data format error, details:%s`, err)
+				continue
+			}
+			rows = append(rows, prepAttrRow(fields, ft.Properties))
+			preNum++
+		} else {
+			var ft struct {
+				Type string `json:"type"`
+			}
+			err := dec.Decode(&ft)
+			if err != nil {
+				log.Errorf(`Decode error, details:%s`, err)
+				continue
+			}
+		}
+		rowNum++
+	}
+	fmt.Printf("total features %d, takes: %v\n", rowNum, time.Since(s))
+
 	dt.Format = ".geojson"
 	dt.Total = rowNum
 	dt.Geotype = geoType
+	dt.Crs = "WGS84"
 	dt.Rows = rows
 	flds, err := json.Marshal(fields)
 	if err == nil {
@@ -536,25 +554,21 @@ func (dt *Dataset) LoadFromJSON() error {
 
 // LoadFromShp 从shp数据文件加载数据集信息
 func (dt *Dataset) LoadFromShp() error {
-	file := dt.Path
-	encoding := dt.Encoding
-	size := valSizeShp(file)
+	size := valSizeShp(dt.Path)
 	if size == 0 {
 		return fmt.Errorf("invalid shapefiles")
 	}
-	shape, err := shp.Open(file)
-	// open a shapefile for reading
+	shape, err := shp.Open(dt.Path)
 	if err != nil {
 		return err
 	}
 	defer shape.Close()
-
 	// fields from the attribute table (DBF)
 	shpfields := shape.Fields()
-	fcount := shape.AttributeCount()
-	if fcount == 0 {
+	total := shape.AttributeCount()
+	if total == 0 {
 		log.Error(`empty datafile`)
-		return err
+		return fmt.Errorf(`empty datafile`)
 	}
 	var fields []Field
 	for _, v := range shpfields {
@@ -574,33 +588,44 @@ func (dt *Dataset) LoadFromShp() error {
 			Type: t,
 		})
 	}
-	if encoding == "" {
-		encoding = "utf-8"
-	}
-	var mdec mahonia.Decoder
-	switch encoding {
-	case "gbk", "big5", "gb18030":
-		mdec = mahonia.NewDecoder(encoding)
-		if mdec == nil {
-			encoding = "utf-8"
-		}
-	}
 
+	rowstxt := ""
 	var rows [][]string
+	preRowNum := 0
 	for shape.Next() {
+		if preRowNum > PREROWNUM {
+			break
+		}
 		var row []string
 		for k := range fields {
-			val := shape.Attribute(k)
-			switch encoding {
-			case "gbk", "big5", "gb18030":
-				row = append(row, mdec.ConvertString(val))
-			default:
-				row = append(row, val)
-
-			}
+			v := shape.Attribute(k)
+			row = append(row, v)
+			rowstxt += v
 		}
 		rows = append(rows, row)
+		preRowNum++
 	}
+
+	if dt.Encoding == "" {
+		dt.Encoding = chardet.Mostlike([]byte(rowstxt))
+	}
+	var mdec mahonia.Decoder
+	switch dt.Encoding {
+	case "gbk", "big5", "gb18030":
+		mdec = mahonia.NewDecoder(dt.Encoding)
+		if mdec != nil {
+			var records [][]string
+			for _, row := range rows {
+				var record []string
+				for _, v := range row {
+					record = append(record, mdec.ConvertString(v))
+				}
+				records = append(records, record)
+			}
+			rows = records
+		}
+	}
+
 	var geoType string
 	switch shape.GeometryType {
 	case 1: //POINT
@@ -615,9 +640,9 @@ func (dt *Dataset) LoadFromShp() error {
 
 	dt.Format = ".shp"
 	dt.Size = size
+	dt.Total = total
 	dt.Geotype = geoType
-	dt.Total = fcount
-	dt.Encoding = encoding
+	dt.Crs = "WGS84"
 	dt.Rows = rows
 	jfs, err := json.Marshal(fields)
 	if err == nil {
@@ -911,7 +936,7 @@ func (dt *Dataset) dataImport() *Task {
 				}
 				prepIndex := func(cols []*sql.ColumnType, name string) int {
 					for i, col := range cols {
-						if col.Name() == name {
+						if col.Name() == strings.ToLower(name) {
 							return i
 						}
 					}
@@ -960,7 +985,7 @@ func (dt *Dataset) dataImport() *Task {
 					if count%1000 == 0 {
 						go func(vs []string) {
 							t := time.Now()
-							st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+							st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 							query := db.Exec(st)
 							err := query.Error
 							if err != nil {
@@ -974,7 +999,6 @@ func (dt *Dataset) dataImport() *Task {
 					task.Progress = int(count / dt.Total / 5)
 					count++
 				}
-				fmt.Println(`csv process `, time.Since(t))
 				t = time.Now()
 				task.Status = "importing"
 				st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
@@ -984,7 +1008,7 @@ func (dt *Dataset) dataImport() *Task {
 					log.Errorf(`task failed, details:%s`, err)
 					task.Status = "failed"
 				}
-				log.Infof("csv insert %d rows, takes: %v/n", count, time.Since(t))
+				log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
 				task.Succeed = count
 				task.Progress = 100
 				task.Status = "finished"
@@ -994,8 +1018,12 @@ func (dt *Dataset) dataImport() *Task {
 			case ".geojson":
 				prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
 					var vals []string
-					for i, col := range cols {
-						s := interfaceFormat(col.DatabaseTypeName(), props[headers[i]])
+					for _, col := range cols {
+						var s string
+						v, ok := props[col.Name()]
+						if ok {
+							s = interfaceFormat(col.DatabaseTypeName(), v)
+						}
 						vals = append(vals, s)
 					}
 					return strings.Join(vals, ",")
@@ -1136,13 +1164,16 @@ func (dt *Dataset) dataImport() *Task {
 				// params = append(params, "-gt 65536")
 
 				//数据编码选项
-				// fmt.Println(df.Encoding)
+				fmt.Println(dt.Encoding)
 				//客户端环境变量
 				//SET PGCLIENTENCODINUTF8G=GBK or 'SET client_encoding TO encoding_name'
 				// params = append(params, []string{"-sql", "SET client_encoding TO GBK"}...)
 				//test first select client_encoding;
 				//设置源文件编码
-				// params = append(params, []string{"--config", "SHAPE_ENCODING", "GBK"}...)
+				switch dt.Encoding {
+				case "gbk", "big5", "gb18030":
+					params = append(params, []string{"--config", "SHAPE_ENCODING", fmt.Sprintf("%s", strings.ToUpper(dt.Encoding))}...)
+				}
 				//PROMOTE_TO_MULTI can be used to automatically promote layers that mix polygon or multipolygons to multipolygons, and layers that mix linestrings or multilinestrings to multilinestrings. Can be useful when converting shapefiles to PostGIS and other target drivers that implement strict checks for geometry types.
 				params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
 			}
@@ -1152,12 +1183,18 @@ func (dt *Dataset) dataImport() *Task {
 			}
 			params = append(params, absPath)
 			if runtime.GOOS == "windows" {
-				decoder := mahonia.NewDecoder("gbk")
-				gbk := strings.Join(params, ",")
-				gbk = decoder.ConvertString(gbk)
-				params = strings.Split(gbk, ",")
+				paramsString := strings.Join(params, ",")
+				log.Println(paramsString)
+				encoding := chardet.Mostlike([]byte(paramsString))
+				log.Println("most like encoding: ", encoding)
+				switch encoding {
+				case "", "utf-8":
+					decoder := mahonia.NewDecoder("gbk")
+					paramsString = decoder.ConvertString(paramsString)
+					log.Println("convert to gbk, ", paramsString)
+					params = strings.Split(paramsString, ",")
+				}
 			}
-			// go func(task *ImportTask) {
 			task.Status = "importing"
 			log.Info(params)
 			var stdoutBuf, stderrBuf bytes.Buffer

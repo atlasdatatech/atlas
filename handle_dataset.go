@@ -100,6 +100,7 @@ func saveUploadFile(c *gin.Context) (*upFileInfo, error) {
 		return nil, fmt.Errorf("unsupport format")
 	}
 	name := strings.TrimSuffix(filename, ext)
+	name = strings.Replace(strings.TrimSpace(name), " ", "", -1)
 	id, _ := shortid.Generate()
 	dst := filepath.Join("datasets", uid, name+"."+id+lext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
@@ -242,7 +243,6 @@ func previewFile(c *gin.Context) {
 	switch encoding {
 	case "utf-8", "gbk", "big5", "gb18030":
 	default:
-		encoding = "utf-8"
 	}
 	id := c.Param("id")
 	dt := &Dataset{}
@@ -257,6 +257,7 @@ func previewFile(c *gin.Context) {
 		res.Fail(c, 5001)
 		return
 	}
+	dt.Encoding = encoding
 	err = nil
 	switch dt.Format {
 	case ".csv":
@@ -292,7 +293,6 @@ func importFile(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-
 	task := dt.dataImport()
 	if task.Err != "" {
 		log.Error(task.Err)
