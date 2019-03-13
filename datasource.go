@@ -66,6 +66,8 @@ func (ds *DataSource) toDataset() *Dataset {
 		Name:    ds.Name,
 		Owner:   ds.Owner,
 		Tag:     ds.Tag,
+		Path:    ds.Path,
+		Format:  ds.Format,
 		Total:   ds.Total,
 		Geotype: ds.Geotype,
 	}

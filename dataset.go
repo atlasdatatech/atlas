@@ -41,7 +41,7 @@ type Fields []Field
 type Dataset struct {
 	ID        string          `json:"id"`   //字段列表
 	Name      string          `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
-	Tag       string          `json:"tag"`
+	Tag       string          `json:"-"`
 	Owner     string          `json:"owner"`
 	Public    bool            `json:"public"`
 	Path      string          `json:"-"`
@@ -50,8 +50,8 @@ type Dataset struct {
 	Total     int             `json:"total"`
 	Geotype   string          `json:"geotype"`
 	BBox      orb.Bound       `json:"bbox"`
-	Status    bool            `json:"status"`
 	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
+	Status    bool            `json:"status" gorm:"-"`
 	tlayer    *TileLayer
 	CreatedAt time.Time
 	UpdatedAt time.Time

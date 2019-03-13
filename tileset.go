@@ -38,7 +38,7 @@ type Tileset struct {
 	Size      int64      `json:"size"`
 	Layers    []byte     `json:"layers" ` //gorm:"type:json"
 	JSON      []byte     `json:"json" `   //gorm:"column:json;type:json"
-	Status    bool       `json:"status"`
+	Status    bool       `json:"status" gorm:"-"`
 	db        *sql.DB    // database connection for mbtiles file
 	Timestamp time.Time  // timestamp of file, for cache control headers
 	CreatedAt time.Time
