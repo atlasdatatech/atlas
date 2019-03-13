@@ -119,7 +119,7 @@ func (ds *DataSource) ToGeojson() error {
 		}
 		ds.Path = npath
 		ds.Format = GEOJSONEXT
-	case GEOJSONEXT:
+	case GEOJSONEXT, CSVEXT:
 		return nil
 	case SHPEXT:
 		err := shp2Geojson(ds.Path, npath)

@@ -27,6 +27,7 @@ import (
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -451,13 +452,20 @@ func UnZipToDir(zipfile string) string {
 		log.Error(err)
 	}
 	defer zr.Close()
-	decoder := mahonia.NewDecoder("gbk")
 	for _, f := range zr.File {
-		name := decoder.ConvertString(f.Name)
-		info := f.FileInfo()
+		fmt.Printf("%v\n", f.FileInfo())
+		fmt.Println(f.NonUTF8)
+		name := f.Name
+		if f.NonUTF8 {
+			// simplifiedchinese.GBK.NewDecoder().String
+			ns, err := simplifiedchinese.GB18030.NewDecoder().String(f.Name)
+			if err == nil {
+				name = ns
+			}
+		}
 		pn := filepath.Join(dir, name)
 		log.Infof("Uncompress: %s -> %s", name, pn)
-		if info.IsDir() {
+		if f.FileInfo().IsDir() {
 			err := os.Mkdir(pn, os.ModePerm)
 			if err != nil {
 				log.Warnf("unzip %s: %v", zipfile, err)

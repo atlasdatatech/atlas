@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -196,9 +195,9 @@ func replaceTileset(c *gin.Context) {
 //publishTileset 上传并发布服务集
 func publish(c *gin.Context) (*Tileset, error) {
 	uid := c.Param("user")
-	if runtime.GOOS == "windows" {
-		return nil, fmt.Errorf("current windows server does not support this func")
-	}
+	// if runtime.GOOS != "windows" {
+	// 	return nil, fmt.Errorf("current windows server does not support this func")
+	// }
 	dss, err := sources4ts(c)
 	if err != nil {
 		return nil, err
@@ -248,6 +247,7 @@ func publish(c *gin.Context) (*Tileset, error) {
 		log.Error(err)
 		return nil, err
 	}
+	ts.atlasMark()
 	return ts, nil
 }
 
@@ -456,15 +456,14 @@ func getTileJSON(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
-	format := ts.Format.String()
+	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid)          //need use user own service set
 	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
 		"scheme":   "xyz",
-		"format":   format,
-		"tiles":    []string{fmt.Sprintf("%s.%s", tileurl, format)},
+		"format":   ts.Format,
+		"tiles":    []string{fmt.Sprintf("%s.%s", tileurl, ts.Format)},
 		"map":      mapurl,
 	}
 	metadata, err := ts.GetInfo()
@@ -510,7 +509,7 @@ func viewTile(c *gin.Context) {
 		"Title": "PerView",
 		"ID":    tid,
 		"URL":   tileurl,
-		"FMT":   tss.Format.String(),
+		"FMT":   tss.Format,
 	})
 }
 

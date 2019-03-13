@@ -24,62 +24,16 @@ const (
 	MBTILESEXT = ".mbtiles"
 )
 
-// TileFormat is an enum that defines the tile format of a tile
-type TileFormat uint8
-
-// Constants representing TileFormat types
-const (
-	UNKNOWN TileFormat = iota // UNKNOWN TileFormat cannot be determined from first few bytes of tile
-	GZIP                      // encoding = gzip
-	ZLIB                      // encoding = deflate
-	PNG
-	JPG
-	PBF
-	WEBP
-)
-
-// String returns a string representing the TileFormat
-func (t TileFormat) String() string {
-	switch t {
-	case PNG:
-		return "png"
-	case JPG:
-		return "jpg"
-	case PBF:
-		return "pbf"
-	case WEBP:
-		return "webp"
-	default:
-		return ""
-	}
-}
-
-// ContentType returns the MIME content type of the tile
-func (t TileFormat) ContentType() string {
-	switch t {
-	case PNG:
-		return "image/png"
-	case JPG:
-		return "image/jpeg"
-	case PBF:
-		return "application/x-protobuf" // Content-Encoding header must be gzip
-	case WEBP:
-		return "image/webp"
-	default:
-		return ""
-	}
-}
-
 //Tileset 样式库
 type Tileset struct {
 	ID        string     `json:"id" gorm:"primary_key"`
 	Version   string     `json:"version"`
 	Name      string     `json:"name" gorm:"not null"`
-	Tag       string     `json:"tag"`
+	Tag       string     `json:"-"`
 	Owner     string     `json:"owner" gorm:"index;not null"`
 	Format    TileFormat `json:"format"`
 	Public    bool       `json:"public"`
-	Path      string     `json:"path"`
+	Path      string     `json:"-"`
 	URL       string     `json:"url"`
 	Size      int64      `json:"size"`
 	Layers    []byte     `json:"layers" ` //gorm:"type:json"
@@ -261,6 +215,30 @@ func (ts *Tileset) GetHash() string {
 	return hash
 }
 
+// atlasMark
+func (ts *Tileset) atlasMark() error {
+	st := `delete from metadata where name = "generator"`
+	if ts.db == nil {
+		db, err := sql.Open("sqlite3", ts.Path)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		_, err = db.Exec(st)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
+	_, err := ts.db.Exec(st)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+
 // Close closes the database connection
 func (ts *Tileset) Close() error {
 	return ts.db.Close()
@@ -302,7 +280,7 @@ func detectTileFormat(data []byte) (TileFormat, error) {
 		}
 	}
 
-	return UNKNOWN, errors.New("Could not detect tile format")
+	return "", errors.New("Could not detect tile format")
 }
 
 // stringToFloats converts a commma-delimited string of floats to a slice of

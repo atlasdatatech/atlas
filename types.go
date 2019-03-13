@@ -46,6 +46,35 @@ const (
 //FieldTypes 支持的字段类型
 var FieldTypes = []string{"string", "int", "float", "bool", "date"}
 
+// TileFormat is an enum that defines the tile format of a tile
+type TileFormat string
+
+// Constants representing TileFormat types
+const (
+	GZIP TileFormat = "gzip" // encoding = gzip
+	ZLIB            = "zlib" // encoding = deflate
+	PNG             = "png"
+	JPG             = "jpg"
+	PBF             = "pbf"
+	WEBP            = "webp"
+)
+
+// ContentType returns the MIME content type of the tile
+func (t TileFormat) ContentType() string {
+	switch t {
+	case PNG:
+		return "image/png"
+	case JPG:
+		return "image/jpeg"
+	case PBF:
+		return "application/x-protobuf" // Content-Encoding header must be gzip
+	case WEBP:
+		return "image/webp"
+	default:
+		return ""
+	}
+}
+
 // A list of the datasets types that are currently supported.
 const (
 	Point           = "Point"
