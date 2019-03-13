@@ -216,7 +216,6 @@ func (mw *JWTMiddleware) MiddlewareInit() error {
 // GetClaimsFromJWT get claims from JWT token
 func (mw *JWTMiddleware) GetClaimsFromJWT(c *gin.Context) (MapClaims, error) {
 	token, err := mw.ParseToken(c)
-
 	if err != nil {
 		return nil, err
 	}

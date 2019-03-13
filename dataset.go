@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -16,6 +18,9 @@ import (
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/mvt"
+	"github.com/go-spatial/tegola/provider"
+	proto "github.com/golang/protobuf/proto"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	"github.com/paulmach/orb"
@@ -238,13 +243,18 @@ func (dt *Dataset) Tags() []string {
 // NewTileLayer 新建服务层
 func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	tlayer := &TileLayer{
-		ID:   dt.ID,
-		Name: dt.Name,
+		ID:      dt.ID,
+		Name:    dt.Name,
+		MinZoom: 0,
+		MaxZoom: 20,
 	}
 	prd, ok := providers["atlas"]
 	if !ok {
 		return nil, fmt.Errorf("provider not found")
 	}
+	tlayer.Provider = prd
+	tlayer.ProviderLayerName = dt.ID
+	dt.tlayer = tlayer
 	cfg := dict.Dict{}
 	cfg["name"] = dt.ID
 	cfg["tablename"] = strings.ToLower(dt.ID)
@@ -252,12 +262,98 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	if err != nil {
 		return nil, err
 	}
-	tlayer.MinZoom = 0
-	tlayer.MaxZoom = 20
-	tlayer.Provider = prd
-	tlayer.ProviderLayerName = dt.ID
-	dt.tlayer = tlayer
 	return tlayer, nil
+}
+
+//Encode TODO (arolek): support for max zoom
+func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error) {
+	// tile container
+	var mvtTile mvt.Tile
+	// wait group for concurrent layer fetching
+	mvtLayer := mvt.Layer{
+		Name:         dt.Name,
+		DontSimplify: false,
+	}
+	prd, ok := providers["atlas"]
+	if !ok {
+		return nil, fmt.Errorf("provider not found")
+	}
+	// fetch layer from data provider
+	err := prd.TileFeatures(ctx, dt.ID, tile, func(f *provider.Feature) error {
+		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
+		geo, err := ToTegola(f.Geometry)
+		if err != nil {
+			return err
+		}
+
+		mvtLayer.AddFeatures(mvt.Feature{
+			ID:       &f.ID,
+			Tags:     f.Tags,
+			Geometry: geo,
+		})
+
+		return nil
+	})
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			return nil, err
+			// TODO (arolek): add debug logs
+		default:
+			z, x, y := tile.ZXY()
+			// TODO (arolek): should we return an error to the response or just log the error?
+			// we can't just write to the response as the waitgroup is going to write to the response as well
+			log.Printf("err fetching tile (z: %v, x: %v, y: %v) features: %v", z, x, y, err)
+			if err.Error() != "too much features" {
+				return nil, err
+			}
+		}
+	}
+
+	// stop processing if the context has an error. this check is necessary
+	// otherwise the server continues processing even if the request was canceled
+	// as the waitgroup was not notified of the cancel
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	// add layers to our tile
+	mvtTile.AddLayers(&mvtLayer)
+
+	z, x, y := tile.ZXY()
+
+	// TODO (arolek): change out the tile type for VTile. tegola.Tile will be deprecated
+	tegolaTile := tegola.NewTile(uint(z), uint(x), uint(y))
+
+	// generate our tile
+	vtile, err := mvtTile.VTile(ctx, tegolaTile)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// encode our mvt tile
+	tileBytes, err := proto.Marshal(vtile)
+	if err != nil {
+		return nil, err
+	}
+
+	// buffer to store our compressed bytes
+	var gzipBuf bytes.Buffer
+
+	// compress the encoded bytes
+	w := gzip.NewWriter(&gzipBuf)
+	_, err = w.Write(tileBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// flush and close the writer
+	if err = w.Close(); err != nil {
+		return nil, err
+	}
+
+	// return encoded, gzipped tile
+	return gzipBuf.Bytes(), nil
 }
 
 // CacheMBTiles 新建服务层

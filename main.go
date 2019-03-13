@@ -51,6 +51,8 @@ const (
 	DTSSCHEMA   = "datasets"
 	identityKey = "uid"
 	userKey     = "user"
+	//DISABLEACCESSTOKEN 不使用accesstoken
+	DISABLEACCESSTOKEN = false
 )
 
 var (

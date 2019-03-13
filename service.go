@@ -220,23 +220,23 @@ func (ss *ServiceSet) AppendStyles() error {
 }
 
 // ServeStyle 加载启动指定样式服务，load style service
-func (ss *ServiceSet) ServeStyle(id string) error {
+func ServeStyle(id string) (*Style, error) {
 	s := &Style{}
 	err := db.Where("id = ?", id).First(s).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`ServeStyle, %s's style (%s) not found, details: %v`, ss.Owner, id, err)
-			return fmt.Errorf("style (%s) not found", id)
+			log.Errorf(`ServeStyle, style (%s) not found, details: %v`, id, err)
+			return nil, fmt.Errorf("style (%s) not found", id)
 		}
-		log.Errorf(`ServeStyle, load %s's style (%s) error, details: %v`, ss.Owner, id, err)
-		return fmt.Errorf("load style (%s) error", id)
+		log.Errorf(`ServeStyle, load style (%s) error, details: %v`, id, err)
+		return nil, fmt.Errorf("load style (%s) error", id)
 	}
 	err = s.Service()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ss.S.Store(s.ID, s)
-	return nil
+	// ss.S.Store(s.ID, s)
+	return s, nil
 }
 
 // ServeStyles 加载启动指定用户的全部样式服务
@@ -345,23 +345,23 @@ func (ss *ServiceSet) AppendFonts() error {
 }
 
 // ServeFont 加载启动指定字体服务，load font service
-func (ss *ServiceSet) ServeFont(id string) error {
+func ServeFont(id string) (*Font, error) {
 	f := &Font{}
 	err := db.Where("id = ?", id).First(f).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`ServeFont, %s's font (%s) not found, details: %v`, ss.Owner, id, err)
-			return fmt.Errorf("font (%s) not found", id)
+			log.Errorf(`ServeFont, font (%s) not found, details: %v`, id, err)
+			return nil, fmt.Errorf("font (%s) not found", id)
 		}
-		log.Errorf(`ServeFont, load %s's font (%s) error, details: %v`, ss.Owner, id, err)
-		return fmt.Errorf("load font (%s) error", id)
+		log.Errorf(`ServeFont, load font (%s) error, details: %v`, id, err)
+		return nil, fmt.Errorf("load font (%s) error", id)
 	}
 	err = f.Service()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ss.F.Store(f.ID, f)
-	return nil
+	// ss.F.Store(f.ID, f)
+	return f, nil
 }
 
 // ServeFonts 加载启动指定用户的字体服务，当前默认加载公共字体
@@ -449,23 +449,23 @@ func (ss *ServiceSet) AppendTilesets() error {
 }
 
 // ServeTileset 从瓦片集目录库里加载tilesets服务集
-func (ss *ServiceSet) ServeTileset(id string) error {
+func ServeTileset(id string) (*Tileset, error) {
 	ts := &Tileset{}
 	err := db.Where("id = ?", id).First(ts).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`ServeTileset, %s's tileset (%s) not found, details: %v`, ss.Owner, id, err)
-			return fmt.Errorf("tileset (%s) not found", id)
+			log.Errorf(`ServeTileset, tileset (%s) not found, details: %v`, id, err)
+			return nil, fmt.Errorf("tileset (%s) not found", id)
 		}
-		log.Errorf(`ServeTileset, load %s's tileset (%s) error, details: %v`, ss.Owner, id, err)
-		return fmt.Errorf("load tileset (%s) error", id)
+		log.Errorf(`ServeTileset, load tileset (%s) error, details: %v`, id, err)
+		return nil, fmt.Errorf("load tileset (%s) error", id)
 	}
 	err = ts.Service()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ss.T.Store(ts.ID, ts)
-	return nil
+	// ss.T.Store(ts.ID, ts)
+	return ts, nil
 }
 
 // ServeTilesets 加载用户tilesets服务集
@@ -581,23 +581,23 @@ func (ss *ServiceSet) AppendDatasets() error {
 }
 
 // ServeDataset 从数据集目录库里加载数据集服务
-func (ss *ServiceSet) ServeDataset(id string) error {
+func ServeDataset(id string) (*Dataset, error) {
 	dt := &Dataset{}
 	err := db.Where("id = ?", id).First(dt).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
-			log.Errorf(`ServeDataset, %s's dataset (%s) not found, details: %v`, ss.Owner, id, err)
-			return fmt.Errorf("dataset (%s) not found", id)
+			log.Errorf(`ServeDataset, dataset (%s) not found, details: %v`, id, err)
+			return nil, fmt.Errorf("dataset (%s) not found", id)
 		}
-		log.Errorf(`ServeDataset, load %s's dataset (%s) error, details: %v`, ss.Owner, id, err)
-		return fmt.Errorf("load dataset (%s) error", id)
+		log.Errorf(`ServeDataset, load dataset (%s) error, details: %v`, id, err)
+		return nil, fmt.Errorf("load dataset (%s) error", id)
 	}
 	err = dt.Service()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	ss.D.Store(dt.ID, dt)
-	return nil
+	// ss.D.Store(dt.ID, dt)
+	return dt, nil
 }
 
 // ServeDatasets 加载用户数据集服务

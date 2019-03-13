@@ -478,9 +478,19 @@ func getTileJSON(c *gin.Context) {
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
-		res.Fail(c, 4045)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			ts, err = ServeTileset(tid)
+			if err != nil {
+				// log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
+			res.Fail(c, 4045)
+			return
+		}
 	}
 	mapurl := fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid)          //need use user own service set
 	tileurl := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid) //need use user own service set
@@ -520,28 +530,6 @@ func getTileJSON(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
-func viewTile(c *gin.Context) {
-	res := NewRes()
-	uid := c.GetString(identityKey)
-	if uid == "" {
-		uid = c.GetString(userKey)
-	}
-	tid := c.Param("id")
-	tss := userSet.tileset(uid, tid)
-	if tss == nil {
-		log.Warnf("viewTile, %s's tilesets (%s) not found ^^", uid, tid)
-		res.Fail(c, 4045)
-		return
-	}
-	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), tid) //need use user own service set
-	c.HTML(http.StatusOK, "tileset.html", gin.H{
-		"Title": "PerView",
-		"ID":    tid,
-		"URL":   tileurl,
-		"FMT":   tss.Format,
-	})
-}
-
 func getTile(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -551,9 +539,19 @@ func getTile(c *gin.Context) {
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
-		res.Fail(c, 4045)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			ts, err = ServeTileset(tid)
+			if err != nil {
+				// log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
+			res.Fail(c, 4045)
+			return
+		}
 	}
 	c.Param("z")
 	c.Param("x")
@@ -620,4 +618,26 @@ func getTile(c *gin.Context) {
 		c.Header("Content-Encoding", "gzip")
 	}
 	c.Writer.Write(data)
+}
+
+func viewTile(c *gin.Context) {
+	// res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	tid := c.Param("id")
+	// tss := userSet.tileset(uid, tid)
+	// if tss == nil {
+	// 	log.Warnf("viewTile, %s's tilesets (%s) not found ^^", uid, tid)
+	// 	res.Fail(c, 4045)
+	// 	return
+	// }
+	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), tid) //need use user own service set
+	c.HTML(http.StatusOK, "tileset.html", gin.H{
+		"Title": "PerView",
+		"ID":    tid,
+		"URL":   tileurl,
+		"FMT":   "pbf", //tss.Format,
+	})
 }

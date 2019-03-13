@@ -284,31 +284,6 @@ func downloadDataset(c *gin.Context) {
 	return
 }
 
-func viewDataset(c *gin.Context) {
-	res := NewRes()
-	uid := c.GetString(identityKey)
-	if uid == "" {
-		uid = c.GetString(userKey)
-	}
-	did := c.Param("id")
-	dts := userSet.dataset(uid, did)
-	if dts == nil {
-		log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
-		res.Fail(c, 4046)
-		return
-	}
-	//"china-z7.rjA5dSCmR"
-	// tileurl :="http://localhost:8080/maps/map/roads/{z}/{x}/{y}.pbf"
-	tileurl := fmt.Sprintf(`%s/datasets/%s/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), uid, did) //need use user own service set
-	c.HTML(http.StatusOK, "dataset.html", gin.H{
-		"Title": "PerView",
-		"ID":    did,
-		"Name":  dts.Name,
-		"URL":   tileurl,
-		"FMT":   "pbf",
-	})
-}
-
 func getDistinctValues(c *gin.Context) {
 	res := NewRes()
 	did := c.Param("id")
@@ -943,9 +918,19 @@ func getTileLayer(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
-		res.Fail(c, 4046)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			dts, err = ServeDataset(did)
+			if err != nil {
+				// log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+			res.Fail(c, 4046)
+			return
+		}
 	}
 	// lookup our Map
 	placeholder, _ := strconv.ParseUint(c.Param("z"), 10, 32)
@@ -964,9 +949,9 @@ func getTileLayer(c *gin.Context) {
 	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
-			log.Error(err)
-			res.FailMsg(c, "tilelayer empty")
-			return
+			log.Warn(err)
+			// res.FailMsg(c, "tilelayer empty")
+			// return
 		}
 	}
 
@@ -1023,16 +1008,26 @@ func getTileLayerJSON(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		log.Warnf(`getTileLayerJSON, %s's dataset (%s) not found ^^`, uid, did)
-		res.Fail(c, 4046)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			dts, err = ServeDataset(did)
+			if err != nil {
+				// log.Warnf(`getTileLayerJSON, %s's dataset (%s) not found ^^`, uid, did)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+			res.Fail(c, 4046)
+			return
+		}
 	}
 	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
-			log.Error(err)
-			res.FailMsg(c, "tilelayer empty")
-			return
+			log.Warn(err)
+			// res.FailMsg(c, "tilelayer empty")
+			// return
 		}
 		dts.Bound()
 	}
@@ -1062,7 +1057,7 @@ func getTileLayerJSON(c *gin.Context) {
 		MinZoom: dts.tlayer.MinZoom,
 		MaxZoom: dts.tlayer.MaxZoom,
 		Tiles: []string{
-			fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, dts.tlayer.MVTName()),
+			fmt.Sprintf("%v/datasets/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), dts.tlayer.MVTName()),
 		},
 	}
 
@@ -1198,4 +1193,29 @@ func getTileMap(c *gin.Context) {
 	if len(pbyte) > server.MaxTileSize {
 		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
 	}
+}
+
+func viewDataset(c *gin.Context) {
+	// res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	did := c.Param("id")
+	// dts := userSet.dataset(uid, did)
+	// if dts == nil {
+	// 	log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
+	// 	res.Fail(c, 4046)
+	// 	return
+	// }
+	//"china-z7.rjA5dSCmR"
+	// tileurl :="http://localhost:8080/maps/map/roads/{z}/{x}/{y}.pbf"
+	tileurl := fmt.Sprintf(`%s/datasets/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), did) //need use user own service set
+	c.HTML(http.StatusOK, "dataset.html", gin.H{
+		"Title": "PerView",
+		"ID":    did,
+		"Name":  strings.Split(did, ".")[0],
+		"URL":   tileurl,
+		"FMT":   "pbf",
+	})
 }

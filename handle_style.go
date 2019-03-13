@@ -664,9 +664,19 @@ func getSprite(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Warnf(`getSprite, %s's style (%s) not found ^^`, uid, sid)
-		res.Fail(c, 4044)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			style, err = ServeStyle(sid)
+			if err != nil {
+				// log.Warnf(`getSprite, %s's style (%s) not found ^^`, uid, sid)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+			res.Fail(c, 4044)
+			return
+		}
 	}
 	fmt := c.Param("fmt")
 	sprite := "sprite" + fmt
@@ -759,9 +769,19 @@ func getStyle(c *gin.Context) {
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
-		log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
-		res.Fail(c, 4044)
-		return
+		if DISABLEACCESSTOKEN {
+			var err error
+			s, err = ServeStyle(sid)
+			if err != nil {
+				// log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+				res.FailErr(c, err)
+				return
+			}
+		} else {
+			log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+			res.Fail(c, 4044)
+			return
+		}
 	}
 	var style Root
 	if err := json.Unmarshal(s.Data, &style); err != nil {
@@ -840,28 +860,6 @@ func cloneStyle(c *gin.Context) {
 	res.DoneData(c, ns)
 }
 
-//viewStyle load style map
-func viewStyle(c *gin.Context) {
-	res := NewRes()
-	uid := c.GetString(identityKey)
-	if uid == "" {
-		uid = c.GetString(userKey)
-	}
-	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Warnf("viewStyle, %s's style (%s) not found ^^", uid, sid)
-		res.Fail(c, 4044)
-		return
-	}
-	url := fmt.Sprintf(`%s/maps/x/%s/`, rootURL(c.Request), sid)
-	c.HTML(http.StatusOK, "viewer.html", gin.H{
-		"Title": "Viewer",
-		"ID":    sid,
-		"URL":   url,
-	})
-}
-
 //upInsertStyle create a style
 func updateStyle(c *gin.Context) {
 	res := NewRes()
@@ -909,4 +907,26 @@ func saveStyle(c *gin.Context) {
 		return
 	}
 	res.Done(c, "success")
+}
+
+//viewStyle load style map
+func viewStyle(c *gin.Context) {
+	// res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	sid := c.Param("id")
+	// style := userSet.style(uid, sid)
+	// if style == nil {
+	// 	log.Warnf("viewStyle, %s's style (%s) not found ^^", uid, sid)
+	// 	res.Fail(c, 4044)
+	// 	return
+	// }
+	url := fmt.Sprintf(`%s/maps/x/%s/`, rootURL(c.Request), sid)
+	c.HTML(http.StatusOK, "viewer.html", gin.H{
+		"Title": "Viewer",
+		"ID":    sid,
+		"URL":   url,
+	})
 }

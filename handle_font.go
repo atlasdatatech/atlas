@@ -149,7 +149,7 @@ func getGlyphs(c *gin.Context) {
 	if uid == "" {
 		uid = c.GetString(userKey)
 	}
-	set := userSet.service(uid)
+	set := userSet.service(ATLAS)
 	if set == nil {
 		res.Fail(c, 4046)
 		return
