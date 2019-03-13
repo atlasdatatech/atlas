@@ -16,7 +16,7 @@ func AuthMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := mw.GetClaimsFromJWT(c)
 		if err != nil {
-			log.Errorf("get token error,%s", err)
+			log.Warnf("get token error,%s", err)
 			// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
 			if !mw.DisabledAbort {
 				c.JSON(http.StatusUnauthorized, gin.H{
@@ -164,33 +164,12 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uid := c.GetString(identityKey)
 		user := c.GetString(userKey)
-		owner := c.Param("user")
-		//uid认证通过,
+		//uid认证通过,直接放行所有资源
 		if uid != "" {
-			//且访问的是自己的资源，放行
-			if uid == owner {
-				c.Next()
-				return
-			}
-			//且访问的是其他的资源，资源鉴权
-			//暂时关掉所有通过jwt访问非自有资源权限，后续添加组织、域、资源组等概念后开放
-			// c.JSON(http.StatusForbidden, gin.H{
-			// 	"code": 403,
-			// 	"msg":  "need add to group or has a access token",
-			// })
-			// c.Abort()
-			// return
-			if !e.Enforce(uid, c.Request.URL.Path, c.Request.Method) {
-				c.JSON(http.StatusForbidden, gin.H{
-					"code": 403,
-					"msg":  "you don't have permission to access this resource",
-				})
-				c.Abort()
-				return
-			}
+			c.Next()
 			return
 		}
-		//uid认证未通过	//且token认证未通过,返回
+		//uid认证未通过,且access token认证未通过,所有资源都拒绝
 		if user == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code": 401,
@@ -199,7 +178,7 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		//启动资源鉴权
+		//启动access token资源鉴权
 		if !e.Enforce(user, c.Request.URL.Path, c.Request.Method) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"code": 403,

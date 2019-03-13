@@ -24,7 +24,10 @@ import (
 //listStyles list user's style
 func listStyles(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Warnf("uploadStyle, %s's service not found ^^", uid)
@@ -59,8 +62,10 @@ func listStyles(c *gin.Context) {
 //getStyleInfo 获取样式信息
 func getStyleInfo(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -74,8 +79,10 @@ func getStyleInfo(c *gin.Context) {
 //getStyleThumbnial 获取样式缩略图
 func getStyleThumbnial(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -96,8 +103,10 @@ func getStyleThumbnial(c *gin.Context) {
 //publicStyle 分享样式
 func publicStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -111,10 +120,10 @@ func publicStyle(c *gin.Context) {
 	}
 
 	//添加管理员组的用户管理权限
-	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/x/%s/", uid, sid), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/maps/x/%s/", sid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/maps/x/%s/sprite*", sid), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/ts/x/*"), "GET")
+	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/x/*"), "GET")
 
 	s.Public = true
 	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
@@ -129,8 +138,10 @@ func publicStyle(c *gin.Context) {
 //privateStyle 关闭分享样式
 func privateStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -144,10 +155,10 @@ func privateStyle(c *gin.Context) {
 	}
 
 	//添加管理员组的用户管理权限
-	casEnf.RemovePolicy(USER, fmt.Sprintf("/styles/%s/x/%s/", uid, sid), "GET")
-	casEnf.RemovePolicy(USER, fmt.Sprintf("/styles/%s/sprite/%s/*", uid, sid), "GET")
-	// casEnf.RemovePolicy(USER, fmt.Sprintf("/tilesets/%s/x/*", uid), "GET")
-	// casEnf.RemovePolicy(USER, fmt.Sprintf("/datasets/%s/x/*", uid), "GET")
+	casEnf.RemovePolicy(USER, fmt.Sprintf("/maps/x/%s/", sid), "GET")
+	casEnf.RemovePolicy(USER, fmt.Sprintf("/maps/x/%s/sprite*", sid), "GET")
+	// casEnf.RemovePolicy(USER, "/ts/x/*", "GET")
+	// casEnf.RemovePolicy(USER, "/datasets/x/*", "GET")
 	s.Public = false
 	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
 	if err != nil {
@@ -161,8 +172,10 @@ func privateStyle(c *gin.Context) {
 //uploadStyle 上传新样式
 func uploadStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Warnf("uploadStyle, %s's service not found ^^", uid)
@@ -220,8 +233,10 @@ func uploadStyle(c *gin.Context) {
 //replaceStyle 上传替换样式
 func replaceStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -273,8 +288,10 @@ func replaceStyle(c *gin.Context) {
 //downloadStyle 下载样式
 func downloadStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -297,8 +314,10 @@ func downloadStyle(c *gin.Context) {
 //uploadStyle icons上传
 func uploadIcons(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -352,8 +371,10 @@ func uploadIcons(c *gin.Context) {
 //getSprite get sprite
 func getIcon(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -396,8 +417,10 @@ func getIcon(c *gin.Context) {
 //updateIcon get sprite
 func updateIcon(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -507,8 +530,10 @@ func updateIcon(c *gin.Context) {
 //upInsertStyle create a style
 func deleteIcons(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -567,8 +592,10 @@ func deleteIcons(c *gin.Context) {
 //uploadSprite sprites符号库
 func uploadSprite(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -601,8 +628,10 @@ func uploadSprite(c *gin.Context) {
 //updateSprite 刷新（重新生成）sprites符号库
 func updateSprite(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -628,8 +657,10 @@ func updateSprite(c *gin.Context) {
 //getSprite get sprite
 func getSprite(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -680,8 +711,10 @@ func getSprite(c *gin.Context) {
 //deleteStyle 删除样式
 func deleteStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("ids")
 	sids := strings.Split(sid, ",")
 	for _, sid := range sids {
@@ -719,8 +752,10 @@ func deleteStyle(c *gin.Context) {
 //getStyle get user style by id
 func getStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
@@ -755,34 +790,40 @@ func getStyle(c *gin.Context) {
 //cloneStyle 复制指定用户的公开样式
 func cloneStyle(c *gin.Context) {
 	res := NewRes()
-	self := c.GetString(identityKey)
-	set := userSet.service(self)
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	set := userSet.service(uid)
 	if set == nil {
-		log.Warnf("cloneStyle, %s's service not found ^^", self)
+		log.Warnf("cloneStyle, %s's service not found ^^", uid)
 		res.Fail(c, 4043)
 		return
 	}
-	uid := c.Param("user")
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		log.Warnf("cloneStyle, %s's style (%s) not found ^^", uid, sid)
-		res.Fail(c, 4044)
-		return
+		//自己的找不到再找公开的
+		style = userSet.style(ATLAS, sid)
+		if style == nil {
+			log.Warnf("cloneStyle, %s's style (%s) not found ^^", uid, sid)
+			res.Fail(c, 4044)
+			return
+		}
+		if !style.Public {
+			log.Warnf("cloneStyle, %s copy %s's style (%s) is not public ^^", uid, "public", sid)
+			res.Fail(c, 4044)
+			return
+		}
 	}
-	if !style.Public {
-		log.Warnf("cloneStyle, %s copy %s's style (%s) is not public ^^", self, uid, sid)
-		res.Fail(c, 4044)
-		return
-	}
-
 	id, _ := shortid.Generate()
 	ns := style.Copy()
 	suffix := filepath.Ext(style.ID)
 	ns.ID = strings.TrimSuffix(style.ID, suffix) + "." + id
 	ns.Name = style.Name + "-复制"
-	ns.Owner = self
-	ns.Path = filepath.Join("styles", self, ns.ID)
+	ns.Owner = uid
+	ns.Public = false
+	ns.Path = filepath.Join("styles", uid, ns.ID)
 	err := DirCopy(style.Path, ns.Path)
 	if err != nil {
 		log.Errorf("cloneStyle, copy %s's styledir to new (%s) error ^^", uid, ns.Path)
@@ -791,7 +832,7 @@ func cloneStyle(c *gin.Context) {
 	}
 	err = ns.UpInsert()
 	if err != nil {
-		log.Errorf("cloneStyle, upinsert %s's new style error ^^", self)
+		log.Errorf("cloneStyle, upinsert %s's new style error ^^", uid)
 		res.FailErr(c, err)
 		return
 	}
@@ -802,8 +843,10 @@ func cloneStyle(c *gin.Context) {
 //viewStyle load style map
 func viewStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -811,7 +854,7 @@ func viewStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	url := fmt.Sprintf(`%s/styles/%s/x/%s/`, rootURL(c.Request), uid, sid)
+	url := fmt.Sprintf(`%s/maps/x/%s/`, rootURL(c.Request), sid)
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
 		"Title": "Viewer",
 		"ID":    sid,
@@ -822,8 +865,10 @@ func viewStyle(c *gin.Context) {
 //upInsertStyle create a style
 func updateStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
@@ -846,8 +891,10 @@ func updateStyle(c *gin.Context) {
 //upInsertStyle create a style
 func saveStyle(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {

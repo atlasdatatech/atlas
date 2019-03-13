@@ -44,7 +44,7 @@
 		key="salta-atad-1226"
 		timeOut="65535h"
 		timeMax="655350h"
-		lookup="query:token"
+		lookup="query:access_token"
 		headName = "Bearer"
 		
 	[smtp]

@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -463,6 +464,8 @@ func initEnforcer() (*casbin.Enforcer, error) {
 //initSystemUser 初始化系统用户
 func initSystemUser() {
 	CreatePaths(ATLAS)
+	os.MkdirAll(filepath.Join("fonts", ATLAS), os.ModePerm)
+
 	name := ATLAS
 	password := "1234"
 	role := Role{ID: ADMIN, Name: "管理员"}
@@ -500,10 +503,10 @@ func initSystemUser() {
 	casEnf.AddGroupingPolicy(name, ADMIN)
 	casEnf.AddGroupingPolicy(name, USER)
 	//添加管理员组的用户管理权限
-	casEnf.AddPolicy(USER, fmt.Sprintf("/styles/%s/*", ATLAS), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/fonts/%s/*", ATLAS), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/tilesets/%s/*", ATLAS), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/%s/*", ATLAS), "GET")
+	casEnf.AddPolicy(USER, "/maps/*", "GET")
+	casEnf.AddPolicy(USER, "/fonts/*", "GET")
+	casEnf.AddPolicy(USER, "/ts/*", "GET")
+	casEnf.AddPolicy(USER, "/datasets/*", "GET")
 }
 
 //initTaskRouter 初始化任务处理线程
@@ -640,7 +643,7 @@ func setupRouter() *gin.Engine {
 	}
 
 	//maproute
-	maproute := r.Group("/maps")
+	maproute := r.Group("/ps")
 	maproute.Use(AuthMidHandler(authMid))
 	maproute.Use(AccessMidHandler(accessMid))
 	maproute.Use(ResourceMidHandler(casEnf))
@@ -655,36 +658,36 @@ func setupRouter() *gin.Engine {
 		maproute.POST("/:id/del/", deleteMap)
 	}
 
-	styles := r.Group("/styles")
+	styles := r.Group("/maps")
 	styles.Use(AuthMidHandler(authMid))
 	styles.Use(AccessMidHandler(accessMid))
 	styles.Use(ResourceMidHandler(casEnf))
 	{
 		// > styles
-		styles.GET("/:user/", listStyles)
-		styles.GET("/:user/info/:id/", getStyleInfo)
-		styles.GET("/:user/thumbnail/:id/", getStyleThumbnial)
-		styles.GET("/:user/x/:id/", getStyle)
-		styles.GET("/:user/x/:id/sprite:fmt", getSprite)
-		styles.POST("/:user/upload/", uploadStyle)
-		styles.POST("/:user/public/:id/", publicStyle)
-		styles.POST("/:user/private/:id/", privateStyle)
-		styles.GET("/:user/clone/:id/", cloneStyle)
-		styles.POST("/:user/save/:id/", saveStyle)
-		styles.POST("/:user/update/:id/", updateStyle)
-		styles.POST("/:user/replace/:id/", replaceStyle)
-		styles.GET("/:user/download/:id/", downloadStyle)
-		styles.POST("/:user/delete/:ids/", deleteStyle)
+		styles.GET("/", listStyles)
+		styles.GET("/info/:id/", getStyleInfo)
+		styles.GET("/thumbnail/:id/", getStyleThumbnial)
+		styles.GET("/x/:id/", getStyle)
+		styles.GET("/x/:id/sprite:fmt", getSprite)
+		styles.POST("/upload/", uploadStyle)
+		styles.POST("/public/:id/", publicStyle)
+		styles.POST("/private/:id/", privateStyle)
+		styles.GET("/clone/:id/", cloneStyle)
+		styles.POST("/save/:id/", saveStyle)
+		styles.POST("/update/:id/", updateStyle)
+		styles.POST("/replace/:id/", replaceStyle)
+		styles.GET("/download/:id/", downloadStyle)
+		styles.POST("/delete/:ids/", deleteStyle)
 
-		styles.POST("/:user/sprite/:id/", uploadSprite)
-		styles.POST("/:user/sprite/:id/:name", updateSprite)
-		styles.GET("/:user/icon/:id/:name/", getIcon)
-		styles.POST("/:user/icon/:id/:name/", updateIcon)
-		styles.POST("/:user/icons/:id/", uploadIcons)
-		styles.POST("/:user/icons/:id/delete/", deleteIcons)
+		styles.POST("/sprite/:id/", uploadSprite)
+		styles.POST("/sprite/:id/:name", updateSprite)
+		styles.GET("/icon/:id/:name/", getIcon)
+		styles.POST("/icon/:id/:name/", updateIcon)
+		styles.POST("/icons/:id/", uploadIcons)
+		styles.POST("/icons/:id/delete/", deleteIcons)
 
-		styles.GET("/:user/view/:id/", viewStyle)    //view map style
-		styles.POST("/:user/edit/:id/", updateStyle) //updateStyle
+		styles.GET("/view/:id/", viewStyle)    //view map style
+		styles.POST("/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
 	fonts.Use(AuthMidHandler(authMid))
@@ -692,33 +695,33 @@ func setupRouter() *gin.Engine {
 	fonts.Use(ResourceMidHandler(casEnf))
 	{
 		// > fonts
-		fonts.GET("/:user/", listFonts)                      //get font
-		fonts.POST("/:user/upload/", uploadFont)             //upload font
-		fonts.POST("/:user/delete/:fontstack/", deleteFonts) //delete font
-		fonts.GET("/:user/:fontstack/:range", getGlyphs)     //get glyph pbfs
+		fonts.GET("/", listFonts)                      //get font
+		fonts.POST("/upload/", uploadFont)             //upload font
+		fonts.POST("/delete/:fontstack/", deleteFonts) //delete font
+		fonts.GET("/:fontstack/:range", getGlyphs)     //get glyph pbfs
 	}
 
-	tilesets := r.Group("/tilesets")
+	tilesets := r.Group("/ts")
 	tilesets.Use(AuthMidHandler(authMid))
 	tilesets.Use(AccessMidHandler(accessMid))
 	tilesets.Use(ResourceMidHandler(casEnf))
 	{
 		// > tilesets
-		tilesets.GET("/:user/", listTilesets)
-		tilesets.GET("/:user/info/:id/", getTilesetInfo) //tilejson
-		tilesets.GET("/:user/x/:id/", getTileJSON)       //tilejson
-		tilesets.GET("/:user/x/:id/:z/:x/:y", getTile)
-		tilesets.POST("/:user/upload/", uploadTileset)
-		tilesets.POST("/:user/replace/:id/", replaceTileset)
-		tilesets.POST("/:user/publish/", publishTileset)
-		tilesets.POST("/:user/publish/:id/", rePublishTileset)
-		tilesets.POST("/:user/create/:id/", createTileset)
-		tilesets.POST("/:user/update/:id/", createTileset)
-		tilesets.GET("/:user/download/:id/", downloadTileset)
-		tilesets.POST("/:user/delete/:ids/", deleteTileset)
-		tilesets.POST("/:user/merge/:ids/", getTile)
+		tilesets.GET("/", listTilesets)
+		tilesets.GET("/info/:id/", getTilesetInfo) //tilejson
+		tilesets.GET("/x/:id/", getTileJSON)       //tilejson
+		tilesets.GET("/x/:id/:z/:x/:y", getTile)
+		tilesets.POST("/upload/", uploadTileset)
+		tilesets.POST("/replace/:id/", replaceTileset)
+		tilesets.POST("/publish/", publishTileset)
+		tilesets.POST("/publish/:id/", rePublishTileset)
+		tilesets.POST("/create/:id/", createTileset)
+		tilesets.POST("/update/:id/", createTileset)
+		tilesets.GET("/download/:id/", downloadTileset)
+		tilesets.POST("/delete/:ids/", deleteTileset)
+		tilesets.POST("/merge/:ids/", getTile)
 
-		tilesets.GET("/:user/view/:id/", viewTile) //view
+		tilesets.GET("/view/:id/", viewTile) //view
 	}
 
 	datasets := r.Group("/datasets")
@@ -727,39 +730,39 @@ func setupRouter() *gin.Engine {
 	datasets.Use(ResourceMidHandler(casEnf))
 	{
 		// > datasets
-		datasets.GET("/:user/", listDatasets)
-		datasets.GET("/:user/info/:id/", getDatasetInfo)
-		datasets.POST("/:user/upload/", uploadFile)
-		datasets.GET("/:user/preview/:id/", previewFile)
-		datasets.POST("/:user/import/:id/", importFile)
-		datasets.POST("/:user/import/", oneClickImport)
-		datasets.POST("/:user/update/:id/", upInsertDataset)
-		datasets.GET("/:user/download/:id/", downloadDataset)
-		datasets.POST("/:user/delete/:id/", deleteDatasets)
-		datasets.POST("/:user/delete/:id/:fids/", deleteFeatures)
+		datasets.GET("/", listDatasets)
+		datasets.GET("/info/:id/", getDatasetInfo)
+		datasets.POST("/upload/", uploadFile)
+		datasets.GET("/preview/:id/", previewFile)
+		datasets.POST("/import/:id/", importFile)
+		datasets.POST("/import/", oneClickImport)
+		datasets.POST("/update/:id/", upInsertDataset)
+		datasets.GET("/download/:id/", downloadDataset)
+		datasets.POST("/delete/:id/", deleteDatasets)
+		datasets.POST("/delete/:id/:fids/", deleteFeatures)
 
-		datasets.GET("/:user/view/:id/", viewDataset) //view
+		datasets.GET("/view/:id/", viewDataset) //view
 
-		datasets.GET("/:user/geojson/:id/", getGeojson)
-		datasets.POST("/:user/query/:id/", queryGeojson)
-		datasets.POST("/:user/common/:id/", queryExec)
+		datasets.GET("/geojson/:id/", getGeojson)
+		datasets.POST("/query/:id/", queryGeojson)
+		datasets.POST("/common/:id/", queryExec)
 
-		datasets.POST("/:user/distinct/:id/", getDistinctValues)
-		datasets.GET("/:user/search/:id/", searchGeos)
-		datasets.GET("/:user/buffer/:id/", getBuffers)
+		datasets.POST("/distinct/:id/", getDistinctValues)
+		datasets.GET("/search/:id/", searchGeos)
+		datasets.GET("/buffer/:id/", getBuffers)
 
-		datasets.GET("/:user/x/:id/", getTileLayerJSON)
-		datasets.GET("/:user/x/:id/:z/:x/:y", getTileLayer)
-		datasets.POST("/:user/x/:id/", createTileLayer)
+		datasets.GET("/x/:id/", getTileLayerJSON)
+		datasets.GET("/x/:id/:z/:x/:y", getTileLayer)
+		datasets.POST("/x/:id/", createTileLayer)
 
 	}
 	tasks := r.Group("/tasks")
 	tasks.Use(AuthMidHandler(authMid))
 	tasks.Use(UserMidHandler())
 	{
-		tasks.GET("/:user/", listTasks)
-		tasks.GET("/:user/info/:id/", taskQuery)
-		tasks.GET("/:user/stream/:id/", taskStreamQuery)
+		tasks.GET("/", listTasks)
+		tasks.GET("/info/:id/", taskQuery)
+		tasks.GET("/stream/:id/", taskStreamQuery)
 	}
 	//utilroute
 	utilroute := r.Group("/util")

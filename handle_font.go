@@ -18,7 +18,7 @@ import (
 //listFonts 获取字体服务列表
 func listFonts(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
 	if uid != ATLAS {
 		uid = ATLAS
 	}
@@ -39,12 +39,7 @@ func listFonts(c *gin.Context) {
 //uploadStyle 上传新样式
 func uploadFont(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString(identityKey)
-	if user != ATLAS {
-		res.FailMsg(c, "no permission")
-		return
-	}
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
 	if uid != ATLAS {
 		res.FailMsg(c, "no perm")
 		return
@@ -107,12 +102,11 @@ func uploadFont(c *gin.Context) {
 //upInsertStyle create a style
 func deleteFonts(c *gin.Context) {
 	res := NewRes()
-	user := c.GetString(identityKey)
-	if user != ATLAS {
+	uid := c.GetString(identityKey)
+	if uid != ATLAS {
 		res.FailMsg(c, "no permission")
 		return
 	}
-	uid := c.Param("user")
 	set := userSet.service(uid)
 	if set == nil {
 		log.Warnf(`deleteFonts, %s's service not found ^^`, uid)
@@ -151,7 +145,10 @@ func deleteFonts(c *gin.Context) {
 //getGlyphs 获取字体pbf,需区别于数据pbf,开启gzip压缩以加快传输,get glyph pbf.
 func getGlyphs(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4046)

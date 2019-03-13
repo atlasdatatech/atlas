@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atlasdatatech/chardet"
 	"github.com/axgle/mahonia"
 	"github.com/jinzhu/gorm"
 	shp "github.com/jonas-p/go-shp"
@@ -67,6 +66,7 @@ func (ds *DataSource) toDataset() *Dataset {
 		Owner:   ds.Owner,
 		Tag:     ds.Tag,
 		Path:    ds.Path,
+		Size:    ds.Size,
 		Format:  ds.Format,
 		Total:   ds.Total,
 		Geotype: ds.Geotype,
@@ -466,7 +466,7 @@ func (ds *DataSource) LoadFromShp() error {
 	}
 
 	if ds.Encoding == "" {
-		ds.Encoding = chardet.Mostlike([]byte(rowstxt))
+		ds.Encoding = Mostlike([]byte(rowstxt))
 	}
 	var mdec mahonia.Decoder
 	switch ds.Encoding {
@@ -935,7 +935,7 @@ func (ds *DataSource) Import() *Task {
 			if runtime.GOOS == "windows" {
 				paramsString := strings.Join(params, ",")
 				log.Println(paramsString)
-				encoding := chardet.Mostlike([]byte(paramsString))
+				encoding := Mostlike([]byte(paramsString))
 				log.Println("most like encoding: ", encoding)
 				switch encoding {
 				case "", "utf-8":
@@ -1081,7 +1081,7 @@ func likelyEncoding(file string) string {
 	if err != nil {
 		return ""
 	}
-	return chardet.Mostlike(buf[:rn])
+	return Mostlike(buf[:rn])
 }
 
 //valSizeShp valid shapefile, return 0 is invalid

@@ -22,7 +22,10 @@ type upFileInfo struct {
 }
 
 func sources4dt(c *gin.Context) ([]*DataSource, error) {
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Warnf(`handleSources, read %s's upload file error, details: %s`, uid, err)
@@ -99,7 +102,10 @@ func sources4dt(c *gin.Context) ([]*DataSource, error) {
 }
 
 func sources4ts(c *gin.Context) ([]*DataSource, error) {
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		log.Warnf(`handleSources, read %s's upload file error, details: %s`, uid, err)

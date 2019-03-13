@@ -30,8 +30,10 @@ import (
 
 func listDatasets(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -62,8 +64,10 @@ func listDatasets(c *gin.Context) {
 
 func getDatasetInfo(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
 	if ds == nil {
@@ -76,7 +80,10 @@ func getDatasetInfo(c *gin.Context) {
 
 func oneClickImport(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -131,7 +138,10 @@ func oneClickImport(c *gin.Context) {
 
 func uploadFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -155,7 +165,10 @@ func uploadFile(c *gin.Context) {
 
 func previewFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -202,7 +215,10 @@ func previewFile(c *gin.Context) {
 
 func importFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -245,8 +261,10 @@ func importFile(c *gin.Context) {
 //downloadDataset 下载数据集
 func downloadDataset(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dt := userSet.dataset(uid, did)
 	if dt == nil {
@@ -268,7 +286,10 @@ func downloadDataset(c *gin.Context) {
 
 func viewDataset(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
@@ -833,7 +854,10 @@ func upInsertDataset(c *gin.Context) {
 //deleteDatasets 删除数据集
 func deleteDatasets(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Errorf(`deleteDatasets, %s's service not found ^^`, uid)
@@ -888,7 +912,10 @@ func deleteFeatures(c *gin.Context) {
 
 func createTileLayer(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
@@ -909,7 +936,10 @@ func createTileLayer(c *gin.Context) {
 
 func getTileLayer(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
@@ -986,7 +1016,10 @@ func getTileLayer(c *gin.Context) {
 
 func getTileLayerJSON(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
@@ -1072,7 +1105,10 @@ func createTileMap(c *gin.Context) {
 
 func getTileMap(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	log.Info(uid)
 	did := c.Param("id")
 	// ds := userSet.dataset(uid, did)

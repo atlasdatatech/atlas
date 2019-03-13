@@ -5,11 +5,16 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 func listTasks(c *gin.Context) {
 	res := NewRes()
-	// user := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	log.Info(uid)
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)
 	if ok {
@@ -27,7 +32,11 @@ func listTasks(c *gin.Context) {
 
 func taskQuery(c *gin.Context) {
 	res := NewRes()
-	// user := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	log.Info(uid)
 	id := c.Param("id")
 	task, ok := taskSet.Load(id)
 	if ok {
@@ -45,6 +54,11 @@ func taskQuery(c *gin.Context) {
 
 func taskStreamQuery(c *gin.Context) {
 	id := c.Param("id")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	log.Info(uid)
 	task, ok := taskSet.Load(id)
 	if ok {
 		// listener := openListener(roomid)

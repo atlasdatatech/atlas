@@ -19,8 +19,10 @@ import (
 //listTilesets list user's tilesets
 func listTilesets(c *gin.Context) {
 	res := NewRes()
-	// id := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Warnf(`listTilesets, %s's service not found ^^`, uid)
@@ -54,8 +56,10 @@ func listTilesets(c *gin.Context) {
 //getTilesetInfo list user's tilesets info
 func getTilesetInfo(c *gin.Context) {
 	res := NewRes()
-	// id := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -69,8 +73,10 @@ func getTilesetInfo(c *gin.Context) {
 //uploadTileset 上传服务集
 func uploadTileset(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		log.Warnf(`uploadTileset, %s's service not found ^^`, uid)
@@ -125,8 +131,10 @@ func uploadTileset(c *gin.Context) {
 //replaceTileset 上传并替换服务集
 func replaceTileset(c *gin.Context) {
 	res := NewRes()
-	// user := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -194,7 +202,10 @@ func replaceTileset(c *gin.Context) {
 
 //publishTileset 上传并发布服务集
 func publish(c *gin.Context) (*Tileset, error) {
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	// if runtime.GOOS != "windows" {
 	// 	return nil, fmt.Errorf("current windows server does not support this func")
 	// }
@@ -254,7 +265,10 @@ func publish(c *gin.Context) (*Tileset, error) {
 //publishTileset 上传并发布服务集
 func publishTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	set := userSet.service(uid)
 	if set == nil {
 		res.Fail(c, 4043)
@@ -273,7 +287,10 @@ func publishTileset(c *gin.Context) {
 //publishTileset 上传并发布服务集
 func rePublishTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -296,8 +313,10 @@ func rePublishTileset(c *gin.Context) {
 //createTileset 从数据集创建服务集
 func createTileset(c *gin.Context) {
 	res := NewRes()
-	// id := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
@@ -346,9 +365,10 @@ func createTileset(c *gin.Context) {
 //updateTileset 从数据集更新服务集
 func updateTileset(c *gin.Context) {
 	res := NewRes()
-	res.FailMsg(c, "系统维护")
-	// id := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -391,8 +411,10 @@ func updateTileset(c *gin.Context) {
 //downloadTileset 下载服务集
 func downloadTileset(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -415,8 +437,10 @@ func downloadTileset(c *gin.Context) {
 //deleteTileset create a style
 func deleteTileset(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("ids")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -447,8 +471,10 @@ func deleteTileset(c *gin.Context) {
 //getTilejson get tilejson
 func getTileJSON(c *gin.Context) {
 	res := NewRes()
-	// uid := c.GetString(identityKey)
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
@@ -456,8 +482,8 @@ func getTileJSON(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	mapurl := fmt.Sprintf(`%s/tilesets/%s/view/%s/`, rootURL(c.Request), uid, tid)          //need use user own service set
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/{z}/{x}/{y}`, rootURL(c.Request), uid, tid) //need use user own service set
+	mapurl := fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid)          //need use user own service set
+	tileurl := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
@@ -496,7 +522,10 @@ func getTileJSON(c *gin.Context) {
 
 func viewTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	tss := userSet.tileset(uid, tid)
 	if tss == nil {
@@ -504,7 +533,7 @@ func viewTile(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	tileurl := fmt.Sprintf(`%s/tilesets/%s/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
+	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
 	c.HTML(http.StatusOK, "tileset.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
@@ -515,7 +544,10 @@ func viewTile(c *gin.Context) {
 
 func getTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.Param("user")
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {

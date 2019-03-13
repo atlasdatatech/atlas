@@ -225,7 +225,7 @@ func CreatePaths(name string) {
 	os.MkdirAll(filepath.Join("styles", name), os.ModePerm)
 	os.MkdirAll(filepath.Join("tilesets", name), os.ModePerm)
 	os.MkdirAll(filepath.Join("datasets", name), os.ModePerm)
-	os.MkdirAll(filepath.Join("fonts", name), os.ModePerm)
+	// os.MkdirAll(filepath.Join("fonts", name), os.ModePerm)
 }
 
 func checkUser(uid string) int {
