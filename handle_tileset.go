@@ -533,7 +533,7 @@ func viewTile(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), uid, tid) //need use user own service set
+	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), tid) //need use user own service set
 	c.HTML(http.StatusOK, "tileset.html", gin.H{
 		"Title": "PerView",
 		"ID":    tid,
