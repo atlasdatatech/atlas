@@ -640,20 +640,11 @@ func (ds *DataSource) Import() *Task {
 				task.Pipe <- struct{}{}
 				return
 			}
-			// var headers []string
-			// for _, col := range cols {
-			// 	headers = append(headers, col.Name())
-			// }
-			fields := []Field{}
-			err = json.Unmarshal(ds.Fields, &fields)
-			if err != nil {
-				task.Err = err.Error()
-				task.Pipe <- struct{}{}
-				return
-			}
 			var headers []string
-			for _, v := range fields {
-				headers = append(headers, v.Name)
+			headermap := make(map[string]int)
+			for i, col := range cols {
+				headers = append(headers, col.Name())
+				headermap[col.Name()] = i
 			}
 
 			switch ds.Format {
@@ -770,15 +761,21 @@ func (ds *DataSource) Import() *Task {
 				return
 			case GEOJSONEXT:
 				prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
-					var vals []string
-					for i, col := range cols {
-						var s string
-						v, ok := props[headers[i]]
+					vals := make([]string, len(cols))
+					for k, v := range props {
+						ki, ok := headermap[strings.ToLower(k)]
 						if ok {
-							s = interfaceFormat(col.DatabaseTypeName(), v)
+							vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
 						}
-						vals = append(vals, s)
 					}
+					// for i, col := range cols {
+					// 	var s string
+					// 	v, ok := props[headers[i]]
+					// 	if ok {
+					// 		s = interfaceFormat(col.DatabaseTypeName(), v)
+					// 	}
+					// 	vals = append(vals, s)
+					// }
 					return strings.Join(vals, ",")
 				}
 				s := time.Now()

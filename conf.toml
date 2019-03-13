@@ -34,8 +34,8 @@
 	[jwt.auth]
 		realm="atlascloud-auth"
 		key="salta-atad-6221"
-		timeOut="1h"
-		timeMax="24h"
+		timeOut="24h"
+		timeMax="72h"
 		lookup="header:Authorization, cookie:token"
 		headName = "Bearer"
 

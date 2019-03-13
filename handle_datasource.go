@@ -60,11 +60,11 @@ func sources4dt(c *gin.Context) ([]*DataSource, error) {
 			ext := filepath.Ext(file)
 			subname := strings.TrimSuffix(subase, ext)
 			list := filepath.SplitList(subase)
-			if len(list) > 0 {
+			if len(list) > 1 {
 				subname = strings.Join(list, "_")
 			}
 			ds := &DataSource{
-				ID:      subname + id,
+				ID:      subname + "." + id,
 				Name:    subname,
 				Tag:     name,
 				Geotype: "vector",
