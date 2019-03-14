@@ -11,14 +11,14 @@ import (
 type Task struct {
 	ID       string        `json:"id" form:"id" binding:"required"`
 	Name     string        `json:"name" form:"name"`
-	Type     string        `json:"type" form:"type" `
+	Type     TaskType      `json:"type" form:"type" `
 	Owner    string        `json:"owner" form:"owner"`
 	Fail     int           `json:"fail" form:"fail"`
 	Succeed  int           `json:"succeed" form:"succeed"`
 	Count    int           `json:"count" form:"count"`
 	Progress int           `json:"progress" form:"progress"`
 	Status   string        `json:"status"`
-	Err      string        `json:"err"`
+	Error    string        `json:"error" `
 	Pipe     chan struct{} `json:"-" form:"-" gorm:"-"`
 }
 

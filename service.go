@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
@@ -540,38 +541,61 @@ func (ss *ServiceSet) AppendDatasets() error {
 			}
 			err := ds.LoadFrom()
 			if err != nil {
-				log.Errorf("AddDatasets, could not load font %s, details: %s", file, err)
+				log.Errorf("AppendDatasets, could not load font %s, details: %s", file, err)
 				continue
 			}
 			//入库、导入、加载服务
 			ds.Owner = ss.Owner
 			err = ds.Insert()
 			if err != nil {
-				log.Errorf(`dataImport, upinsert datafile info error, details: %s`, err)
+				log.Errorf(`AppendDatasets, upinsert datafile info error, details: %s`, err)
 			}
-			task := ds.Import()
-			if task.Err != "" {
-				log.Error(err)
+			task := &Task{
+				ID:    ds.ID,
+				Owner: ds.Owner,
+				Type:  DSIMPORT,
+				Pipe:  make(chan struct{}),
+			}
+			//任务队列,若队列已满,则阻塞
+			taskQueue <- task
+			//任务集
+			taskSet.Store(task.ID, task)
+			task.save()
+			go func(ds *DataSource, task *Task) {
+				st := time.Now()
+				err = ds.Import(task)
+				log.Infof("import task takes: %v", time.Since(st))
+				if err != nil {
+					task.Status = "failed"
+					task.Error = err.Error()
+				} else {
+					task.Progress = 100
+					task.Status = "finished"
+					task.Error = ""
+				}
+				task.Pipe <- struct{}{}
+			}(ds, task)
+
+			go func(ds *DataSource, task *Task) {
 				<-task.Pipe
 				<-taskQueue
-				continue
-			}
-			go func(ds *DataSource) {
-				<-task.Pipe
-				<-taskQueue
-				dt := ds.toDataset()
-				err = dt.Insert()
-				if err != nil {
-					log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-					return
+				task.update()
+				if task.Error == "" {
+					//todo goroute 导入，以下事务需在task完成后处理
+					dt := ds.toDataset()
+					err = dt.Insert()
+					if err != nil {
+						log.Errorf(`AppendDatasets, upinsert dataset info error, details: %s`, err)
+						return
+					}
+					err = dt.Service()
+					if err == nil {
+						ss.D.Store(dt.ID, dt)
+					}
+				} else {
+					log.Errorf("import task failed, details: %s", err)
 				}
-				err = dt.Service()
-				if err != nil {
-					log.Error(err)
-					return
-				}
-				ss.D.Store(dt.ID, dt)
-			}(ds)
+			}(ds, task)
 			count++
 		}
 	}

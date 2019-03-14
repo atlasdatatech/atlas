@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -29,28 +30,74 @@ func listTilesets(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var tss []*Tileset
-	set.T.Range(func(_, v interface{}) bool {
-		tss = append(tss, v.(*Tileset))
-		return true
+
+	var tss []Tileset
+	tdb := db
+	pub, y := c.GetQuery("public")
+	if y && strings.ToLower(pub) == "true" {
+		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+	} else {
+		tdb = tdb.Where("owner = ?", uid)
+	}
+	kw, y := c.GetQuery("keyword")
+	if y {
+		tdb = tdb.Where("name ~ ?", kw)
+	}
+	order, y := c.GetQuery("order")
+	if y {
+		log.Info(order)
+		tdb = tdb.Order(order)
+	}
+	start := 0
+	rows := 10
+	if offset, y := c.GetQuery("start"); y {
+		rs, yr := c.GetQuery("rows") //limit count defaut 10
+		if yr {
+			ri, err := strconv.Atoi(rs)
+			if err == nil {
+				rows = ri
+			}
+		}
+		start, _ = strconv.Atoi(offset)
+		tdb = tdb.Offset(start).Limit(rows)
+	}
+	total := 0
+	err := tdb.Find(&tss).Offset(0).Limit(-1).Count(&total).Error
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"keyword": kw,
+		"order":   order,
+		"start":   start,
+		"rows":    rows,
+		"total":   total,
+		"list":    tss,
 	})
 
-	if uid != ATLAS && "true" == c.Query("public") {
-		set := userSet.service(ATLAS)
-		if set != nil {
-			set.T.Range(func(_, v interface{}) bool {
-				ts, ok := v.(*Tileset)
-				if ok {
-					if ts.Public {
-						tss = append(tss, ts)
-					}
-				}
-				return true
-			})
-		}
-	}
+	// var tss []*Tileset
+	// set.T.Range(func(_, v interface{}) bool {
+	// 	tss = append(tss, v.(*Tileset))
+	// 	return true
+	// })
 
-	res.DoneData(c, tss)
+	// if uid != ATLAS && "true" == c.Query("public") {
+	// 	set := userSet.service(ATLAS)
+	// 	if set != nil {
+	// 		set.T.Range(func(_, v interface{}) bool {
+	// 			ts, ok := v.(*Tileset)
+	// 			if ok {
+	// 				if ts.Public {
+	// 					tss = append(tss, ts)
+	// 				}
+	// 			}
+	// 			return true
+	// 		})
+	// 	}
+	// }
+
+	// res.DoneData(c, tss)
 }
 
 //getTilesetInfo list user's tilesets info
@@ -68,6 +115,35 @@ func getTilesetInfo(c *gin.Context) {
 		return
 	}
 	res.DoneData(c, ts)
+}
+
+func updateTilesetInfo(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	tid := c.Param("id")
+	ts := userSet.tileset(uid, tid)
+	if ts == nil {
+		log.Warnf(`getTilesetInfo, %s's tileset (%s) not found ^^`, uid, tid)
+		res.Fail(c, 4045)
+		return
+	}
+	body := &Tileset{}
+	err := c.Bind(body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	body.ID = ts.ID
+	err = body.Update()
+	if err != nil {
+		log.Errorf("updateStyleInfo, update %s's tileset (%s) info error, details: %s", uid, tid, err)
+		res.FailErr(c, err)
+		return
+	}
+	res.Done(c, "")
 }
 
 //uploadTileset 上传服务集
@@ -201,68 +277,6 @@ func replaceTileset(c *gin.Context) {
 }
 
 //publishTileset 上传并发布服务集
-func publish(c *gin.Context) (*Tileset, error) {
-	uid := c.GetString(identityKey)
-	if uid == "" {
-		uid = c.GetString(userKey)
-	}
-	// if runtime.GOOS != "windows" {
-	// 	return nil, fmt.Errorf("current windows server does not support this func")
-	// }
-	dss, err := sources4ts(c)
-	if err != nil {
-		return nil, err
-	}
-	var inputfiles []string
-	for _, ds := range dss {
-		ds.Owner = uid
-		err = ds.Insert()
-		if err != nil {
-			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
-		}
-		inputfiles = append(inputfiles, ds.Path)
-	}
-	//publish to mbtiles
-	log.Println("start create mbtiles")
-	name := ""
-	if len(dss) == 1 {
-		name = dss[0].ID
-	} else if len(dss) > 1 {
-		name = dss[0].Tag + filepath.Ext(dss[0].ID)
-	} else {
-		return nil, fmt.Errorf("no available data source")
-	}
-	outfile := filepath.Join("tilesets", uid, name+MBTILESEXT)
-	err = toMbtiles(outfile, inputfiles)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	log.Info("mbtiles created...")
-	//加载mbtiles
-	ts, err := LoadTileset(outfile)
-	if err != nil {
-		log.Errorf("publishTileset, could not load the new tileset %s, details: %s", outfile, err)
-		return nil, err
-	}
-	//入库
-	ts.Owner = uid
-	err = ts.UpInsert()
-	if err != nil {
-		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, outfile, err)
-	}
-	//加载服务,todo 用户服务无需预加载
-	err = ts.Service()
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	ts.atlasMark()
-	return ts, nil
-}
-
-//publishTileset 上传并发布服务集
 func publishTileset(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -274,14 +288,79 @@ func publishTileset(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	ts, err := publish(c)
+
+	ds, err := saveSource(c)
 	if err != nil {
-		log.Error(err)
+		log.Warn(err)
 		res.FailErr(c, err)
 		return
 	}
-	set.T.Store(ts.ID, ts)
-	res.DoneData(c, ts)
+	dss, _ := loadZipSources(ds)
+	taskid := ds.ID
+	if tid := c.Param("id"); tid != "" {
+		taskid = tid
+	}
+	task := &Task{
+		ID:    taskid,
+		Name:  ds.Name + "-发布",
+		Owner: uid,
+		Type:  TSIMPORT,
+		Pipe:  make(chan struct{}),
+	}
+	//任务队列
+	select {
+	case taskQueue <- task:
+	default:
+		log.Warningf("task queue overflow, request refused...")
+		res.FailMsg(c, "服务器繁忙,请稍后再试")
+		return
+	}
+	taskSet.Store(task.ID, task)
+	task.save()
+
+	go func(task *Task, dss []*DataSource) {
+		defer func() {
+			task.Pipe <- struct{}{}
+		}()
+		s := time.Now()
+		ts, err := sources2ts(task, dss)
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		//入库
+		ts.Owner = task.Owner
+		err = ts.UpInsert()
+		if err != nil {
+			log.Errorf(`publishTileset, upinsert tileset (%s) error, details: %s`, ts.ID, err)
+			task.Error = err.Error()
+		}
+		//加载服务,todo 用户服务无需预加载
+		err = ts.Service()
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		ts.atlasMark()
+		log.Infof("load tilesets(%s), takes: %v", ts.ID, time.Since(s))
+		oldts := userSet.tileset(task.Owner, task.ID)
+		if oldts != nil {
+			oldts.Clean()
+		}
+		set.T.Store(ts.ID, ts)
+		task.Progress = 100
+	}(task, dss)
+
+	//退出队列,通知完成消息
+	go func(task *Task) {
+		<-task.Pipe
+		<-taskQueue
+		task.update()
+	}(task)
+
+	res.DoneData(c, task)
 }
 
 //publishTileset 上传并发布服务集
@@ -297,17 +376,7 @@ func rePublishTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	newts, err := publish(c)
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-	set := userSet.service(uid)
-	newts.ID = ts.ID
-	set.T.Store(newts.ID, newts)
-	ts.Clean()
-	res.DoneData(c, newts)
+	publishTileset(c)
 }
 
 //createTileset 从数据集创建服务集
@@ -586,11 +655,10 @@ func getTile(c *gin.Context) {
 	var data []byte
 	// flip y to match the spec
 	y = (1 << z) - 1 - y
+
 	data, err = ts.Tile(c.Request.Context(), z, x, y)
 	if err != nil {
-		t := "tile"
-		err = fmt.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d: %v", t, z, x, y, err)
-		log.Error(err)
+		log.Errorf("getTile, cannot fetch %s from DB for z=%d, x=%d, y=%d, details: %v", tid, z, x, y, err)
 		res.Fail(c, 5004)
 		return
 	}

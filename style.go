@@ -31,6 +31,7 @@ type Style struct {
 	Base      string          `json:"base" gorm:"index"`
 	URL       string          `json:"url"`
 	Status    bool            `json:"status"`
+	Thumbnail string          `json:"thumbnail"`
 	Data      json.RawMessage `json:"-" gorm:"type:json"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -225,6 +226,16 @@ func (s *Style) UpInsert() error {
 		return err
 	}
 	err = db.Model(&Style{}).Update(s).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+//Update 创建更新样式存储
+//create or update upload data file info into database
+func (s *Style) Update() error {
+	err := db.Model(&Style{}).Update(s).Error
 	if err != nil {
 		return err
 	}

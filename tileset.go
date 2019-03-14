@@ -47,14 +47,14 @@ type Tileset struct {
 
 //LoadTileset 创建更新瓦片集服务
 //create or update upload data file info into database
-func LoadTileset(tileset string) (*Tileset, error) {
-	fStat, err := os.Stat(tileset)
+func LoadTileset(tsfile string) (*Tileset, error) {
+	fStat, err := os.Stat(tsfile)
 	if err != nil {
 		log.Errorf(`LoadTileset, read style file info error, details: %s`, err)
 		return nil, err
 	}
-	base := filepath.Base(tileset)
-	ext := filepath.Ext(tileset)
+	base := filepath.Base(tsfile)
+	ext := filepath.Ext(tsfile)
 	name := strings.TrimSuffix(base, ext)
 
 	out := &Tileset{
@@ -62,14 +62,14 @@ func LoadTileset(tileset string) (*Tileset, error) {
 		Version:   "v3",
 		Name:      name,
 		Public:    true, //服务集默认是公开的
-		Path:      tileset,
+		Path:      tsfile,
 		Size:      fStat.Size(),
 		UpdatedAt: fStat.ModTime(),
 		Layers:    nil,
 		JSON:      nil,
 	}
 	//Saves last modified mbtiles time for setting Last-Modified header
-	db, err := sql.Open("sqlite3", tileset)
+	db, err := sql.Open("sqlite3", tsfile)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +130,16 @@ func (ts *Tileset) UpInsert() error {
 	return nil
 }
 
+//Update 创建更新瓦片集服务
+//create or update upload data file info into database
+func (ts *Tileset) Update() error {
+	err := db.Model(&Tileset{}).Update(ts).Error
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Tile reads a tile with tile identifiers z, x, y into provided *[]byte.
 // data will be nil if the tile does not exist in the database
 func (ts *Tileset) Tile(ctx context.Context, z, x, y uint) ([]byte, error) {
@@ -137,9 +147,9 @@ func (ts *Tileset) Tile(ctx context.Context, z, x, y uint) ([]byte, error) {
 	err := ts.db.QueryRow("select tile_data from tiles where zoom_level = ? and tile_column = ? and tile_row = ?", z, x, y).Scan(&data)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return data, nil
 		}
-		return nil, err
+		return data, err
 	}
 	return data, nil
 }

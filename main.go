@@ -668,7 +668,7 @@ func setupRouter() *gin.Engine {
 		// > styles
 		styles.GET("/", listStyles)
 		styles.GET("/info/:id/", getStyleInfo)
-		styles.GET("/thumbnail/:id/", getStyleThumbnial)
+		styles.POST("/info/:id/", updateStyleInfo)
 		styles.GET("/x/:id/", getStyle)
 		styles.GET("/x/:id/sprite:fmt", getSprite)
 		styles.POST("/upload/", uploadStyle)
@@ -710,8 +710,9 @@ func setupRouter() *gin.Engine {
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
-		tilesets.GET("/info/:id/", getTilesetInfo) //tilejson
-		tilesets.GET("/x/:id/", getTileJSON)       //tilejson
+		tilesets.GET("/info/:id/", getTilesetInfo)     //tilejson
+		tilesets.POST("/info/:id/", updateTilesetInfo) //tilejson
+		tilesets.GET("/x/:id/", getTileJSON)           //tilejson
 		tilesets.GET("/x/:id/:z/:x/:y", getTile)
 		tilesets.POST("/upload/", uploadTileset)
 		tilesets.POST("/replace/:id/", replaceTileset)
@@ -734,6 +735,7 @@ func setupRouter() *gin.Engine {
 		// > datasets
 		datasets.GET("/", listDatasets)
 		datasets.GET("/info/:id/", getDatasetInfo)
+		datasets.POST("/info/:id/", updateDatasetInfo)
 		datasets.POST("/upload/", uploadFile)
 		datasets.GET("/preview/:id/", previewFile)
 		datasets.POST("/import/:id/", importFile)

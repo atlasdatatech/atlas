@@ -39,27 +39,73 @@ func listDatasets(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var dts []*Dataset
-	set.D.Range(func(_, v interface{}) bool {
-		dts = append(dts, v.(*Dataset))
-		return true
+
+	var dss []Dataset
+	tdb := db
+	pub, y := c.GetQuery("public")
+	if y && strings.ToLower(pub) == "true" {
+		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+	} else {
+		tdb = tdb.Where("owner = ?", uid)
+	}
+	kw, y := c.GetQuery("keyword")
+	if y {
+		tdb = tdb.Where("name ~ ?", kw)
+	}
+	order, y := c.GetQuery("order")
+	if y {
+		log.Info(order)
+		tdb = tdb.Order(order)
+	}
+	start := 0
+	rows := 10
+	if offset, y := c.GetQuery("start"); y {
+		rs, yr := c.GetQuery("rows") //limit count defaut 10
+		if yr {
+			ri, err := strconv.Atoi(rs)
+			if err == nil {
+				rows = ri
+			}
+		}
+		start, _ = strconv.Atoi(offset)
+		tdb = tdb.Offset(start).Limit(rows)
+	}
+	total := 0
+	err := tdb.Find(&dss).Offset(0).Limit(-1).Count(&total).Error
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"keyword": kw,
+		"order":   order,
+		"start":   start,
+		"rows":    rows,
+		"total":   total,
+		"list":    dss,
 	})
 
-	if uid != ATLAS && "true" == c.Query("public") {
-		set := userSet.service(ATLAS)
-		if set != nil {
-			set.D.Range(func(_, v interface{}) bool {
-				dt, ok := v.(*Dataset)
-				if ok {
-					if dt.Public {
-						dts = append(dts, dt)
-					}
-				}
-				return true
-			})
-		}
-	}
-	res.DoneData(c, dts)
+	// var dts []*Dataset
+	// set.D.Range(func(_, v interface{}) bool {
+	// 	dts = append(dts, v.(*Dataset))
+	// 	return true
+	// })
+
+	// if uid != ATLAS && "true" == c.Query("public") {
+	// 	set := userSet.service(ATLAS)
+	// 	if set != nil {
+	// 		set.D.Range(func(_, v interface{}) bool {
+	// 			dt, ok := v.(*Dataset)
+	// 			if ok {
+	// 				if dt.Public {
+	// 					dts = append(dts, dt)
+	// 				}
+	// 			}
+	// 			return true
+	// 		})
+	// 	}
+	// }
+	// res.DoneData(c, dts)
 }
 
 func getDatasetInfo(c *gin.Context) {
@@ -78,6 +124,35 @@ func getDatasetInfo(c *gin.Context) {
 	res.DoneData(c, ds)
 }
 
+func updateDatasetInfo(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	did := c.Param("id")
+	ds := userSet.dataset(uid, did)
+	if ds == nil {
+		log.Warnf(`getDatasetInfo, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	body := &Dataset{}
+	err := c.Bind(body)
+	if err != nil {
+		res.Fail(c, 4001)
+		return
+	}
+	body.ID = ds.ID
+	err = body.Update()
+	if err != nil {
+		log.Errorf("updateStyleInfo, update %s's style (%s) info error, details: %s", uid, did, err)
+		res.FailErr(c, err)
+		return
+	}
+	res.Done(c, "")
+}
+
 func oneClickImport(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -89,12 +164,14 @@ func oneClickImport(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	dss, err := sources4dt(c)
+	ds, err := saveSource(c)
 	if err != nil {
-		log.Error(err)
+		log.Warn(err)
 		res.FailErr(c, err)
 		return
 	}
+	dss, _ := loadZipSources(ds)
+	loadFromSources(dss)
 	var tasks []*Task
 	for _, ds := range dss {
 		ds.Owner = uid
@@ -104,32 +181,57 @@ func oneClickImport(c *gin.Context) {
 				log.Error(err)
 			}
 		}()
-		st := time.Now()
-		task := ds.Import()
-		go func(ds *DataSource) {
-			<-task.Pipe //wait finish
-			<-taskQueue
-			task.Status = "finish"
-			task.save()
-			if task.Err != "" {
-				log.Error(task.Err)
-				return
-			}
-			t := time.Since(st)
-			log.Infof("one key import time cost: %v", t)
-			dt := ds.toDataset()
-			err = dt.Insert()
+		task := &Task{
+			ID:    ds.ID,
+			Owner: ds.Owner,
+			Type:  DSIMPORT,
+			Pipe:  make(chan struct{}),
+		}
+		//任务队列,若队列已满,则阻塞
+		taskQueue <- task
+		//任务集
+		taskSet.Store(task.ID, task)
+		task.save()
+		go func(ds *DataSource, task *Task) {
+			//通知goroutine任务结束
+			defer func(task *Task) {
+				task.Pipe <- struct{}{}
+			}(task)
+			st := time.Now()
+			err = ds.Import(task)
+			log.Infof("one key import time cost: %v", time.Since(st))
 			if err != nil {
-				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
-				res.FailErr(c, err)
-				return
+				task.Status = "failed"
+				task.Error = err.Error()
+			} else {
+				task.Progress = 100
+				task.Status = "finished"
+				task.Error = ""
 			}
-			err = dt.Service()
-			if err == nil {
-				set.D.Store(dt.ID, dt)
+		}(ds, task)
+		//结束队列，通知完成
+		go func(ds *DataSource, task *Task) {
+			<-task.Pipe
+			<-taskQueue
+			task.update()
+			if task.Error == "" {
+				//todo goroute 导入，以下事务需在task完成后处理
+				dt := ds.toDataset()
+				err = dt.Insert()
+				if err != nil {
+					log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+					res.FailErr(c, err)
+					return
+				}
+				err = dt.Service()
+				if err == nil {
+					set.D.Store(dt.ID, dt)
+				}
+			} else {
+				log.Errorf("import task failed, details: %s", err)
 			}
+		}(ds, task)
 
-		}(ds)
 		tasks = append(tasks, task)
 		//todo goroute 导入，以下事务需在task完成后处理
 	}
@@ -147,12 +249,13 @@ func uploadFile(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	dss, err := sources4dt(c)
+	ds, err := saveSource(c)
 	if err != nil {
-		log.Error(err)
+		log.Warn(err)
 		res.FailErr(c, err)
 		return
 	}
+	dss, _ := loadZipSources(ds)
 	for _, ds := range dss {
 		ds.Owner = uid
 		err = ds.Insert()
@@ -231,30 +334,61 @@ func importFile(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	task := ds.Import()
-	if task.Err != "" {
-		log.Error(task.Err)
-		res.FailMsg(c, task.Err)
-		<-task.Pipe
-		<-taskQueue
+
+	task := &Task{
+		ID:    ds.ID,
+		Owner: ds.Owner,
+		Type:  DSIMPORT,
+		Pipe:  make(chan struct{}),
+	}
+	//任务队列
+	select {
+	case taskQueue <- task:
+	default:
+		log.Warningf("task queue overflow, request refused...")
+		res.FailMsg(c, "task queue overflow, request refused")
 		return
 	}
-	go func(ds *DataSource) {
+	//任务集
+	taskSet.Store(task.ID, task)
+	task.save()
+	go func(ds *DataSource, task *Task) {
+		defer func(task *Task) {
+			task.Pipe <- struct{}{}
+		}(task)
+		err = ds.Import(task)
+		if err != nil {
+			task.Status = "failed"
+			task.Error = err.Error()
+		} else {
+			task.Progress = 100
+			task.Status = "finished"
+			task.Error = ""
+		}
+	}(ds, task)
+
+	go func(ds *DataSource, task *Task) {
 		<-task.Pipe
 		<-taskQueue
-		//todo goroute 导入，以下事务需在task完成后处理
-		dt := ds.toDataset()
-		err = dt.Insert()
-		if err != nil {
-			log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
-			res.FailErr(c, err)
-			return
+		task.update()
+		if task.Error == "" {
+			//todo goroute 导入，以下事务需在task完成后处理
+			dt := ds.toDataset()
+			err = dt.Insert()
+			if err != nil {
+				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
+				res.FailErr(c, err)
+				return
+			}
+			err = dt.Service()
+			if err == nil {
+				set.D.Store(dt.ID, dt)
+			}
+		} else {
+			log.Errorf("import task failed, details: %s", err)
 		}
-		err = dt.Service()
-		if err == nil {
-			set.D.Store(dt.ID, dt)
-		}
-	}(ds)
+	}(ds, task)
+
 	res.DoneData(c, task)
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -268,17 +267,19 @@ func getGlyphs(c *gin.Context) {
 	lastModified := time.Now().UTC().Format("2006-01-02 03:04:05 PM")
 	c.Header("Content-Type", "application/x-protobuf")
 	c.Header("Last-Modified", lastModified)
-	gz, err := gzip.NewWriterLevel(c.Writer, gzip.DefaultCompression)
-	if err != nil {
-		c.Writer.Write(pbf)
-		return
-	}
-	defer func() {
-		c.Header("Content-Length", "0")
-		gz.Close()
-	}()
-	gz.Write(pbf)
-	c.Header("Content-Encoding", "gzip")
-	c.Header("Vary", "Accept-Encoding")
+	c.Writer.Write(pbf)
 	return
+	// gz, err := gzip.NewWriterLevel(c.Writer, gzip.DefaultCompression)
+	// if err != nil {
+	// c.Writer.Write(pbf)
+	// return
+	// }
+	// defer func() {
+	// c.Header("Content-Length", "0")
+	// gz.Close()
+	// }()
+	// gz.Write(pbf)
+	// c.Header("Content-Encoding", "gzip")
+	// c.Header("Vary", "Accept-Encoding")
+	// return
 }

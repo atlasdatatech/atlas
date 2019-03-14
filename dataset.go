@@ -33,14 +33,11 @@ import (
 
 // Field 字段
 type Field struct {
-	Name  string `json:"name"`
-	Alias string `json:"alias"`
-	Type  string `json:"type"`
-	Index string `json:"index"`
+	Name  string    `json:"name"`
+	Alias string    `json:"alias"`
+	Type  FieldType `json:"type"`
+	Index string    `json:"index"`
 }
-
-//Fields 字段列表
-type Fields []Field
 
 // Dataset 数据集定义结构
 type Dataset struct {
@@ -53,7 +50,7 @@ type Dataset struct {
 	Format    string          `json:"format"`
 	Size      int64           `json:"size"`
 	Total     int             `json:"total"`
-	Geotype   string          `json:"geotype"`
+	Geotype   GeoType         `json:"geotype"`
 	BBox      orb.Bound       `json:"bbox"`
 	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
 	Status    bool            `json:"status" gorm:"-"`
@@ -144,7 +141,7 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 	}
 	var fields []Field
 	for _, col := range cols {
-		var t string
+		var t FieldType
 		switch col.DatabaseTypeName() {
 		case "INT", "INT4":
 			t = Int
@@ -157,9 +154,9 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 		case "_VARCHAR":
 			t = StringArray
 		case "TEXT", "VARCHAR":
-			t = string(String)
+			t = String
 		default:
-			t = string(String)
+			t = String
 		}
 		field := Field{
 			Name: col.Name(),
@@ -177,7 +174,7 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 }
 
 // GeoType 更新获取几何类型
-func (dt *Dataset) GeoType() (string, error) {
+func (dt *Dataset) GeoType() (GeoType, error) {
 	tbname := strings.ToLower(dt.ID)
 	var geotype string
 	stbox := fmt.Sprintf(`SELECT st_geometrytype(geom) as geotype FROM "%s" limit 1;`, tbname)
@@ -185,7 +182,7 @@ func (dt *Dataset) GeoType() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dt.Geotype = strings.TrimPrefix(geotype, "ST_")
+	dt.Geotype = GeoType(strings.TrimPrefix(geotype, "ST_"))
 	return dt.Geotype, nil
 }
 

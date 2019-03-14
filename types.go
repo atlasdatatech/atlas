@@ -12,7 +12,7 @@ const (
 )
 
 //CRSs 支持的坐标系
-var CRSs = []string{"WGS84", "CGCS2000", "GCJ02", "BD09"}
+var CRSs = []CRS{WGS84, CGCS2000, GCJ02, BD09}
 
 //Encoding text encoding
 type Encoding string
@@ -26,7 +26,7 @@ const (
 )
 
 //Encodings 支持的编码格式
-var Encodings = []string{"utf-8", "gbk", "big5", "gb18030"}
+var Encodings = []Encoding{UTF8, GBK, BIG5, GB18030}
 
 // FieldType is a convenience alias that can be used for a more type safe way of
 // reason and use Series types.
@@ -44,7 +44,24 @@ const (
 )
 
 //FieldTypes 支持的字段类型
-var FieldTypes = []string{"string", "int", "float", "bool", "date"}
+var FieldTypes = []FieldType{String, Int, Float, Date, Bool}
+
+// DataFormat is an enum that defines the data format of a file
+type DataFormat string
+
+// Constants representing TileFormat types
+const (
+	// ZIPEXT     DataFormat = ".zip"
+	ZIPEXT     = ".zip"
+	CSVEXT     = ".csv"
+	SHPEXT     = ".shp"
+	KMLEXT     = ".kml"
+	GPXEXT     = ".gpx"
+	GEOJSONEXT = ".geojson"
+)
+
+//DataFormats 数据类型集合
+var DataFormats = []DataFormat{ZIPEXT, CSVEXT, SHPEXT, KMLEXT, GPXEXT, GEOJSONEXT}
 
 // TileFormat is an enum that defines the tile format of a tile
 type TileFormat string
@@ -58,6 +75,9 @@ const (
 	PBF             = "pbf"
 	WEBP            = "webp"
 )
+
+//TileFormats 支持的瓦片类型
+var TileFormats = []TileFormat{GZIP, ZLIB, PNG, JPG, PBF, WEBP}
 
 // ContentType returns the MIME content type of the tile
 func (t TileFormat) ContentType() string {
@@ -75,16 +95,31 @@ func (t TileFormat) ContentType() string {
 	}
 }
 
-// A list of the datasets types that are currently supported.
+//TaskType 任务类型
+type TaskType string
+
+// Constants representing TileFormat types
 const (
-	Point           = "Point"
-	MultiPoint      = "MultiPoint"
-	LineString      = "LineString"
-	MultiLineString = "MultiLineString"
-	Polygon         = "Polygon"
-	MultiPolygon    = "MultiPolygon"
-	Attribute       = "Attribute" //属性数据表,non-spatial
+	DSIMPORT TaskType = "dsimport" // encoding = gzip
+	TSIMPORT          = "tsimport" // encoding = deflate
 )
 
-//GeomTypes 支持的字段类型
-var GeomTypes = []string{"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon", "Attribute"}
+//TaskTypes 支持的瓦片类型
+var TaskTypes = []TaskType{DSIMPORT, TSIMPORT}
+
+//GeoType 几何类型
+type GeoType string
+
+// A list of the datasets types that are currently supported.
+const (
+	Point           GeoType = "Point"
+	MultiPoint              = "MultiPoint"
+	LineString              = "LineString"
+	MultiLineString         = "MultiLineString"
+	Polygon                 = "Polygon"
+	MultiPolygon            = "MultiPolygon"
+	Attribute               = "Attribute" //属性数据表,non-spatial
+)
+
+//GeoTypes 支持的字段类型
+var GeoTypes = []GeoType{Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, Attribute}

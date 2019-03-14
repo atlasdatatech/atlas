@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/nfnt/resize"
@@ -34,29 +35,75 @@ func listStyles(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	var styles []*Style
-	set.S.Range(func(_, v interface{}) bool {
-		s, ok := v.(*Style)
-		if ok {
-			styles = append(styles, s)
-		}
-		return true
-	})
-	if uid != ATLAS && "true" == c.Query("public") {
-		set := userSet.service(ATLAS)
-		if set != nil {
-			set.S.Range(func(_, v interface{}) bool {
-				s, ok := v.(*Style)
-				if ok {
-					if s.Public {
-						styles = append(styles, s)
-					}
-				}
-				return true
-			})
-		}
+	var styles []Style
+	tdb := db
+	pub, y := c.GetQuery("public")
+	if y && strings.ToLower(pub) == "true" {
+		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+	} else {
+		tdb = tdb.Where("owner = ?", uid)
 	}
-	res.DoneData(c, styles)
+	kw, y := c.GetQuery("keyword")
+	if y {
+		tdb = tdb.Where("name ~ ?", kw)
+	}
+	order, y := c.GetQuery("order")
+	if y {
+		log.Info(order)
+		tdb = tdb.Order(order)
+	}
+	start := 0
+	rows := 10
+	if offset, y := c.GetQuery("start"); y {
+		rs, yr := c.GetQuery("rows") //limit count defaut 10
+		if yr {
+			ri, err := strconv.Atoi(rs)
+			if err == nil {
+				rows = ri
+			}
+		}
+		start, _ = strconv.Atoi(offset)
+		tdb = tdb.Offset(start).Limit(rows)
+	}
+	total := 0
+	err := tdb.Find(&styles).Offset(0).Limit(-1).Count(&total).Error
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"keyword": kw,
+		"order":   order,
+		"start":   start,
+		"rows":    rows,
+		"total":   total,
+		"list":    styles,
+	})
+
+	// var styles []*Style
+	// set.S.Range(func(_, v interface{}) bool {
+	// 	s, ok := v.(*Style)
+	// 	if ok {
+	// 		styles = append(styles, s)
+	// 	}
+	// 	return true
+	// })
+
+	// if uid != ATLAS && "true" == c.Query("public") {
+	// 	set := userSet.service(ATLAS)
+	// 	if set != nil {
+	// 		set.S.Range(func(_, v interface{}) bool {
+	// 			s, ok := v.(*Style)
+	// 			if ok {
+	// 				if s.Public {
+	// 					styles = append(styles, s)
+	// 				}
+	// 			}
+	// 			return true
+	// 		})
+	// 	}
+	// }
+	// res.DoneData(c, styles)
 }
 
 //getStyleInfo 获取样式信息
@@ -76,8 +123,8 @@ func getStyleInfo(c *gin.Context) {
 	res.DoneData(c, s)
 }
 
-//getStyleThumbnial 获取样式缩略图
-func getStyleThumbnial(c *gin.Context) {
+//getStyleInfo 获取样式信息
+func updateStyleInfo(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
 	if uid == "" {
@@ -86,18 +133,24 @@ func getStyleThumbnial(c *gin.Context) {
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
-		log.Warnf(`getStyleThumbnial, %s's style (%s) not found ^^`, uid, sid)
+		log.Warnf(`getStyleInfo, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
 		return
 	}
-	file := filepath.Join(s.Path, "thumbnail.jpg")
-	buf, err := ioutil.ReadFile(file)
+	body := &Style{}
+	err := c.Bind(body)
 	if err != nil {
-		log.Errorf(`getStyleThumbnial, read %s's style (%s) thumbnail error, details: %s`, uid, sid, err)
+		res.Fail(c, 4001)
+		return
+	}
+	body.ID = s.ID
+	err = body.Update()
+	if err != nil {
+		log.Errorf("updateStyleInfo, update %s's style (%s) info error, details: %s", uid, sid, err)
 		res.FailErr(c, err)
 		return
 	}
-	res.DoneData(c, buf)
+	res.Done(c, "")
 }
 
 //publicStyle 分享样式

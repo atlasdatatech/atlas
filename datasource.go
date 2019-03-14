@@ -29,14 +29,8 @@ import (
 
 //BUFSIZE 16M
 const (
-	BUFSIZE    int64 = 1 << 24
-	PREROWNUM        = 7
-	ZIPEXT           = ".zip"
-	CSVEXT           = ".csv"
-	SHPEXT           = ".shp"
-	KMLEXT           = ".kml"
-	GPXEXT           = ".gpx"
-	GEOJSONEXT       = ".geojson"
+	BUFSIZE   int64 = 1 << 24
+	PREROWNUM       = 7
 )
 
 // DataSource 文件数据源集定义结构
@@ -51,7 +45,7 @@ type DataSource struct {
 	Size      int64           `json:"size"`
 	Total     int             `json:"total"`
 	Crs       string          `json:"crs"` //WGS84,CGCS2000,GCJ02,BD09
-	Geotype   string          `json:"geotype"`
+	Geotype   GeoType         `json:"geotype"`
 	Rows      [][]string      `json:"rows" gorm:"-"`
 	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
 	CreatedAt time.Time
@@ -231,7 +225,7 @@ func (ds *DataSource) LoadFromCSV() error {
 	for i, name := range headers {
 		fields = append(fields, Field{
 			Name: name,
-			Type: string(types[i])})
+			Type: types[i]})
 	}
 
 	getColumn := func(cols []string, names []string) string {
@@ -274,7 +268,7 @@ func (ds *DataSource) LoadFromCSV() error {
 	}
 	ds.Format = CSVEXT
 	ds.Total = rowNum
-	ds.Geotype = x + "," + y
+	ds.Geotype = GeoType(x + "," + y)
 	ds.Crs = "WGS84"
 	ds.Rows = records
 	flds, err := json.Marshal(fields)
@@ -357,14 +351,14 @@ func (ds *DataSource) LoadFromJSON() error {
 	geoType := ft.Geometry.GeoJSONType()
 	var fields []Field
 	for k, v := range ft.Properties {
-		var t string
+		var t FieldType
 		switch v.(type) {
 		case bool:
-			t = "bool" //or 'timestamp with time zone'
+			t = Bool //or 'timestamp with time zone'
 		case float64:
-			t = "float"
+			t = Float
 		default: //string/map[string]interface{}/[]interface{}/nil->对象/数组都作string处理
-			t = "string"
+			t = String
 		}
 		fields = append(fields, Field{
 			Name: k,
@@ -401,7 +395,7 @@ func (ds *DataSource) LoadFromJSON() error {
 
 	ds.Format = GEOJSONEXT
 	ds.Total = rowNum
-	ds.Geotype = geoType
+	ds.Geotype = GeoType(geoType)
 	ds.Crs = "WGS84"
 	ds.Rows = rows
 	flds, err := json.Marshal(fields)
@@ -431,16 +425,16 @@ func (ds *DataSource) LoadFromShp() error {
 	}
 	var fields []Field
 	for _, v := range shpfields {
-		var t string
+		var t FieldType
 		switch v.Fieldtype {
 		case 'C':
-			t = "string"
+			t = String
 		case 'N':
-			t = "int"
+			t = Int
 		case 'F':
-			t = "float"
+			t = Float
 		case 'D':
-			t = "date"
+			t = Date
 		}
 		fields = append(fields, Field{
 			Name: v.String(),
@@ -500,7 +494,7 @@ func (ds *DataSource) LoadFromShp() error {
 	ds.Format = SHPEXT
 	ds.Size = size
 	ds.Total = total
-	ds.Geotype = geoType
+	ds.Geotype = GeoType(geoType)
 	ds.Crs = "WGS84"
 	ds.Rows = rows
 	jfs, err := json.Marshal(fields)
@@ -540,7 +534,7 @@ func (ds *DataSource) getCreateHeaders() []string {
 	}
 	if ds.Geotype != "" {
 		dbtype := ds.Geotype
-		if strings.Contains(ds.Geotype, ",") {
+		if strings.Contains(string(ds.Geotype), ",") {
 			dbtype = Point
 		}
 		fts = append(fts, fmt.Sprintf("geom geometry(%s,4326)", dbtype))
@@ -610,391 +604,335 @@ func (ds *DataSource) getColumnTypes() ([]*sql.ColumnType, error) {
 }
 
 //Import 数据源入库import geojson or csv data, can transform from gcj02 or bd09
-func (ds *DataSource) Import() *Task {
-	task := &Task{
-		ID:   ds.ID,
-		Type: "dataset",
-		Pipe: make(chan struct{}),
-	}
-	//任务队列
-	select {
-	case taskQueue <- task:
-		// default:
-		// 	log.Warningf("task queue overflow, request refused...")
-		// 	task.Status = "task queue overflow, request refused"
-		// 	return task, fmt.Errorf("task queue overflow, request refused")
-	}
-	//任务集
-	taskSet.Store(task.ID, task)
-	go func(ds *DataSource, ts *Task) {
-		tableName := strings.ToLower(ds.ID)
+func (ds *DataSource) Import(task *Task) error {
+	tableName := strings.ToLower(ds.ID)
+	switch ds.Format {
+	case CSVEXT, GEOJSONEXT:
+		err := ds.createDataTable()
+		if err != nil {
+			return err
+		}
+		cols, err := ds.getColumnTypes()
+		if err != nil {
+			return err
+		}
+		var headers []string
+		headermap := make(map[string]int)
+		for i, col := range cols {
+			headers = append(headers, col.Name())
+			headermap[col.Name()] = i
+		}
+
 		switch ds.Format {
-		case CSVEXT, GEOJSONEXT:
-			err := ds.createDataTable()
+		case CSVEXT:
+			prepValues := func(row []string, cols []*sql.ColumnType) string {
+				var vals []string
+				for i, col := range cols {
+					s := stringFormat(col.DatabaseTypeName(), row[i])
+					vals = append(vals, s)
+				}
+				return strings.Join(vals, ",")
+			}
+			t := time.Now()
+			file, err := os.Open(ds.Path)
 			if err != nil {
-				task.Err = err.Error()
-				task.Pipe <- struct{}{}
-				return
+				return err
 			}
-			cols, err := ds.getColumnTypes()
+			defer file.Close()
+			reader, err := csvReader(file, ds.Encoding)
+			csvHeaders, err := reader.Read()
 			if err != nil {
-				task.Err = err.Error()
-				task.Pipe <- struct{}{}
-				return
+				return err
 			}
-			var headers []string
-			headermap := make(map[string]int)
-			for i, col := range cols {
-				headers = append(headers, col.Name())
-				headermap[col.Name()] = i
+			if len(cols) != len(csvHeaders) {
+				log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
 			}
-
-			switch ds.Format {
-			case CSVEXT:
-				prepValues := func(row []string, cols []*sql.ColumnType) string {
-					var vals []string
-					for i, col := range cols {
-						s := stringFormat(col.DatabaseTypeName(), row[i])
-						vals = append(vals, s)
+			prepIndex := func(cols []*sql.ColumnType, name string) int {
+				for i, col := range cols {
+					if col.Name() == strings.ToLower(name) {
+						return i
 					}
-					return strings.Join(vals, ",")
 				}
-				t := time.Now()
-				file, err := os.Open(ds.Path)
+				return -1
+			}
+			ix, iy := -1, -1
+			xy := strings.Split(string(ds.Geotype), ",")
+			if len(xy) == 2 {
+				ix = prepIndex(cols, xy[0])
+				iy = prepIndex(cols, xy[1])
+			}
+			isgeom := (ix != -1 && iy != -1)
+			if isgeom {
+				headers = append(headers, "geom")
+			}
+			tt := time.Since(t)
+			log.Info(`process headers and get count, `, tt)
+			var vals []string
+			task.Status = "processing"
+			t = time.Now()
+			count := 0
+			for {
+				row, err := reader.Read()
+				if err == io.EOF {
+					break
+				}
 				if err != nil {
-					task.Err = `open data file error`
-					task.Pipe <- struct{}{}
-					return
+					continue
 				}
-				defer file.Close()
-				reader, err := csvReader(file, ds.Encoding)
-				csvHeaders, err := reader.Read()
-				if err != nil {
-					task.Err = fmt.Sprintf(`dataImport, read headers failed: %s`, err)
-					task.Pipe <- struct{}{}
-					return
-				}
-				if len(cols) != len(csvHeaders) {
-					log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
-					task.Err = `dbfield len != csvheader len`
-					task.Pipe <- struct{}{}
-					return
-				}
-				prepIndex := func(cols []*sql.ColumnType, name string) int {
-					for i, col := range cols {
-						if col.Name() == strings.ToLower(name) {
-							return i
-						}
-					}
-					return -1
-				}
-				ix, iy := -1, -1
-				xy := strings.Split(ds.Geotype, ",")
-				if len(xy) == 2 {
-					ix = prepIndex(cols, xy[0])
-					iy = prepIndex(cols, xy[1])
-				}
-				isgeom := (ix != -1 && iy != -1)
+				rval := prepValues(row, cols)
 				if isgeom {
-					headers = append(headers, "geom")
+					x, _ := strconv.ParseFloat(row[ix], 64)
+					y, _ := strconv.ParseFloat(row[iy], 64)
+					switch ds.Crs {
+					case GCJ02:
+						x, y = Gcj02ToWgs84(x, y)
+					case BD09:
+						x, y = Bd09ToWgs84(x, y)
+					default: //WGS84 & CGCS2000
+					}
+					geom := fmt.Sprintf(`ST_SetSRID(ST_Point(%f, %f),4326)`, x, y)
+					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, geom))
+				} else {
+					vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 				}
-				tt := time.Since(t)
-				log.Info(`process headers and get count, `, tt)
-				var vals []string
-				task.Status = "processing"
-				t = time.Now()
-				count := 0
-				for {
-					row, err := reader.Read()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						continue
-					}
-					rval := prepValues(row, cols)
-					if isgeom {
-						x, _ := strconv.ParseFloat(row[ix], 64)
-						y, _ := strconv.ParseFloat(row[iy], 64)
-						switch ds.Crs {
-						case GCJ02:
-							x, y = Gcj02ToWgs84(x, y)
-						case BD09:
-							x, y = Bd09ToWgs84(x, y)
-						default: //WGS84 & CGCS2000
+				if count%1000 == 0 {
+					go func(vs []string) {
+						t := time.Now()
+						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+						query := db.Exec(st)
+						err := query.Error
+						if err != nil {
+							log.Error(err)
 						}
-						geom := fmt.Sprintf(`ST_SetSRID(ST_Point(%f, %f),4326)`, x, y)
-						vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, geom))
-					} else {
-						vals = append(vals, fmt.Sprintf(`(%s)`, rval))
-					}
-					if count%1000 == 0 {
-						go func(vs []string) {
-							t := time.Now()
-							st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-							query := db.Exec(st)
-							err := query.Error
-							if err != nil {
-								task.Err = err.Error()
-							}
-							log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
-						}(vals)
-						var nvals []string
-						vals = nvals
-					}
-					task.Progress = int(count / ds.Total / 5)
-					count++
+						log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
+					}(vals)
+					var nvals []string
+					vals = nvals
 				}
-				t = time.Now()
-				task.Status = "importing"
-				st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-				query := db.Exec(st)
-				err = query.Error
+				task.Progress = int(count / ds.Total / 5)
+				count++
+			}
+			t = time.Now()
+			task.Status = "importing"
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			query := db.Exec(st)
+			err = query.Error
+			if err != nil {
+				log.Errorf(`task failed, details:%s`, err)
+			}
+			log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
+			return nil
+		case GEOJSONEXT:
+			prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
+				vals := make([]string, len(cols))
+				for k, v := range props {
+					ki, ok := headermap[strings.ToLower(k)]
+					if ok {
+						vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
+					}
+				}
+				// for i, col := range cols {
+				// 	var s string
+				// 	v, ok := props[headers[i]]
+				// 	if ok {
+				// 		s = interfaceFormat(col.DatabaseTypeName(), v)
+				// 	}
+				// 	vals = append(vals, s)
+				// }
+				return strings.Join(vals, ",")
+			}
+			s := time.Now()
+			file, err := os.Open(ds.Path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			decoder, err := jsonDecoder(file, ds.Encoding)
+			if err != nil {
+				return err
+			}
+			err = movetoFeatures(decoder)
+			if err != nil {
+				return err
+			}
+			type Feature struct {
+				Type       string                 `json:"type"`
+				Geometry   json.RawMessage        `json:"geometry"`
+				Properties map[string]interface{} `json:"properties"`
+			}
+
+			task.Status = "processing"
+			var rowNum int
+			var vals []string
+			for decoder.More() {
+				ft := &Feature{}
+				err := decoder.Decode(ft)
 				if err != nil {
-					log.Errorf(`task failed, details:%s`, err)
-					task.Status = "failed"
+					log.Errorf(`decode feature error, details:%s`, err)
+					continue
 				}
-				log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
-				task.Succeed = count
-				task.Progress = 100
-				task.Status = "finished"
-				task.Err = ""
-				task.Pipe <- struct{}{}
-				return
-			case GEOJSONEXT:
-				prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
-					vals := make([]string, len(cols))
-					for k, v := range props {
-						ki, ok := headermap[strings.ToLower(k)]
-						if ok {
-							vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
+				rval := prepValues(ft.Properties, cols)
+				// switch ds.Crs {
+				// case GCJ02:
+				// 	ft.Geometry.GCJ02ToWGS84()
+				// case BD09:
+				// 	ft.Geometry.BD09ToWGS84()
+				// default: //WGS84 & CGCS2000
+				// }
+
+				// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
+				// err := db.Exec(s).Error
+				// if err != nil {
+				// 	log.Info(err)
+				// }
+				// geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
+				// if err != nil {
+				// 	log.Errorf(`preper geometry error, details:%s`, err)
+				// 	continue
+				// }
+				// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
+				// gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
+				gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
+				vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
+				// fmt.Printf(`(%s,%s)/n`, rval, gval)
+				if rowNum%1000 == 0 {
+					go func(vs []string) {
+						t := time.Now()
+						st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+						query := db.Exec(st)
+						err := query.Error
+						if err != nil {
+							log.Error(err)
 						}
-					}
-					// for i, col := range cols {
-					// 	var s string
-					// 	v, ok := props[headers[i]]
-					// 	if ok {
-					// 		s = interfaceFormat(col.DatabaseTypeName(), v)
-					// 	}
-					// 	vals = append(vals, s)
-					// }
-					return strings.Join(vals, ",")
+						log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
+					}(vals)
+					var nvals []string
+					vals = nvals
 				}
-				s := time.Now()
-				file, err := os.Open(ds.Path)
-				if err != nil {
-					task.Err = `open data file error`
-					task.Pipe <- struct{}{}
-					return
-				}
-				defer file.Close()
-				decoder, err := jsonDecoder(file, ds.Encoding)
-				if err != nil {
-					task.Err = `open data file error`
-					task.Pipe <- struct{}{}
-					return
-				}
-				err = movetoFeatures(decoder)
-				if err != nil {
-					task.Err = `open data file error`
-					task.Pipe <- struct{}{}
-					return
-				}
-				type Feature struct {
-					Type       string                 `json:"type"`
-					Geometry   json.RawMessage        `json:"geometry"`
-					Properties map[string]interface{} `json:"properties"`
-				}
-
-				t := time.Now()
-				task.Status = "processing"
-				var rowNum int
-				var vals []string
-				for decoder.More() {
-					ft := &Feature{}
-					err := decoder.Decode(ft)
-					if err != nil {
-						log.Errorf(`decode feature error, details:%s`, err)
-						continue
-					}
-					rval := prepValues(ft.Properties, cols)
-					// switch ds.Crs {
-					// case GCJ02:
-					// 	ft.Geometry.GCJ02ToWGS84()
-					// case BD09:
-					// 	ft.Geometry.BD09ToWGS84()
-					// default: //WGS84 & CGCS2000
-					// }
-
-					// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
-					// err := db.Exec(s).Error
-					// if err != nil {
-					// 	log.Info(err)
-					// }
-					// geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
-					// if err != nil {
-					// 	log.Errorf(`preper geometry error, details:%s`, err)
-					// 	continue
-					// }
-					// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
-					// gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
-					gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
-					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
-					// fmt.Printf(`(%s,%s)/n`, rval, gval)
-					if rowNum%1000 == 0 {
-						go func(vs []string) {
-							t := time.Now()
-							st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-							query := db.Exec(st)
-							err := query.Error
-							if err != nil {
-								task.Err = err.Error()
-							}
-							log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
-						}(vals)
-						var nvals []string
-						vals = nvals
-					}
-					task.Progress = int(rowNum / ds.Total / 2)
-					rowNum++
-				}
-				fmt.Println("geojson process ", time.Since(t))
-				fmt.Printf("total features %d, takes: %v\n", rowNum, time.Since(s))
-				task.Status = "importing"
-				t = time.Now()
-				st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-				query := db.Exec(st)
-				err = query.Error
-				if err != nil {
-					task.Err = err.Error()
-				}
-				fmt.Println("geojson insert ", time.Since(t))
-				task.Count = rowNum
-				task.Succeed = int(query.RowsAffected)
-				task.Progress = 100
-				task.Status = "finished"
-				task.Pipe <- struct{}{}
-				return
+				task.Progress = int(rowNum / ds.Total / 2)
+				rowNum++
 			}
-		case SHPEXT, KMLEXT, GPXEXT:
-			var params []string
-			//设置数据库
-			params = append(params, []string{"-f", "PostgreSQL"}...)
-			pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
-				viper.GetString("db.database"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
-			params = append(params, pg)
-			//显示进度,读取outbuffer缓冲区
-			params = append(params, "-progress")
-			//跳过失败
-			// params = append(params, "-skipfailures")//此选项不能开启，开启后windows会非常慢
-			params = append(params, []string{"-nln", tableName}...)
-			params = append(params, []string{"-lco", "FID=gid"}...)
-			params = append(params, []string{"-lco", "GEOMETRY_NAME=geom"}...)
-			params = append(params, []string{"-lco", "LAUNDER=NO"}...)
-			params = append(params, []string{"-lco", "EXTRACT_SCHEMA_FROM_LAYER_NAME=NO"}...)
-			// params = append(params, []string{"-fid", "gid"}...)
-			// params = append(params, []string{"-geomfield", "geom"}...)
-			//覆盖or更新选项
-			overwrite := true
-			if overwrite {
-				// params = append(params, "-overwrite")
-				//-overwrite not works
-				params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
-			} else {
-				params = append(params, "-update") //open in update model/用更新模式打开,而不是尝试新建
-				params = append(params, "-append")
-			}
-
-			switch ds.Format {
-			case SHPEXT:
-				//开启拷贝模式
-				//--config PG_USE_COPY YES
-				params = append(params, []string{"--config", "PG_USE_COPY", "YES"}...)
-				//每个事务group大小
-				// params = append(params, "-gt 65536")
-
-				//数据编码选项
-				fmt.Println(ds.Encoding)
-				//客户端环境变量
-				//SET PGCLIENTENCODINUTF8G=GBK or 'SET client_encoding TO encoding_name'
-				// params = append(params, []string{"-sql", "SET client_encoding TO GBK"}...)
-				//test first select client_encoding;
-				//设置源文件编码
-				switch ds.Encoding {
-				case "gbk", "big5", "gb18030":
-					params = append(params, []string{"--config", "SHAPE_ENCODING", fmt.Sprintf("%s", strings.ToUpper(ds.Encoding))}...)
-				}
-				//PROMOTE_TO_MULTI can be used to automatically promote layers that mix polygon or multipolygons to multipolygons, and layers that mix linestrings or multilinestrings to multilinestrings. Can be useful when converting shapefiles to PostGIS and other target drivers that implement strict checks for geometry types.
-				params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
-			}
-			absPath, err := filepath.Abs(ds.Path)
+			log.Info("geojson process ", time.Since(s))
+			task.Status = "importing"
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s,geom) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			query := db.Exec(st)
+			err = query.Error
 			if err != nil {
 				log.Error(err)
 			}
-			params = append(params, absPath)
-			if runtime.GOOS == "windows" {
-				paramsString := strings.Join(params, ",")
-				decoder := mahonia.NewDecoder("gbk")
-				paramsString = decoder.ConvertString(paramsString)
-				log.Println("convert to gbk, ", paramsString)
-				params = strings.Split(paramsString, ",")
-			}
-			task.Status = "importing"
-			log.Info(params)
-			var stdoutBuf, stderrBuf bytes.Buffer
-			cmd := exec.Command("ogr2ogr", params...)
-			// cmd.Stdout = &stdout
-			stdoutIn, _ := cmd.StdoutPipe()
-			stderrIn, _ := cmd.StderrPipe()
-			// var errStdout, errStderr error
-			stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
-			stderr := io.MultiWriter(os.Stderr, &stderrBuf)
-			err = cmd.Start()
-			if err != nil {
-				log.Errorf("cmd.Start() failed with '%s'\n", err)
-				task.Err = err.Error()
-			}
-			go func() {
-				io.Copy(stdout, stdoutIn)
-			}()
-			go func() {
-				io.Copy(stderr, stderrIn)
-			}()
-			ticker := time.NewTicker(time.Second)
-			go func(task *Task) {
-				for range ticker.C {
-					p := len(stdoutBuf.Bytes())*2 + 2
-					if p < 100 {
-						task.Progress = p
-					} else {
-						task.Progress = 100
-					}
-				}
-			}(task)
-
-			err = cmd.Wait()
-			if err != nil {
-				log.Errorf("cmd.Run() failed with %s\n", err)
-				task.Err = err.Error()
-			}
-			// if errStdout != nil || errStderr != nil {
-			// 	log.Errorf("failed to capture stdout or stderr\n")
-			// }
-			// outStr, errStr := string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())
-			// fmt.Printf("\nout:\n%s\nerr:\n%s\n", outStr, errStr)
-			ticker.Stop()
-			task.Status = "finished"
-			task.Pipe <- struct{}{}
-			return
-			//保存任务
-		default:
-			task.Err = fmt.Sprintf(`dataImport, importing unkown format data:%s`, ds.Format)
-			task.Pipe <- struct{}{}
-			return
+			log.Infof("total features %d, takes: %v\n", rowNum, time.Since(s))
+			return nil
 		}
-	}(ds, task)
+	case SHPEXT, KMLEXT, GPXEXT:
+		var params []string
+		//设置数据库
+		params = append(params, []string{"-f", "PostgreSQL"}...)
+		pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
+			viper.GetString("db.database"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
+		params = append(params, pg)
+		//显示进度,读取outbuffer缓冲区
+		params = append(params, "-progress")
+		//跳过失败
+		// params = append(params, "-skipfailures")//此选项不能开启，开启后windows会非常慢
+		params = append(params, []string{"-nln", tableName}...)
+		params = append(params, []string{"-lco", "FID=gid"}...)
+		params = append(params, []string{"-lco", "GEOMETRY_NAME=geom"}...)
+		params = append(params, []string{"-lco", "LAUNDER=NO"}...)
+		params = append(params, []string{"-lco", "EXTRACT_SCHEMA_FROM_LAYER_NAME=NO"}...)
+		// params = append(params, []string{"-fid", "gid"}...)
+		// params = append(params, []string{"-geomfield", "geom"}...)
+		//覆盖or更新选项
+		overwrite := true
+		if overwrite {
+			// params = append(params, "-overwrite")
+			//-overwrite not works
+			params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
+		} else {
+			params = append(params, "-update") //open in update model/用更新模式打开,而不是尝试新建
+			params = append(params, "-append")
+		}
 
-	return task
+		switch ds.Format {
+		case SHPEXT:
+			//开启拷贝模式
+			//--config PG_USE_COPY YES
+			params = append(params, []string{"--config", "PG_USE_COPY", "YES"}...)
+			//每个事务group大小
+			// params = append(params, "-gt 65536")
+
+			//数据编码选项
+			//客户端环境变量
+			//SET PGCLIENTENCODINUTF8G=GBK or 'SET client_encoding TO encoding_name'
+			// params = append(params, []string{"-sql", "SET client_encoding TO GBK"}...)
+			//test first select client_encoding;
+			//设置源文件编码
+			switch ds.Encoding {
+			case "gbk", "big5", "gb18030":
+				params = append(params, []string{"--config", "SHAPE_ENCODING", fmt.Sprintf("%s", strings.ToUpper(ds.Encoding))}...)
+			}
+			//PROMOTE_TO_MULTI can be used to automatically promote layers that mix polygon or multipolygons to multipolygons, and layers that mix linestrings or multilinestrings to multilinestrings. Can be useful when converting shapefiles to PostGIS and other target drivers that implement strict checks for geometry types.
+			params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
+		}
+		absPath, err := filepath.Abs(ds.Path)
+		if err != nil {
+			log.Error(err)
+		}
+		params = append(params, absPath)
+		if runtime.GOOS == "windows" {
+			paramsString := strings.Join(params, ",")
+			decoder := mahonia.NewDecoder("gbk")
+			paramsString = decoder.ConvertString(paramsString)
+			params = strings.Split(paramsString, ",")
+		}
+		task.Status = "importing"
+		log.Info(params)
+		var stdoutBuf, stderrBuf bytes.Buffer
+		cmd := exec.Command("ogr2ogr", params...)
+		// cmd.Stdout = &stdout
+		stdoutIn, _ := cmd.StdoutPipe()
+		stderrIn, _ := cmd.StderrPipe()
+		// var errStdout, errStderr error
+		stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
+		stderr := io.MultiWriter(os.Stderr, &stderrBuf)
+		err = cmd.Start()
+		if err != nil {
+			log.Errorf("cmd.Start() failed with '%s'\n", err)
+		}
+		go func() {
+			io.Copy(stdout, stdoutIn)
+		}()
+		go func() {
+			io.Copy(stderr, stderrIn)
+		}()
+		ticker := time.NewTicker(time.Second)
+		go func(task *Task) {
+			for range ticker.C {
+				p := len(stdoutBuf.Bytes())*2 + 2
+				if p < 100 {
+					task.Progress = p
+				} else {
+					task.Progress = 100
+				}
+			}
+		}(task)
+
+		err = cmd.Wait()
+		ticker.Stop()
+		if err != nil {
+			log.Errorf("cmd.Run() failed with %s\n", err)
+			return err
+		}
+		// if errStdout != nil || errStderr != nil {
+		// 	log.Errorf("failed to capture stdout or stderr\n")
+		// }
+		// outStr, errStr := string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())
+		// fmt.Printf("\nout:\n%s\nerr:\n%s\n", outStr, errStr)
+		return nil
+		//保存任务
+	default:
+		return fmt.Errorf(`dataImport, importing unkown format data:%s`, ds.Format)
+	}
+	return nil
 }
 
 func csvReader(r io.Reader, encoding string) (*csv.Reader, error) {
