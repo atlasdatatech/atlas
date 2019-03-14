@@ -104,7 +104,7 @@ func Mostlike(data []byte) string {
 	if s := checkbom(data); s != "" {
 		return s
 	}
-	lb := check(data, []detect{&utf8{}})
+	lb := check(data, []detect{&utf8a{}})
 	if len(lb) > 0 {
 		x, y := -1, -100.0
 		for i, l := range lb {
@@ -133,7 +133,7 @@ func Possible(data []byte) []string {
 		return []string{s}
 	}
 	lb := check(data, []detect{
-		&utf8{},
+		&utf8a{},
 		&gbk{}, &big5{}, &gb18030{}})
 	if l := len(lb); l > 0 {
 		x := make(tks, l)
@@ -248,15 +248,15 @@ var freqCH = []float64{
 // [\xC0-\xDF][\x80-\xBF]
 // [\xE0-\xEF][\x80-\xBF]{2}
 // [\xF0-\xF7][\x80-\xBF]{3}
-type utf8 struct {
+type utf8a struct {
 	byte
 }
 
-func (u utf8) String() string {
+func (u utf8a) String() string {
 	return "utf-8"
 }
 
-func (u *utf8) Feed(x byte) bool {
+func (u *utf8a) Feed(x byte) bool {
 	if u.byte == 0 {
 		if x >= 0x00 && x <= 0x7F {
 			return true
@@ -282,7 +282,7 @@ func (u *utf8) Feed(x byte) bool {
 	return false
 }
 
-func (u utf8) Priority() float64 {
+func (u utf8a) Priority() float64 {
 	return 0
 }
 

@@ -934,16 +934,10 @@ func (ds *DataSource) Import() *Task {
 			params = append(params, absPath)
 			if runtime.GOOS == "windows" {
 				paramsString := strings.Join(params, ",")
-				log.Println(paramsString)
-				encoding := Mostlike([]byte(paramsString))
-				log.Println("most like encoding: ", encoding)
-				switch encoding {
-				case "", "utf-8":
-					decoder := mahonia.NewDecoder("gbk")
-					paramsString = decoder.ConvertString(paramsString)
-					log.Println("convert to gbk, ", paramsString)
-					params = strings.Split(paramsString, ",")
-				}
+				decoder := mahonia.NewDecoder("gbk")
+				paramsString = decoder.ConvertString(paramsString)
+				log.Println("convert to gbk, ", paramsString)
+				params = strings.Split(paramsString, ",")
 			}
 			task.Status = "importing"
 			log.Info(params)

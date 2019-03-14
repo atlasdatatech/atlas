@@ -1076,7 +1076,7 @@ func getTileLayerJSON(c *gin.Context) {
 	// add our layer to our tile layer response
 	tileJSON.VectorLayers = append(tileJSON.VectorLayers, layer)
 
-	tileURL := fmt.Sprintf("%v/datasets/%v/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), uid, did)
+	tileURL := fmt.Sprintf("%v/datasets/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), did)
 
 	// build our URL scheme for the tile grid
 	tileJSON.Tiles = append(tileJSON.Tiles, tileURL)
