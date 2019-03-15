@@ -39,7 +39,7 @@ func saveSource(c *gin.Context) (*DataSource, error) {
 	}
 	id, _ := shortid.Generate()
 	name := strings.TrimSuffix(file.Filename, ext)
-	dst := filepath.Join(dir, uid, id+lext)
+	dst := filepath.Join(dir, uid, name+"."+id+lext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		return nil, fmt.Errorf(`handleSources, saving uploaded file error, details: %s`, err)
 	}
@@ -74,11 +74,9 @@ func loadZipSources(ds *DataSource) ([]*DataSource, error) {
 				subase = filepath.Base(file)
 			}
 			ext := filepath.Ext(file)
-			subname := strings.TrimSuffix(subase, ext)
-			list := filepath.SplitList(subase)
-			if len(list) > 0 {
-				subname = strings.Join(list, "_")
-			}
+			subname := filepath.ToSlash(subase)
+			subname = strings.Replace(subname, "/", "_", -1)
+			subname = strings.TrimSuffix(subname, ext)
 			subid, _ := shortid.Generate()
 			subds := &DataSource{
 				ID:     subid,

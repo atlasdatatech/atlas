@@ -242,7 +242,7 @@ func (dt *Dataset) Tags() []string {
 func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	tlayer := &TileLayer{
 		ID:      dt.ID,
-		Name:    dt.Name,
+		Name:    dt.ID,
 		MinZoom: 0,
 		MaxZoom: 20,
 	}

@@ -24,6 +24,7 @@ import (
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	// "github.com/paulmach/orb/encoding/wkb"
 )
 
@@ -436,8 +437,13 @@ func (ds *DataSource) LoadFromShp() error {
 		case 'D':
 			t = Date
 		}
+		fn := v.String()
+		ns, err := simplifiedchinese.GB18030.NewDecoder().String(fn)
+		if err == nil {
+			fn = ns
+		}
 		fields = append(fields, Field{
-			Name: v.String(),
+			Name: fn,
 			Type: t,
 		})
 	}

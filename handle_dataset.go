@@ -297,23 +297,13 @@ func previewFile(c *gin.Context) {
 		return
 	}
 	ds.Encoding = encoding
-	err = nil
-	switch ds.Format {
-	case CSVEXT:
-		err = ds.LoadFromCSV()
-	case GEOJSONEXT:
-		err = ds.LoadFromJSON()
-	case SHPEXT:
-		err = ds.LoadFromShp()
-	default:
-		err = fmt.Errorf("unkown format")
-	}
+	err = ds.LoadFrom()
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
-	res.DoneData(c, ds.Rows)
+	res.DoneData(c, ds)
 	return
 }
 
@@ -1349,7 +1339,7 @@ func viewDataset(c *gin.Context) {
 	c.HTML(http.StatusOK, "dataset.html", gin.H{
 		"Title": "PerView",
 		"ID":    did,
-		"Name":  strings.Split(did, ".")[0],
+		"Name":  did,
 		"URL":   tileurl,
 		"FMT":   "pbf",
 	})

@@ -469,11 +469,12 @@ func UnZipToDir(zipfile string, outdir string) error {
 		pn := filepath.Join(outdir, name)
 		// log.Infof("Uncompress: %s -> %s", name, pn)
 		if f.FileInfo().IsDir() {
-			err := os.Mkdir(pn, os.ModePerm)
+			err := os.MkdirAll(pn, os.ModePerm)
 			if err != nil {
 				log.Warnf("unzip %s: %v", zipfile, err)
 				return err
 			}
+			continue
 		}
 		ext := filepath.Ext(name)
 		pn = strings.TrimSuffix(pn, ext) + strings.ToLower(ext)
