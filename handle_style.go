@@ -207,7 +207,7 @@ func privateStyle(c *gin.Context) {
 	// casEnf.RemovePolicy(USER, "/ts/x/*", "GET")
 	// casEnf.RemovePolicy(USER, "/datasets/x/*", "GET")
 	s.Public = false
-	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
+	err := db.Model(s).Select("public").Updates(map[string]interface{}{"public": false}).Error
 	if err != nil {
 		log.Errorf(`privateStyle, update %s's style (%s) error, details: %s`, uid, s.ID, err)
 		res.Fail(c, 5001)
