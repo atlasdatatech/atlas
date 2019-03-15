@@ -406,7 +406,6 @@ func ExtractClaims(c *gin.Context) MapClaims {
 	if !exists {
 		return make(MapClaims)
 	}
-
 	return claims.(MapClaims)
 }
 
