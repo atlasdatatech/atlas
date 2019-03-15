@@ -836,6 +836,7 @@ func (ds *DataSource) Import(task *Task) error {
 		pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
 			viper.GetString("db.database"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
 		params = append(params, pg)
+		params = append(params, []string{"-t_srs", "EPSG:4326"}...)
 		//显示进度,读取outbuffer缓冲区
 		params = append(params, "-progress")
 		//跳过失败
@@ -1146,23 +1147,28 @@ func toMbtiles(outfile string, infiles []string) error {
 	params = append(params, "-o")
 	params = append(params, absPath)
 	params = append(params, "--force")
+	params = append(params, "--drop-densest-as-needed")
+	params = append(params, "--extend-zooms-if-still-dropping")
 	params = append(params, infiles...)
-	if runtime.GOOS == "windows" {
-		decoder := mahonia.NewDecoder("gbk")
-		gbk := strings.Join(params, ",")
-		gbk = decoder.ConvertString(gbk)
-		params = strings.Split(gbk, ",")
-	}
 	fmt.Println(params)
+	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd := exec.Command("tippecanoe", params...)
+	stdoutIn, _ := cmd.StdoutPipe()
+	stderrIn, _ := cmd.StderrPipe()
+	// var errStdout, errStderr error
+	stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
+	stderr := io.MultiWriter(os.Stderr, &stderrBuf)
 	err = cmd.Start()
-	fmt.Println("cmd.start...")
 	if err != nil {
 		return err
 	}
+	go func() {
+		io.Copy(stdout, stdoutIn)
+	}()
+	go func() {
+		io.Copy(stderr, stderrIn)
+	}()
 	err = cmd.Wait()
-	fmt.Println("cmd.wait...")
-	fmt.Println(err)
 	if err != nil {
 		return err
 	}
