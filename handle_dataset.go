@@ -137,14 +137,12 @@ func updateDatasetInfo(c *gin.Context) {
 		res.Fail(c, 4046)
 		return
 	}
-	body := &Dataset{}
-	err := c.Bind(body)
+	err := c.Bind(ds)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	body.ID = ds.ID
-	err = body.Update()
+	err = ds.Update()
 	if err != nil {
 		log.Errorf("updateStyleInfo, update %s's style (%s) info error, details: %s", uid, did, err)
 		res.FailErr(c, err)

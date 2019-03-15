@@ -139,14 +139,12 @@ func updateStyleInfo(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	body := &Style{}
-	err := c.Bind(body)
+	err := c.Bind(s)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	body.ID = s.ID
-	err = body.Update()
+	err = s.Update()
 	if err != nil {
 		log.Errorf("updateStyleInfo, update %s's style (%s) info error, details: %s", uid, sid, err)
 		res.FailErr(c, err)

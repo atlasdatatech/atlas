@@ -131,14 +131,12 @@ func updateTilesetInfo(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	body := &Tileset{}
-	err := c.Bind(body)
+	err := c.Bind(ts)
 	if err != nil {
 		res.Fail(c, 4001)
 		return
 	}
-	body.ID = ts.ID
-	err = body.Update()
+	err = ts.Update()
 	if err != nil {
 		log.Errorf("updateStyleInfo, update %s's tileset (%s) info error, details: %s", uid, tid, err)
 		res.FailErr(c, err)
