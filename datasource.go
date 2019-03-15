@@ -48,8 +48,8 @@ type DataSource struct {
 	Geotype   GeoType         `json:"geotype"`
 	Rows      [][]string      `json:"rows" gorm:"-"`
 	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 //UpInsert 更新/创建数据集概要

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 //UserSet 用户入口
@@ -152,7 +153,7 @@ func LoadServiceSet(user string) (*ServiceSet, error) {
 func (ss *ServiceSet) AppendStyles() error {
 	//遍历目录下所有styles
 	files := make(map[string]string)
-	dir := filepath.Join("styles", ss.Owner)
+	dir := filepath.Join(viper.GetString("paths.styles"), ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -281,7 +282,7 @@ func (ss *ServiceSet) AppendFonts() error {
 
 	//遍历目录下所有fonts
 	files := make(map[string]string)
-	dir := filepath.Join("fonts", ss.Owner)
+	dir := filepath.Join(viper.GetString("paths.fonts"), ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -387,7 +388,7 @@ func (ss *ServiceSet) ServeFonts() error {
 func (ss *ServiceSet) AppendTilesets() error {
 	//遍历dir目录下所有.mbtiles
 	files := make(map[string]string)
-	dir := filepath.Join("tilesets", ss.Owner)
+	dir := filepath.Join(viper.GetString("paths.tilesets"), ss.Owner)
 	items, err := ioutil.ReadDir(dir)
 	if err != nil {
 		log.Error(err)
@@ -423,7 +424,12 @@ func (ss *ServiceSet) AppendTilesets() error {
 		_, ok := quickmap[id]
 		if !ok {
 			//加载文件
-			tileset, err := LoadTileset(file)
+			ds := &DataSource{
+				ID:   id,
+				Name: id,
+				Path: file,
+			}
+			tileset, err := LoadTileset(ds)
 			if err != nil {
 				log.Errorf("AddTilesets, could not load font %s, details: %s", file, err)
 				continue
@@ -583,7 +589,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 				if task.Error == "" {
 					//todo goroute 导入，以下事务需在task完成后处理
 					dt := ds.toDataset()
-					err = dt.Insert()
+					err = dt.UpInsert()
 					if err != nil {
 						log.Errorf(`AppendDatasets, upinsert dataset info error, details: %s`, err)
 						return

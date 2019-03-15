@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/teris-io/shortid"
@@ -25,14 +26,20 @@ func saveSource(c *gin.Context) (*DataSource, error) {
 	}
 	ext := filepath.Ext(file.Filename)
 	lext := strings.ToLower(ext)
+	path := c.Request.URL.Path
+	dir := path[1:]
+	dir = dir[:strings.Index(dir, "/")]
 	switch lext {
 	case CSVEXT, GEOJSONEXT, KMLEXT, GPXEXT, ZIPEXT:
+		dir = viper.GetString("paths.uploads")
+	case MBTILESEXT:
+		dir = viper.GetString("paths.tilesets")
 	default:
 		return nil, fmt.Errorf("unsupport format")
 	}
 	id, _ := shortid.Generate()
 	name := strings.TrimSuffix(file.Filename, ext)
-	dst := filepath.Join("uploads", uid, name+"."+id+lext)
+	dst := filepath.Join(dir, uid, id+lext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		return nil, fmt.Errorf(`handleSources, saving uploaded file error, details: %s`, err)
 	}
@@ -52,7 +59,11 @@ func loadZipSources(ds *DataSource) ([]*DataSource, error) {
 	var dss []*DataSource
 	switch ds.Format {
 	case ZIPEXT:
-		tmpdir := UnZipToDir(ds.Path)
+		tmpdir := strings.TrimSuffix(ds.Path, filepath.Ext(ds.Path))
+		err := UnZipToDir(ds.Path, tmpdir)
+		if err != nil {
+			return nil, err
+		}
 		files, err := getDatafiles(tmpdir)
 		if err != nil {
 			return nil, err
@@ -125,7 +136,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	log.Infof("convert %d sources to geojson, takes: %v", len(dss), time.Since(s))
 	s = time.Now()
 
-	tsfile := filepath.Join("tilesets", task.Owner, task.ID+MBTILESEXT)
+	tsfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, task.ID+MBTILESEXT)
 	err := toMbtiles(tsfile, inputfiles)
 	if err != nil {
 		log.Error(err)
@@ -133,8 +144,15 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	}
 	log.Infof("publish %d data source to tilesets(%s), takes: %v", len(inputfiles), tsfile, time.Since(s))
 	s = time.Now()
+
+	ds := &DataSource{
+		ID:    task.ID,
+		Name:  task.Name,
+		Owner: task.Owner,
+		Path:  tsfile,
+	}
 	//加载mbtiles
-	ts, err := LoadTileset(tsfile)
+	ts, err := LoadTileset(ds)
 	if err != nil {
 		log.Errorf("publishTileset, could not load the new tileset %s, details: %s", tsfile, err)
 		return nil, err

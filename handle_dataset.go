@@ -217,7 +217,7 @@ func oneClickImport(c *gin.Context) {
 			if task.Error == "" {
 				//todo goroute 导入，以下事务需在task完成后处理
 				dt := ds.toDataset()
-				err = dt.Insert()
+				err = dt.UpInsert()
 				if err != nil {
 					log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 					res.FailErr(c, err)
@@ -256,6 +256,7 @@ func uploadFile(c *gin.Context) {
 		return
 	}
 	dss, _ := loadZipSources(ds)
+	loadFromSources(dss)
 	for _, ds := range dss {
 		ds.Owner = uid
 		err = ds.Insert()
@@ -374,7 +375,7 @@ func importFile(c *gin.Context) {
 		if task.Error == "" {
 			//todo goroute 导入，以下事务需在task完成后处理
 			dt := ds.toDataset()
-			err = dt.Insert()
+			err = dt.UpInsert()
 			if err != nil {
 				log.Errorf(`dataImport, upinsert dataset info error, details: %s`, err)
 				res.FailErr(c, err)

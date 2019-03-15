@@ -11,13 +11,13 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
-	"github.com/teris-io/shortid"
 )
 
-//listTilesets list user's tilesets
+//listTilesets 获取服务集列表
 func listTilesets(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -100,7 +100,7 @@ func listTilesets(c *gin.Context) {
 	// res.DoneData(c, tss)
 }
 
-//getTilesetInfo list user's tilesets info
+//getTilesetInfo 获取服务集信息
 func getTilesetInfo(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -117,6 +117,7 @@ func getTilesetInfo(c *gin.Context) {
 	res.DoneData(c, ts)
 }
 
+//updateTilesetInfo 更新服务集信息
 func updateTilesetInfo(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -159,29 +160,11 @@ func uploadTileset(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	// style source
-	file, err := c.FormFile("file")
+	ds, err := saveSource(c)
+	//加载Tileset
+	ts, err := LoadTileset(ds)
 	if err != nil {
-		log.Warnf(`uploadTileset, read %s's upload file error, details: %s`, uid, err)
-		res.Fail(c, 4048)
-		return
-	}
-	ext := filepath.Ext(file.Filename)
-	name := strings.TrimSuffix(file.Filename, ext)
-	tid, _ := shortid.Generate()
-	tid = name + "." + tid
-	dst := filepath.Join("tilesets", uid, tid+ext)
-
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`uploadTileset, save %s's upload file error, details: %s`, uid, err)
-		res.Fail(c, 5002)
-		return
-	}
-
-	//加载文件
-	ts, err := LoadTileset(dst)
-	if err != nil {
-		log.Errorf("uploadTileset, could not load tileset %s, details: %s", dst, err)
+		log.Errorf("uploadTileset, could not load tileset %s, details: %s", ds.Path, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -190,7 +173,7 @@ func uploadTileset(c *gin.Context) {
 	//入库
 	err = ts.UpInsert()
 	if err != nil {
-		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, dst, err)
+		log.Errorf(`uploadTileset, upinsert tileset %s error, details: %s`, ts.ID, err)
 	}
 
 	//加载服务,todo 用户服务无需预加载
@@ -218,35 +201,12 @@ func replaceTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	// style source
-	file, err := c.FormFile("file")
+
+	ds, err := saveSource(c)
+	//加载Tileset
+	tileset, err := LoadTileset(ds)
 	if err != nil {
-		log.Errorf(`replaceTileset, read %s's upload file error, details: %s`, uid, err)
-		res.Fail(c, 4048)
-		return
-	}
-	ext := filepath.Ext(file.Filename)
-	name := strings.TrimSuffix(file.Filename, ext)
-	lext := strings.ToLower(ext)
-	switch lext {
-	case MBTILESEXT:
-	default:
-		log.Errorf(`replaceTileset, %s' upload tileset format error, details: %s`, uid, file.Filename)
-		res.FailMsg(c, "文件格式错误, 请上传正确的.mbtiles服务集")
-		return
-	}
-	ntid, _ := shortid.Generate()
-	ntid = name + "." + ntid
-	dst := filepath.Join("tilesets", uid, ntid+MBTILESEXT)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		log.Errorf(`replaceTileset, save %s's upload file error, details: %s`, uid, err)
-		res.Fail(c, 5002)
-		return
-	}
-	//更新服务
-	tileset, err := LoadTileset(dst)
-	if err != nil {
-		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
+		log.Errorf("replaceTileset, could not load tileset %s, details: %s", ds.Path, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -259,20 +219,21 @@ func replaceTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
+	set := userSet.service(uid)
+	set.T.Store(tileset.ID, tileset)
 	err = ts.Clean()
 	if err != nil {
 		log.Error(err)
 		res.FailErr(c, err)
 		return
 	}
+
 	//入库
 	err = tileset.UpInsert()
 	if err != nil {
 		log.Errorf(`replaceTileset, upinsert tileser %s error, details: %s`, tileset.ID, err)
 	}
-	//替换
-	set := userSet.service(uid)
-	set.T.Store(tileset.ID, tileset)
+
 	res.DoneData(c, tileset)
 }
 
@@ -393,7 +354,7 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	path := filepath.Join("tilesets", uid, dts.ID+MBTILESEXT)
+	path := filepath.Join(viper.GetString("paths.tilesets"), uid, dts.ID+MBTILESEXT)
 	// download
 	err := dts.CacheMBTiles(path)
 	if err != nil {
@@ -401,7 +362,13 @@ func createTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	ts, err := LoadTileset(path)
+	ds := &DataSource{
+		ID:    dts.ID,
+		Name:  dts.Name,
+		Owner: uid,
+		Path:  path,
+	}
+	ts, err := LoadTileset(ds)
 	if err != nil {
 		log.Errorf("createTileset, could not load tileset %s, details: %s", path, err)
 		res.FailErr(c, err)
@@ -445,14 +412,14 @@ func updateTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	dst := ""
+	ds := &DataSource{}
 	// close(dst)
 	// updatembtiles()
 	// reload(dst)
 	//更新服务
-	tileset, err := LoadTileset(dst)
+	tileset, err := LoadTileset(ds)
 	if err != nil {
-		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
+		log.Errorf("replaceTileset, could not load tileset %s, details: %s", ds.Path, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -468,7 +435,7 @@ func updateTileset(c *gin.Context) {
 	//加载服务,todo 用户服务无需预加载
 	err = tileset.Service()
 	if err != nil {
-		log.Errorf("replaceTileset, could not load tileset %s, details: %s", dst, err)
+		log.Errorf("replaceTileset, could not load tileset %s, details: %s", tileset.ID, err)
 		res.FailErr(c, err)
 		return
 	}
@@ -498,12 +465,12 @@ func downloadTileset(c *gin.Context) {
 		return
 	}
 	c.Header("Content-type", "application/octet-stream")
-	c.Header("Content-Disposition", "attachment; filename= "+ts.ID+MBTILESEXT)
+	c.Header("Content-Disposition", "attachment; filename= "+ts.Name+"."+ts.ID+MBTILESEXT)
 	io.Copy(c.Writer, file)
 	return
 }
 
-//deleteTileset create a style
+//deleteTileset 删除服务集
 func deleteTileset(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -537,7 +504,7 @@ func deleteTileset(c *gin.Context) {
 	res.Done(c, "")
 }
 
-//getTilejson get tilejson
+//getTilejson 获取服务集tilejson
 func getTileJSON(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -599,6 +566,7 @@ func getTileJSON(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+//getTile 获取瓦片数据
 func getTile(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(identityKey)
@@ -688,6 +656,7 @@ func getTile(c *gin.Context) {
 	c.Writer.Write(data)
 }
 
+//viewTile 浏览服务集
 func viewTile(c *gin.Context) {
 	// res := NewRes()
 	uid := c.GetString(identityKey)

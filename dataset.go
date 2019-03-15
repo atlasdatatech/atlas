@@ -55,8 +55,8 @@ type Dataset struct {
 	Fields    json.RawMessage `json:"fields" gorm:"type:json"` //字段列表
 	Status    bool            `json:"status" gorm:"-"`
 	tlayer    *TileLayer
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 //Service 加载服务
@@ -65,12 +65,13 @@ func (dt *Dataset) Service() error {
 	return nil
 }
 
-//Insert 更新/创建数据集概要
-func (dt *Dataset) Insert() error {
+//UpInsert 更新/创建数据集概要
+func (dt *Dataset) UpInsert() error {
 	tmp := &Dataset{}
 	err := db.Where("id = ?", dt.ID).First(tmp).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
+			dt.CreatedAt = time.Time{}
 			err = db.Create(dt).Error
 			if err != nil {
 				return err

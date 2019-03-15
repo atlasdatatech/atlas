@@ -40,36 +40,33 @@ type Tileset struct {
 	JSON      []byte     `json:"json" `   //gorm:"column:json;type:json"
 	Status    bool       `json:"status" gorm:"-"`
 	db        *sql.DB    // database connection for mbtiles file
-	Timestamp time.Time  // timestamp of file, for cache control headers
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	timestamp time.Time  // timestamp of file, for cache control headers
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 //LoadTileset 创建更新瓦片集服务
 //create or update upload data file info into database
-func LoadTileset(tsfile string) (*Tileset, error) {
-	fStat, err := os.Stat(tsfile)
+func LoadTileset(ds *DataSource) (*Tileset, error) {
+	stat, err := os.Stat(ds.Path)
 	if err != nil {
 		log.Errorf(`LoadTileset, read style file info error, details: %s`, err)
 		return nil, err
 	}
-	base := filepath.Base(tsfile)
-	ext := filepath.Ext(tsfile)
-	name := strings.TrimSuffix(base, ext)
-
 	out := &Tileset{
-		ID:        name,
+		ID:        ds.ID,
 		Version:   "v3",
-		Name:      name,
+		Name:      ds.Name,
+		Owner:     ds.Owner,
 		Public:    true, //服务集默认是公开的
-		Path:      tsfile,
-		Size:      fStat.Size(),
-		UpdatedAt: fStat.ModTime(),
+		Path:      ds.Path,
+		Size:      stat.Size(),
+		UpdatedAt: stat.ModTime(),
 		Layers:    nil,
 		JSON:      nil,
 	}
 	//Saves last modified mbtiles time for setting Last-Modified header
-	db, err := sql.Open("sqlite3", tsfile)
+	db, err := sql.Open("sqlite3", ds.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +101,7 @@ func (ts *Tileset) Service() error {
 		return err
 	}
 	ts.db = db
-	ts.Timestamp = fStat.ModTime().Round(time.Second)
+	ts.timestamp = fStat.ModTime().Round(time.Second)
 	ts.Status = true
 	return nil
 }
@@ -116,6 +113,7 @@ func (ts *Tileset) UpInsert() error {
 	err := db.Where("id = ?", ts.ID).First(tmp).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
+			ts.CreatedAt = time.Time{}
 			err = db.Create(ts).Error
 			if err != nil {
 				return err

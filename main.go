@@ -46,9 +46,7 @@ const (
 	//ADMIN 默认管理员组
 	ADMIN = "admin@group"
 	//USER 默认用户组
-	USER = "user@group"
-	//DTSSCHEMA 数据存储SCHEMA 默认用户名
-	DTSSCHEMA   = "datasets"
+	USER        = "user@group"
 	identityKey = "uid"
 	userKey     = "user"
 	//DISABLEACCESSTOKEN 不使用accesstoken
@@ -150,10 +148,12 @@ func initConf(cfgFile string) {
 	viper.SetDefault("db.database", "postgres")
 	viper.SetDefault("casbin.config", "./auth.conf")
 	viper.SetDefault("statics", "statics/")
-	viper.SetDefault("styles", "styles/")
-	viper.SetDefault("fonts", "fonts/")
-	viper.SetDefault("tilesets", "tilesets/")
-	viper.SetDefault("datasets", "datasets/")
+
+	viper.SetDefault("paths.styles", "styles")
+	viper.SetDefault("paths.fonts", "fonts")
+	viper.SetDefault("paths.tilesets", "tilesets")
+	viper.SetDefault("paths.datasets", "datasets")
+	viper.SetDefault("paths.uploads", "tmp")
 }
 
 //initDb 初始化数据库
@@ -466,7 +466,7 @@ func initEnforcer() (*casbin.Enforcer, error) {
 //initSystemUser 初始化系统用户
 func initSystemUser() {
 	CreatePaths(ATLAS)
-	os.MkdirAll(filepath.Join("fonts", ATLAS), os.ModePerm)
+	os.MkdirAll(filepath.Join(viper.GetString("paths.fonts"), ATLAS), os.ModePerm)
 
 	name := ATLAS
 	password := "1234"

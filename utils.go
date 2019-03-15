@@ -223,11 +223,11 @@ func generateToken(n int) []byte {
 
 //CreatePaths 创建用户目录
 func CreatePaths(name string) {
-	os.MkdirAll(filepath.Join("styles", name), os.ModePerm)
-	os.MkdirAll(filepath.Join("tilesets", name), os.ModePerm)
-	os.MkdirAll(filepath.Join("datasets", name), os.ModePerm)
-	os.MkdirAll(filepath.Join("uploads", name), os.ModePerm)
-	// os.MkdirAll(filepath.Join("fonts", name), os.ModePerm)
+	os.MkdirAll(filepath.Join(viper.GetString("paths.styles"), name), os.ModePerm)
+	os.MkdirAll(filepath.Join(viper.GetString("paths.tilesets"), name), os.ModePerm)
+	os.MkdirAll(filepath.Join(viper.GetString("paths.datasets"), name), os.ModePerm)
+	os.MkdirAll(filepath.Join(viper.GetString("paths.uploads"), name), os.ModePerm)
+	// os.MkdirAll(filepath.Join(viper.GetString("paths.fonts"), name), os.ModePerm)
 }
 
 func checkUser(uid string) int {
@@ -442,16 +442,19 @@ func DirCopy(src string, dst string) error {
 }
 
 //UnZipToDir 解压文件
-func UnZipToDir(zipfile string) string {
-	ext := filepath.Ext(zipfile)
-	dir := strings.TrimSuffix(zipfile, ext)
-	err := os.Mkdir(dir, os.ModePerm)
+func UnZipToDir(zipfile string, outdir string) error {
+	if outdir == "" {
+		outdir = strings.TrimSuffix(zipfile, filepath.Ext(zipfile))
+	}
+	err := os.MkdirAll(outdir, os.ModePerm)
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 	zr, err := zip.OpenReader(zipfile)
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 	defer zr.Close()
 	for _, f := range zr.File {
@@ -463,35 +466,36 @@ func UnZipToDir(zipfile string) string {
 				name = ns
 			}
 		}
-		pn := filepath.Join(dir, name)
-		log.Infof("Uncompress: %s -> %s", name, pn)
+		pn := filepath.Join(outdir, name)
+		// log.Infof("Uncompress: %s -> %s", name, pn)
 		if f.FileInfo().IsDir() {
 			err := os.Mkdir(pn, os.ModePerm)
 			if err != nil {
 				log.Warnf("unzip %s: %v", zipfile, err)
+				return err
 			}
-			continue
 		}
 		ext := filepath.Ext(name)
 		pn = strings.TrimSuffix(pn, ext) + strings.ToLower(ext)
 		w, err := os.Create(pn)
 		if err != nil {
 			log.Warnf("Cannot unzip %s: %v", zipfile, err)
-			continue
+			return err
 		}
 		defer w.Close()
 		r, err := f.Open()
 		if err != nil {
 			log.Warnf("Cannot unzip %s: %v", zipfile, err)
-			continue
+			return err
 		}
 		defer r.Close()
 		_, err = io.Copy(w, r)
 		if err != nil {
 			log.Warnf("Cannot unzip %s: %v", zipfile, err)
+			return err
 		}
 	}
-	return dir
+	return nil
 }
 
 // detectUTF8 reports whether s is a valid UTF-8 string, and whether the string

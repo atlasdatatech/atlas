@@ -8,6 +8,13 @@
 		attempts = 7
 		attemptExpiration = "-5m"
 		verification = true
+		
+	[paths]
+		styles = "styles"
+		fonts = "fonts"
+		tilesets = "tilesets"
+		datasets = "datasets"
+		uploads = "tmp"
 
 	[statics]
 		home = "statics/"

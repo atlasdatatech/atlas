@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/viper"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -57,7 +59,7 @@ func uploadFont(c *gin.Context) {
 		return
 	}
 	ext := filepath.Ext(file.Filename)
-	dst := filepath.Join("fonts", uid, file.Filename)
+	dst := filepath.Join(viper.GetString("paths.fonts"), uid, file.Filename)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		log.Errorf(`uploadFont, save %s's file error, details: %s`, uid, err)
 		res.Fail(c, 5002)
@@ -72,7 +74,12 @@ func uploadFont(c *gin.Context) {
 		return
 	}
 	if lext == ZIPEXT {
-		dst = UnZipToDir(dst)
+		outdir := strings.TrimSuffix(dst, filepath.Ext(dst))
+		err := UnZipToDir(dst, outdir)
+		if err != nil {
+			res.FailMsg(c, "上传文件解压缩错误")
+			return
+		}
 	}
 	font, err := LoadFont(dst)
 	if err != nil {

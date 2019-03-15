@@ -33,8 +33,8 @@ type Style struct {
 	Status    bool            `json:"status"`
 	Thumbnail string          `json:"thumbnail"`
 	Data      json.RawMessage `json:"-" gorm:"type:json"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 }
 
 //Service 加载服务
@@ -218,6 +218,7 @@ func (s *Style) UpInsert() error {
 	err := db.Where("id = ?", s.ID).First(tmp).Error
 	if err != nil {
 		if gorm.IsRecordNotFoundError(err) {
+			s.CreatedAt = time.Time{}
 			err = db.Create(s).Error
 			if err != nil {
 				return err
