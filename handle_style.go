@@ -169,10 +169,6 @@ func publicStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	if s.Public {
-		res.FailMsg(c, "style already public")
-		return
-	}
 
 	//添加管理员组的用户管理权限
 	casEnf.AddPolicy(USER, fmt.Sprintf("/maps/x/%s/", sid), "GET")
@@ -202,10 +198,6 @@ func privateStyle(c *gin.Context) {
 	if s == nil {
 		log.Warnf(`privateStyle, %s's style (%s) not found ^^`, uid, sid)
 		res.Fail(c, 4044)
-		return
-	}
-	if !s.Public {
-		res.FailMsg(c, "style already private")
 		return
 	}
 
