@@ -645,7 +645,7 @@ func setupRouter() *gin.Engine {
 	}
 
 	//maproute
-	maproute := r.Group("/ps")
+	maproute := r.Group("/apps")
 	maproute.Use(AuthMidHandler(authMid))
 	maproute.Use(AccessMidHandler(accessMid))
 	maproute.Use(ResourceMidHandler(casEnf))
@@ -657,7 +657,7 @@ func setupRouter() *gin.Engine {
 		maproute.GET("/:id/export/", exportMap)
 		maproute.POST("/", createMap)
 		maproute.POST("/:id/", updInsertMap)
-		maproute.POST("/:id/del/", deleteMap)
+		maproute.POST("/:id/delete/", deleteMap)
 	}
 
 	styles := r.Group("/maps")
