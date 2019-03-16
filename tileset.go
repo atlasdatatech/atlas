@@ -78,7 +78,8 @@ func LoadTileset(ds *DataSource) (*Tileset, error) {
 	}
 	format, err := detectTileFormat(data)
 	if err != nil {
-		return nil, err
+		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
+		// return nil, err
 	}
 	if format == GZIP {
 		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
@@ -288,7 +289,7 @@ func detectTileFormat(data []byte) (TileFormat, error) {
 		}
 	}
 
-	return "", errors.New("Could not detect tile format")
+	return "", errors.New("could not detect tile format")
 }
 
 // stringToFloats converts a commma-delimited string of floats to a slice of

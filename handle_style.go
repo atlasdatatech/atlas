@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -548,19 +549,20 @@ func uploadIcons(c *gin.Context) {
 			return
 		}
 	}
-	generate := true
-	if generate {
-		if _, err := os.Stat(filepath.Join(style.Path, "sprite@2x.png")); err == nil {
-			err := style.GenSprite("sprite@2x.png")
-			if err != nil {
-				log.Warnf("uploadIcons, generate sprite@2x error")
+	if len(files) > 0 {
+		items, err := ioutil.ReadDir(style.Path)
+		if err == nil {
+			for _, item := range items {
+				if item.IsDir() {
+					continue
+				}
+				if strings.HasPrefix(item.Name(), "sprite") {
+					err = os.Remove(filepath.Join(style.Path, item.Name()))
+				}
 			}
 		}
-		if _, err := os.Stat(filepath.Join(style.Path, "sprite.png")); err == nil {
-			err := style.GenSprite("sprite.png")
-			if err != nil {
-				log.Warnf("uploadIcons, generate sprite@2x error")
-			}
+		if err != nil {
+			log.Warnf("clean old sprites error, details: %s", err)
 		}
 	}
 	res.Done(c, "")
@@ -611,18 +613,20 @@ func deleteIcons(c *gin.Context) {
 			sucs = append(sucs, name)
 		}
 	}
-	if body.Regenerate {
-		if _, err := os.Stat(filepath.Join(style.Path, "sprite@2x.png")); err == nil {
-			err := style.GenSprite("sprite@2x.png")
-			if err != nil {
-				log.Warnf("uploadIcons, generate sprite@2x error")
+	if len(sucs) > 0 {
+		items, err := ioutil.ReadDir(style.Path)
+		if err == nil {
+			for _, item := range items {
+				if item.IsDir() {
+					continue
+				}
+				if strings.HasPrefix(item.Name(), "sprite") {
+					err = os.Remove(filepath.Join(style.Path, item.Name()))
+				}
 			}
 		}
-		if _, err := os.Stat(filepath.Join(style.Path, "sprite.png")); err == nil {
-			err := style.GenSprite("sprite.png")
-			if err != nil {
-				log.Warnf("uploadIcons, generate sprite@2x error")
-			}
+		if err != nil {
+			log.Warnf("clean old sprites error, details: %s", err)
 		}
 	}
 	res.DoneData(c, sucs)
@@ -947,7 +951,7 @@ func getSprite(c *gin.Context) {
 		}
 	}
 
-	file, err := ioutil.ReadFile(pathfile)
+	buf, err := ioutil.ReadFile(pathfile)
 	if err != nil {
 		log.Errorf(`getSprite, read sprite file: %v; user: %s ^^`, err, uid)
 		res.Fail(c, 5002)
@@ -958,10 +962,15 @@ func getSprite(c *gin.Context) {
 		c.Writer.Header().Set("Content-Type", "application/json")
 	}
 	if strings.HasSuffix(strings.ToLower(sprite), ".png") {
+		p, y := c.GetQuery("base64")
+		if y && p != "" {
+			b64src := base64.StdEncoding.EncodeToString(buf)
+			c.Writer.WriteString("data:image/png;base64," + b64src)
+			return
+		}
 		c.Writer.Header().Set("Content-Type", "image/png")
 	}
-
-	c.Writer.Write(file)
+	c.Writer.Write(buf)
 }
 
 //viewStyle load style map
