@@ -25,6 +25,9 @@ import (
 	"github.com/teris-io/shortid"
 )
 
+//REGEN 反向生成符号
+const REGEN = true
+
 //listStyles 获取地图列表
 func listStyles(c *gin.Context) {
 	res := NewRes()
@@ -534,6 +537,12 @@ func uploadIcons(c *gin.Context) {
 	}
 	dir := filepath.Join(style.Path, "icons")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if REGEN {
+			err := GenIconsFromSprite(style.Path)
+			if err != nil {
+				log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			}
+		}
 		err := os.MkdirAll(dir, os.ModePerm)
 		if err != nil {
 			log.Errorf(`uploadIcons, make %s's icons dir(%s) error, details: %s`, uid, dir, err)
@@ -583,8 +592,7 @@ func deleteIcons(c *gin.Context) {
 		return
 	}
 	var body struct {
-		Names      []string `json:"names" form:"names" binding:"required"`
-		Regenerate bool     `json:"regenerate" form:"regenerate"`
+		Names []string `json:"names" form:"names" binding:"required"`
 	}
 	err := c.Bind(&body)
 	if err != nil {
@@ -593,13 +601,12 @@ func deleteIcons(c *gin.Context) {
 	}
 	dir := filepath.Join(style.Path, "icons")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if !body.Regenerate {
-			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
-			return
-		}
-		err := GenIconsFromSprite(style.Path)
-		if err != nil {
-			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+		if REGEN {
+			err := GenIconsFromSprite(style.Path)
+			if err != nil {
+				log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			}
+		} else {
 			res.FailMsg(c, "regenerate icons error")
 			return
 		}
@@ -649,15 +656,13 @@ func getIcon(c *gin.Context) {
 	name := c.Param("name")
 	dir := filepath.Join(style.Path, "icons")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		regen := c.Param("regenerate")
-		if regen != "true" {
+		if REGEN {
+			err := GenIconsFromSprite(style.Path)
+			if err != nil {
+				log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			}
+		} else {
 			res.FailMsg(c, `icons not exist, if you want regenerate from sprite.json/png, set regenerate param true`)
-			return
-		}
-		err := GenIconsFromSprite(style.Path)
-		if err != nil {
-			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
-			res.FailMsg(c, "regenerate icons error")
 			return
 		}
 	}
@@ -709,14 +714,13 @@ func updateIcon(c *gin.Context) {
 
 	dir := filepath.Join(style.Path, "icons")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if !body.Regenerate {
-			res.FailMsg(c, "icons not exist, if you want regenerate from sprite.json/png, set regenerate true")
-			return
-		}
-		err := GenIconsFromSprite(style.Path)
-		if err != nil {
-			log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
-			res.FailMsg(c, "regenerate icons error")
+		if REGEN {
+			err := GenIconsFromSprite(style.Path)
+			if err != nil {
+				log.Errorf("GenIconsFromSprite, gen icons error, details: %s", err)
+			}
+		} else {
+			res.FailMsg(c, `icons not exist, if you want regenerate from sprite.json/png, set regenerate param true`)
 			return
 		}
 	}
@@ -791,6 +795,35 @@ func updateIcon(c *gin.Context) {
 	res.Done(c, "")
 }
 
+//updateSprite 刷新/重新生成sprite.json/png符号库
+func updateSprite(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	sid := c.Param("id")
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Warnf(`updateSprite, %s's style (%s) not found ^^`, uid, sid)
+		res.Fail(c, 4044)
+		return
+	}
+	sprite := c.Param("name")
+	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
+	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
+		log.Warnf(`updateSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
+		res.Fail(c, 4004)
+		return
+	}
+	if err := style.GenSprite(sprite); err != nil {
+		log.Errorf(`updateSprite, generate %s's style service (%s) sprite  error, details: %s ^^`, uid, sid, err)
+		res.FailMsg(c, "generate sprite error")
+		return
+	}
+	res.Done(c, "")
+}
+
 //uploadSprite 上传sprite.json/png符号库
 func uploadSprite(c *gin.Context) {
 	res := NewRes()
@@ -825,35 +858,6 @@ func uploadSprite(c *gin.Context) {
 	}
 	//todo update to cache
 	res.DoneData(c, sucs)
-}
-
-//updateSprite 刷新/重新生成sprite.json/png符号库
-func updateSprite(c *gin.Context) {
-	res := NewRes()
-	uid := c.GetString(identityKey)
-	if uid == "" {
-		uid = c.GetString(userKey)
-	}
-	sid := c.Param("id")
-	style := userSet.style(uid, sid)
-	if style == nil {
-		log.Warnf(`updateSprite, %s's style (%s) not found ^^`, uid, sid)
-		res.Fail(c, 4044)
-		return
-	}
-	sprite := c.Param("name")
-	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
-	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
-		log.Warnf(`updateSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
-		res.Fail(c, 4004)
-		return
-	}
-	if err := style.GenSprite(sprite); err != nil {
-		log.Errorf(`updateSprite, generate %s's style service (%s) sprite  error, details: %s ^^`, uid, sid, err)
-		res.FailMsg(c, "generate sprite error")
-		return
-	}
-	res.Done(c, "")
 }
 
 //getStyle 获取地图样式,style.json

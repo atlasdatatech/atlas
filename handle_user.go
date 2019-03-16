@@ -279,7 +279,7 @@ func sendReset(c *gin.Context) {
 		mailConf.From = viper.GetString("smtp.from.name") + " <" + viper.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "地图云-重置密码邮件"
 		mailConf.ReplyTo = body.Email
-		mailConf.HTMLPath = viper.GetString("statics.home") + "email/reset.html"
+		mailConf.HTMLPath = "/resetpw.html"
 
 		if err := mailConf.SendMail(); err != nil {
 			log.Errorf("sendReset,sending rest password email error, details: %s; user: %s ^^", err.Error(), user.Name)
