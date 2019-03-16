@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"html/template"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -197,10 +196,7 @@ func (conf *MailConfig) SendMail() (err error) {
 	m.SetHeader("To", conf.ReplyTo)
 	m.SetHeader("Subject", conf.Subject)
 	m.SetHeader("ReplyTo", conf.ReplyTo)
-
-	m.AddAlternativeWriter("text/html", func(w io.Writer) error {
-		return template.Must(template.ParseFiles(conf.HTMLPath)).Execute(w, conf.Data)
-	})
+	m.AddAlternative("text/html", fmt.Sprintf("<a>%s</a>", conf.HTMLPath))
 
 	d := gomail.NewDialer(viper.GetString("smtp.credentials.host"), viper.GetInt("smtp.credentials.port"), viper.GetString("smtp.credentials.user"), viper.GetString("smtp.credentials.password"))
 	return d.DialAndSend(m)
