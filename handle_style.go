@@ -522,7 +522,13 @@ func uploadIcons(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
 		log.Warnf(`uploadIcons, read %s's upload icons error, details: %s`, uid, err)
-		res.Fail(c, 400)
+		res.Fail(c, 4008)
+		return
+	}
+	files := form.File["files"]
+	if len(files) == 0 {
+		log.Warnf(`uploadIcons, can not find any file`)
+		res.Fail(c, 4008)
 		return
 	}
 	dir := filepath.Join(style.Path, "icons")
@@ -534,7 +540,6 @@ func uploadIcons(c *gin.Context) {
 			return
 		}
 	}
-	files := form.File["files"]
 	for _, file := range files {
 		dst := filepath.Join(dir, file.Filename)
 		if err := c.SaveUploadedFile(file, dst); err != nil {
