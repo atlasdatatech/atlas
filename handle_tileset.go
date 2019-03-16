@@ -649,7 +649,7 @@ func getTile(c *gin.Context) {
 
 	c.Header("Content-Type", ts.Format.ContentType())
 	if ts.Format == PBF {
-		// c.Header("Content-Encoding", "gzip")
+		c.Header("Content-Encoding", "gzip")
 	}
 	c.Writer.Write(data)
 }
