@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -21,7 +22,7 @@ func AuthMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 			if !mw.DisabledAbort {
 				c.JSON(http.StatusUnauthorized, gin.H{
 					"code": 401,
-					"msg":  "sign in first",
+					"msg":  fmt.Sprintf("sign in first, details: %s", err),
 				})
 				c.Abort()
 			}
@@ -81,7 +82,7 @@ func AccessMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 				if !mw.DisabledAbort {
 					c.JSON(http.StatusUnauthorized, gin.H{
 						"code": 401,
-						"msg":  "sign in first or has a access token",
+						"msg":  fmt.Sprintf("sign in first or has a access token, details: %s", err),
 					})
 					c.Abort()
 				}
@@ -126,7 +127,7 @@ func AdminMidHandler() gin.HandlerFunc {
 		if uid == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code": 401,
-				"msg":  "sign in first",
+				"msg":  "sign in first, user id is nil",
 			})
 			c.Abort()
 			return
@@ -173,7 +174,7 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 		if user == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"code": 401,
-				"msg":  "sign in first or has a access token",
+				"msg":  "sign in first or has a access token, user id is nil",
 			})
 			c.Abort()
 			return
@@ -182,7 +183,7 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 		if !e.Enforce(user, c.Request.URL.Path, c.Request.Method) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"code": 403,
-				"msg":  "you don't have permission to access this resource",
+				"msg":  "you don't have permission to access this resource, jwt && access_token pass",
 			})
 			c.Abort()
 			return
