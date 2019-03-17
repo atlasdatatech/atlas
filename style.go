@@ -16,6 +16,7 @@ import (
 	"github.com/fogleman/gg"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
+	"github.com/teris-io/shortid"
 )
 
 //Style 样式库
@@ -45,10 +46,24 @@ func (s *Style) Service() error {
 
 //Copy 服务拷贝
 func (s *Style) Copy() *Style {
-	out := *s
+	id, _ := shortid.Generate()
+	out := &Style{
+		ID:      id,
+		Version: s.Version,
+		Name:    s.Name + "-复制",
+		Summary: s.Summary,
+		Owner:   s.Owner,
+		Public:  s.Public,
+		// Path:s.Path,
+		Size: s.Size,
+		Base: s.ID,
+		URL:  s.URL,
+		// Status:s.Status,
+		Thumbnail: s.Thumbnail,
+	}
 	out.Data = make([]byte, len(s.Data))
 	copy(out.Data, s.Data)
-	return &out
+	return out
 }
 
 //PackStyle 打包样式

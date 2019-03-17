@@ -218,6 +218,54 @@ func privateStyle(c *gin.Context) {
 	res.DoneData(c, "")
 }
 
+//createStyle 创建新的空白地图
+func createStyle(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(identityKey)
+	if uid == "" {
+		uid = c.GetString(userKey)
+	}
+	set := userSet.service(uid)
+	if set == nil {
+		log.Warnf("createStyle, %s's service not found ^^", uid)
+		res.Fail(c, 4043)
+		return
+	}
+	id, _ := shortid.Generate()
+	path := filepath.Join(viper.GetString("paths.styles"), uid, id)
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		log.Errorf("createStyle, make %s' new style path dir error, details:%s", uid, err)
+		res.Fail(c, 5002)
+	}
+
+	root := Root{
+		Version: 8,
+	}
+	buf, err := json.Marshal(root)
+	if err != nil {
+		log.Errorf(`createStyle, Marshal %s's new style (%s) error, details: %s ^^`, uid, id, err)
+		res.FailErr(c, err)
+		return
+	}
+	style := &Style{
+		ID:    id,
+		Name:  "地图",
+		Owner: uid,
+		Path:  path,
+		Data:  buf,
+	}
+
+	err = style.UpInsert()
+	if err != nil {
+		log.Errorf("createStyle, upinsert %s's new style error ^^", uid)
+		res.FailErr(c, err)
+		return
+	}
+	set.S.Store(style.ID, style)
+	res.DoneData(c, style)
+}
+
 //cloneStyle 复制指定用户的公开样式
 func cloneStyle(c *gin.Context) {
 	res := NewRes()
@@ -247,13 +295,8 @@ func cloneStyle(c *gin.Context) {
 			return
 		}
 	}
-	id, _ := shortid.Generate()
 	ns := style.Copy()
-	suffix := filepath.Ext(style.ID)
-	ns.ID = strings.TrimSuffix(style.ID, suffix) + "." + id
-	ns.Name = style.Name + "-复制"
 	ns.Owner = uid
-	ns.Public = false
 	ns.Path = filepath.Join(viper.GetString("paths.styles"), uid, ns.ID)
 	err := DirCopy(style.Path, ns.Path)
 	if err != nil {

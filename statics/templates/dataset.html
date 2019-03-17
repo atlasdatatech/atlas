@@ -84,60 +84,44 @@
             style: {
                 version: 8,
                 sources: {
-                    china: {
+                    Buildingmore: {
                         type: 'vector',
                         tiles: ['{{.URL}}']
                     }
                 },
                 layers: [{
-                    "id": "places",
-                    "type": "circle",
-                    "source": "china",
-                    "source-layer": "{{.Name}}",
-                    "paint": {
-                        "circle-color": "#ff0000",
-                        "circle-opacity": 0.2,
-                        "circle-radius": 3,
-                        "circle-stroke-color": "#ff0000",
-                        "circle-stroke-opacity": 1,
-                        "circle-stroke-width": 1
-                    },
-                }, {
-                    "id": "roads",
-                    "type": "line",
-                    "source": "china",
-                    "source-layer": "{{.Name}}",
-                    "layout": {
-                        "line-join": "round",
-                        "line-cap": "round"
-                    },
-                    "paint": {
-                        "line-color": "#ff69b4",
-                        "line-width": 1
-                    }
-                }, {
-                    "id": "building",
-                    "paint": {
-                        "fill-antialias": true,
-                        "fill-color": "rgba(222, 211, 190, 1)",
-                        "fill-opacity": {
-                            "base": 1,
-                            "stops": [
-                                [13, 0],
-                                [15, 1]
-                            ]
-                        },
-                        "fill-outline-color": {
-                            "stops": [
-                                [15, "rgba(212, 177, 146, 0)"],
-                                [16, "rgba(212, 177, 146, 0.5)"]
-                            ]
-                        }
-                    },
-                    "source": "china",
-                    "source-layer": "{{.Name}}",
-                    "type": "fill"
-                }]
+        "id": "416d036083fc4d1bb6c94de8cd6030c9",
+        "maxzoom": 17.5,
+        "source": "Buildingmore",
+        "layout": {
+            "visibility": "visible"
+        },
+        "layerInfo": {
+            "source": "Buildingmore",
+            "prefix": "",
+            "describe": "建筑物",
+            "name": "建筑物-立体",
+            "sourceminzoom": 14.0,
+            "groupname": "",
+            "groupid": "",
+            "datatype": "fill-extrusion",
+            "sourcemaxzoom": 17.5,
+            "zindex": 160
+        },
+        "paint": {
+            "fill-extrusion-color": "#faf8f6",
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": 0.3,
+            "fill-extrusion-translate": [0, 0],
+            "fill-extrusion-height": {
+                "property": "levels",
+                "type": "identity"
+            }
+        },
+        "source-layer": "Buildingmore",
+        "minzoom": 14.0,
+        "type": "fill-extrusion"
+    }]
             }
         });
         map.addControl(new mapboxgl.NavigationControl());

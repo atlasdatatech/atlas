@@ -674,6 +674,7 @@ func setupRouter() *gin.Engine {
 		styles.POST("/upload/", uploadStyle)
 		styles.POST("/public/:id/", publicStyle)
 		styles.POST("/private/:id/", privateStyle)
+		styles.POST("/create/", createStyle)
 		styles.GET("/clone/:id/", cloneStyle)
 		styles.POST("/save/:id/", saveStyle)
 		styles.POST("/update/:id/", updateStyle)

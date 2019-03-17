@@ -78,6 +78,7 @@ func LoadTileset(ds *DataSource) (*Tileset, error) {
 	}
 	format, err := detectTileFormat(data)
 	if err != nil {
+		log.Error(err)
 		format = PBF // GZIP masks PBF, which is only expected type for tiles in GZIP format
 		// return nil, err
 	}

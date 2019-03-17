@@ -521,7 +521,6 @@ func accessTokenRefresh(c *gin.Context) {
 }
 
 func accessTokenAdd(c *gin.Context) {
-
 }
 
 func changePassword(c *gin.Context) {
