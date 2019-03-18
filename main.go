@@ -601,9 +601,8 @@ func setupRouter() *gin.Engine {
 
 	//maproute
 	maproute := r.Group("/apps")
-	maproute.Use(AuthMidHandler(authMid))
 	maproute.Use(AccessMidHandler())
-	// maproute.Use(ResourceMidHandler(casEnf))
+	maproute.Use(AuthMidHandler(authMid))
 	{
 		// > map op
 		maproute.GET("/", listMaps)
@@ -616,9 +615,8 @@ func setupRouter() *gin.Engine {
 	}
 
 	styles := r.Group("/maps")
-	styles.Use(AuthMidHandler(authMid))
 	styles.Use(AccessMidHandler())
-	// styles.Use(ResourceMidHandler(casEnf))
+	styles.Use(AuthMidHandler(authMid))
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -648,9 +646,8 @@ func setupRouter() *gin.Engine {
 		styles.POST("/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
-	fonts.Use(AuthMidHandler(authMid))
 	fonts.Use(AccessMidHandler())
-	// fonts.Use(ResourceMidHandler(casEnf))
+	fonts.Use(AuthMidHandler(authMid))
 	{
 		// > fonts
 		fonts.GET("/", listFonts)                      //get font
@@ -660,9 +657,8 @@ func setupRouter() *gin.Engine {
 	}
 
 	tilesets := r.Group("/ts")
-	tilesets.Use(AuthMidHandler(authMid))
 	tilesets.Use(AccessMidHandler())
-	// tilesets.Use(ResourceMidHandler(casEnf))
+	tilesets.Use(AuthMidHandler(authMid))
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -684,9 +680,8 @@ func setupRouter() *gin.Engine {
 	}
 
 	datasets := r.Group("/datasets")
-	datasets.Use(AuthMidHandler(authMid))
 	datasets.Use(AccessMidHandler())
-	// datasets.Use(ResourceMidHandler(casEnf))
+	datasets.Use(AuthMidHandler(authMid))
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
