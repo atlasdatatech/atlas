@@ -31,9 +31,9 @@ const REGEN = true
 //listStyles 获取地图列表
 func listStyles(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -45,7 +45,9 @@ func listStyles(c *gin.Context) {
 	tdb := db
 	pub, y := c.GetQuery("public")
 	if y && strings.ToLower(pub) == "true" {
-		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		if casEnf.Enforce(uid, "list-atlas-maps", c.Request.Method) {
+			tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		}
 	} else {
 		tdb = tdb.Where("owner = ?", uid)
 	}
@@ -94,7 +96,6 @@ func listStyles(c *gin.Context) {
 	// 	}
 	// 	return true
 	// })
-
 	// if uid != ATLAS && "true" == c.Query("public") {
 	// 	set := userSet.service(ATLAS)
 	// 	if set != nil {
@@ -115,9 +116,9 @@ func listStyles(c *gin.Context) {
 //getStyleInfo 获取样式信息
 func getStyleInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -132,9 +133,9 @@ func getStyleInfo(c *gin.Context) {
 //getStyleInfo 获取样式信息
 func updateStyleInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -160,9 +161,9 @@ func updateStyleInfo(c *gin.Context) {
 //publicStyle 分享样式
 func publicStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -173,10 +174,7 @@ func publicStyle(c *gin.Context) {
 	}
 
 	//添加管理员组的用户管理权限
-	casEnf.AddPolicy(USER, fmt.Sprintf("/maps/x/%s/", sid), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/maps/x/%s/sprite*", sid), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/ts/x/*"), "GET")
-	casEnf.AddPolicy(USER, fmt.Sprintf("/datasets/x/*"), "GET")
+	casEnf.AddPolicy(USER, sid, "GET")
 
 	s.Public = true
 	err := db.Model(&Style{}).Where("id = ?", s.ID).Update(Style{Public: s.Public}).Error
@@ -191,9 +189,9 @@ func publicStyle(c *gin.Context) {
 //privateStyle 关闭分享样式
 func privateStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -221,9 +219,9 @@ func privateStyle(c *gin.Context) {
 //createStyle 创建新的空白地图
 func createStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -269,9 +267,9 @@ func createStyle(c *gin.Context) {
 //cloneStyle 复制指定用户的公开样式
 func cloneStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -282,7 +280,7 @@ func cloneStyle(c *gin.Context) {
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		//自己的找不到再找公开的
+		//自己的找不到,再找公开的
 		style = userSet.style(ATLAS, sid)
 		if style == nil {
 			log.Warnf("cloneStyle, %s's style (%s) not found ^^", uid, sid)
@@ -296,6 +294,7 @@ func cloneStyle(c *gin.Context) {
 		}
 	}
 	ns := style.Copy()
+	//需处理style&sprite
 	ns.Owner = uid
 	ns.Path = filepath.Join(viper.GetString("paths.styles"), uid, ns.ID)
 	err := DirCopy(style.Path, ns.Path)
@@ -303,6 +302,20 @@ func cloneStyle(c *gin.Context) {
 		log.Errorf("cloneStyle, copy %s's styledir to new (%s) error ^^", uid, ns.Path)
 		res.FailErr(c, err)
 		return
+	}
+	root := Root{}
+	err = json.Unmarshal(style.Data, &root)
+	if err == nil {
+		root.Sprite = fmt.Sprintf("atlas://maps/x/%s/sprite", ns.ID)
+		var buf []byte
+		buf, err = json.Marshal(root)
+		if err == nil {
+			ns.Data = buf
+		}
+	}
+	if err != nil {
+		ns.Data = make([]byte, len(style.Data))
+		copy(ns.Data, style.Data)
 	}
 	err = ns.UpInsert()
 	if err != nil {
@@ -318,9 +331,9 @@ func cloneStyle(c *gin.Context) {
 //uploadStyle 上传新样式
 func uploadStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -368,9 +381,9 @@ func uploadStyle(c *gin.Context) {
 //replaceStyle 上传替换样式
 func replaceStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -430,9 +443,9 @@ func replaceStyle(c *gin.Context) {
 //downloadStyle 下载样式
 func downloadStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
@@ -456,9 +469,9 @@ func downloadStyle(c *gin.Context) {
 //deleteStyle 删除样式
 func deleteStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("ids")
 	sids := strings.Split(sid, ",")
@@ -496,9 +509,9 @@ func deleteStyle(c *gin.Context) {
 //upInsertStyle 更新地图样式(保存到DB)
 func updateStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -531,9 +544,9 @@ func updateStyle(c *gin.Context) {
 //upInsertStyle 提交保存地图样式
 func saveStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -554,9 +567,9 @@ func saveStyle(c *gin.Context) {
 //uploadStyle 多个icons图标上传
 func uploadIcons(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -623,9 +636,9 @@ func uploadIcons(c *gin.Context) {
 //deleteIcons 删除单个icon符号
 func deleteIcons(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -685,9 +698,9 @@ func deleteIcons(c *gin.Context) {
 //getIcon 获取单个icon符号
 func getIcon(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -729,9 +742,9 @@ func getIcon(c *gin.Context) {
 //updateIcon 更新单个icon符号
 func updateIcon(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -841,9 +854,9 @@ func updateIcon(c *gin.Context) {
 //updateSprite 刷新/重新生成sprite.json/png符号库
 func updateSprite(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -870,9 +883,9 @@ func updateSprite(c *gin.Context) {
 //uploadSprite 上传sprite.json/png符号库
 func uploadSprite(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
@@ -906,26 +919,16 @@ func uploadSprite(c *gin.Context) {
 //getStyle 获取地图样式,style.json
 func getStyle(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	s := userSet.style(uid, sid)
 	if s == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			s, err = ServeStyle(sid)
-			if err != nil {
-				// log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
-			res.Fail(c, 4044)
-			return
-		}
+		log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+		res.Fail(c, 4044)
+		return
 	}
 	var style Root
 	if err := json.Unmarshal(s.Data, &style); err != nil {
@@ -954,26 +957,16 @@ func getStyle(c *gin.Context) {
 //getSprite 获取地图sprite.json/png符号库
 func getSprite(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
 	style := userSet.style(uid, sid)
 	if style == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			style, err = ServeStyle(sid)
-			if err != nil {
-				// log.Warnf(`getSprite, %s's style (%s) not found ^^`, uid, sid)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
-			res.Fail(c, 4044)
-			return
-		}
+		log.Warnf(`getStyle, %s's style (%s) not found ^^`, uid, sid)
+		res.Fail(c, 4044)
+		return
 	}
 	fmt := c.Param("fmt")
 	sprite := "sprite" + fmt
@@ -1022,18 +1015,18 @@ func getSprite(c *gin.Context) {
 
 //viewStyle load style map
 func viewStyle(c *gin.Context) {
-	// res := NewRes()
-	uid := c.GetString(identityKey)
+	res := NewRes()
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	sid := c.Param("id")
-	// style := userSet.style(uid, sid)
-	// if style == nil {
-	// 	log.Warnf("viewStyle, %s's style (%s) not found ^^", uid, sid)
-	// 	res.Fail(c, 4044)
-	// 	return
-	// }
+	style := userSet.style(uid, sid)
+	if style == nil {
+		log.Warnf("viewStyle, %s's style (%s) not found ^^", uid, sid)
+		res.Fail(c, 4044)
+		return
+	}
 	url := fmt.Sprintf(`%s/maps/x/%s/`, rootURL(c.Request), sid)
 	c.HTML(http.StatusOK, "viewer.html", gin.H{
 		"Title": "Viewer",

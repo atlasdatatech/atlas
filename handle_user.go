@@ -49,7 +49,10 @@ func signup(c *gin.Context) {
 	user.Password = string(hashedPassword)
 	user.Email = strings.ToLower(body.Email)
 	//No verification required
-	user.AccessToken, _, err = accessMid.TokenGenerator(user)
+	claims := MapClaims{
+		userKey: user.Name,
+	}
+	user.AccessToken, err = AccessTokenGenerator(claims)
 	if err != nil {
 		log.Errorf(`signup, token generator error, details: '%s' ~`, err)
 		res.FailMsg(c, "signup, token generator error")
@@ -141,7 +144,10 @@ func addUser(c *gin.Context) {
 	user.Department = body.Department
 	user.Company = body.Company
 	//No verification required
-	user.AccessToken, _, err = accessMid.TokenGenerator(user)
+	claims := MapClaims{
+		userKey: user.Name,
+	}
+	user.AccessToken, err = AccessTokenGenerator(claims)
 	if err != nil {
 		log.Errorf(`addUser, token generator error, details: '%s' ~`, err)
 		res.FailMsg(c, "addUser, token generator error")
@@ -495,32 +501,6 @@ func authTokenRefresh(c *gin.Context) {
 		"token":  tokenString,
 		"expire": expire.Format(time.RFC3339),
 	})
-}
-
-func accessTokenRefresh(c *gin.Context) {
-	res := NewRes()
-	uid := c.Param("id")
-	if uid == "" {
-		uid = c.GetString(identityKey)
-	}
-	user := User{Name: uid}
-	tokenString, _, err := accessMid.TokenGenerator(user)
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-	if err := db.Model(&User{}).Where("name = ?", uid).Update(User{AccessToken: tokenString}).Error; err != nil {
-		log.Error(err)
-		res.Fail(c, 5001)
-		return
-	}
-	res.DoneData(c, gin.H{
-		"token": tokenString,
-	})
-}
-
-func accessTokenAdd(c *gin.Context) {
 }
 
 func changePassword(c *gin.Context) {

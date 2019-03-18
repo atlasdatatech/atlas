@@ -4,7 +4,7 @@
 		ipExpiration = "-1m"
 
 	[user]
-		resetExpiration = "24h"
+		resetExpiration = "48h"
 		attempts = 7
 		attemptExpiration = "-5m"
 		verification = true

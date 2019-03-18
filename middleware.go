@@ -1,88 +1,34 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/casbin/casbin"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
 	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
 )
+
+//SA 签名算法
+const SA = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
 
 // AuthMidHandler makes  the Middleware interface.
 func AuthMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, err := mw.GetClaimsFromJWT(c)
-		if err != nil {
-			log.Warnf("get token error,%s", err)
-			// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
-			if !mw.DisabledAbort {
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"code": 401,
-					"msg":  fmt.Sprintf("sign in first, details: %s", err),
-				})
-				c.Abort()
-			}
-			return
-		}
-		if int64(claims["exp"].(float64)) < mw.TimeFunc().Unix() {
-			//找到但是过期了
-			tokenString, expire, err := mw.RefreshToken(c)
-			if err != nil {
-				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
-				if !mw.DisabledAbort {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"code": 401,
-						"msg":  ErrExpiredToken.Error(),
-					})
-					c.Abort()
-				}
-				return
-			}
-
-			// set cookie
-			if mw.SendCookie {
-				maxage := int(expire.Unix() - time.Now().Unix())
-				c.SetCookie(
-					"token",
-					tokenString,
-					maxage,
-					"/",
-					mw.CookieDomain,
-					mw.SecureCookie,
-					mw.CookieHTTPOnly,
-				)
-			}
-
-		}
-		//成功验证
-		c.Set("PAYLOAD", claims)
-		identity := claims[identityKey]
-		if identity != nil {
-			c.Set(identityKey, identity)
-		}
-		c.Next()
-	}
-}
-
-// AccessMidHandler makes  the Middleware interface.
-func AccessMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		uid := c.GetString(identityKey)
-		//完成认证,则放行
+		uid := c.GetString(userKey)
 		if uid == "" {
-			//否则,获取query token
 			claims, err := mw.GetClaimsFromJWT(c)
 			if err != nil {
-				//没找到
-				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
 				if !mw.DisabledAbort {
 					c.JSON(http.StatusUnauthorized, gin.H{
 						"code": 401,
-						"msg":  fmt.Sprintf("sign in first or has a access token, details: %s", err),
+						"msg":  fmt.Sprintf("sign in first, details: %s", err),
 					})
 					c.Abort()
 				}
@@ -90,32 +36,113 @@ func AccessMidHandler(mw *JWTMiddleware) gin.HandlerFunc {
 			}
 			if int64(claims["exp"].(float64)) < mw.TimeFunc().Unix() {
 				//找到但是过期了
-				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
-				if !mw.DisabledAbort {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"code": 401,
-						"msg":  "access token expired",
-					})
-					c.Abort()
+				tokenString, expire, err := mw.RefreshToken(c)
+				if err != nil {
+					if !mw.DisabledAbort {
+						c.JSON(http.StatusUnauthorized, gin.H{
+							"code": 401,
+							"msg":  ErrExpiredToken.Error(),
+						})
+						c.Abort()
+					}
+					return
 				}
-				return
-			}
-			//成功验证
-			who := claims[userKey]
-			if who == nil {
-				// c.Header("WWW-Authenticate", "JWT realm="+mw.Realm)
-				if !mw.DisabledAbort {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"msg": "access token error",
-					})
-					c.Abort()
+
+				// set cookie
+				if mw.SendCookie {
+					maxage := int(expire.Unix() - time.Now().Unix())
+					c.SetCookie(
+						"token",
+						tokenString,
+						maxage,
+						"/",
+						mw.CookieDomain,
+						mw.SecureCookie,
+						mw.CookieHTTPOnly,
+					)
 				}
-				return
+
 			}
 			//成功验证
 			c.Set("PAYLOAD", claims)
-			c.Set(userKey, who)
-			c.Next()
+			identity := claims[identityKey]
+			if identity != nil {
+				c.Set(identityKey, identity)
+			}
+		}
+	}
+}
+
+//ParseAccessTokenUnverified parse claims only
+func ParseAccessTokenUnverified(c *gin.Context) (MapClaims, error) {
+	tokenString, y := c.GetQuery("access_token")
+	if !y {
+		return nil, fmt.Errorf("no access_token")
+	}
+	// parse Claims
+	claimBytes, err := jwt.DecodeSegment(tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("decode base64url padding error")
+	}
+	dec := json.NewDecoder(bytes.NewBuffer(claimBytes))
+	// JSON Decode.  Special case for map type to avoid weird pointer behavior
+	var claims MapClaims
+	err = dec.Decode(&claims)
+	// Handle decode error
+	if err != nil {
+		return nil, fmt.Errorf("decode claims error")
+	}
+	return claims, nil
+}
+
+// ParseAccessToken parse jwt token
+func ParseAccessToken(c *gin.Context) (MapClaims, error) {
+	tokenString, y := c.GetQuery("access_token")
+	if !y {
+		return nil, fmt.Errorf("no access_token")
+	}
+	token, err := jwt.Parse(SA+tokenString, func(t *jwt.Token) (interface{}, error) {
+		return []byte("atlas-cloud-access-token"), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	claims := MapClaims{}
+	for key, value := range token.Claims.(jwt.MapClaims) {
+		claims[key] = value
+	}
+	return claims, nil
+}
+
+// AccessTokenGenerator method that clients can use to get a jwt token.
+func AccessTokenGenerator(claims MapClaims) (string, error) {
+	sa := "HS256"
+	jwtClaims := jwt.MapClaims{}
+	for k, v := range claims {
+		jwtClaims[k] = v
+	}
+	token := jwt.NewWithClaims(jwt.GetSigningMethod(sa), jwtClaims)
+	tokenString, err := token.SignedString([]byte("atlas-cloud-access-token"))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(tokenString, SA), nil
+}
+
+// AccessMidHandler makes  the Middleware interface.
+func AccessMidHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		//只处理成功
+		// claims, err := ParseAccessTokenUnverified(c)
+		claims, err := ParseAccessToken(c)
+		if err == nil {
+			who := claims[userKey]
+			if who != nil {
+				c.Set("ACCESSPAYLOAD", claims)
+				c.Set(userKey, who)
+				c.Next()
+				//成功验证
+			}
 		}
 	}
 }
@@ -179,8 +206,9 @@ func ResourceMidHandler(e *casbin.Enforcer) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		resourceid := c.Param("id")
 		//启动access token资源鉴权
-		if !e.Enforce(user, c.Request.URL.Path, c.Request.Method) {
+		if !e.Enforce(user, resourceid, c.Request.Method) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"code": 403,
 				"msg":  "you don't have permission to access this resource, jwt && access_token pass",

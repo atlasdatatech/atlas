@@ -47,6 +47,21 @@ func (us *UserSet) style(uid, sid string) *Style {
 			}
 		}
 	}
+	if casEnf.Enforce(uid, sid, "GET") {
+		set = us.service(ATLAS)
+		if set != nil {
+			style, ok := set.S.Load(sid)
+			if ok {
+				s, ok := style.(*Style)
+				if ok {
+					if s.Public {
+						return s
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -75,6 +90,20 @@ func (us *UserSet) tileset(uid, tid string) *Tileset {
 			}
 		}
 	}
+	if casEnf.Enforce(uid, tid, "GET") {
+		set = us.service(ATLAS)
+		if set != nil {
+			tile, ok := set.T.Load(tid)
+			if ok {
+				ts, ok := tile.(*Tileset)
+				if ok {
+					if ts.Public {
+						return ts
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -86,6 +115,20 @@ func (us *UserSet) dataset(uid, did string) *Dataset {
 			dt, ok := data.(*Dataset)
 			if ok {
 				return dt
+			}
+		}
+	}
+	if casEnf.Enforce(uid, did, "GET") {
+		set = us.service(ATLAS)
+		if set != nil {
+			data, ok := set.D.Load(did)
+			if ok {
+				dt, ok := data.(*Dataset)
+				if ok {
+					if dt.Public {
+						return dt
+					}
+				}
 			}
 		}
 	}

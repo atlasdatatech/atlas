@@ -30,9 +30,9 @@ import (
 
 func listDatasets(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -44,7 +44,9 @@ func listDatasets(c *gin.Context) {
 	tdb := db
 	pub, y := c.GetQuery("public")
 	if y && strings.ToLower(pub) == "true" {
-		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		if casEnf.Enforce(uid, "list-atlas-datasets", c.Request.Method) {
+			tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		}
 	} else {
 		tdb = tdb.Where("owner = ?", uid)
 	}
@@ -110,9 +112,9 @@ func listDatasets(c *gin.Context) {
 
 func getDatasetInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
@@ -126,9 +128,9 @@ func getDatasetInfo(c *gin.Context) {
 
 func updateDatasetInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	ds := userSet.dataset(uid, did)
@@ -153,9 +155,9 @@ func updateDatasetInfo(c *gin.Context) {
 
 func oneClickImport(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -238,9 +240,9 @@ func oneClickImport(c *gin.Context) {
 
 func uploadFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -267,9 +269,9 @@ func uploadFile(c *gin.Context) {
 
 func previewFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -307,9 +309,9 @@ func previewFile(c *gin.Context) {
 
 func importFile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -384,9 +386,9 @@ func importFile(c *gin.Context) {
 //downloadDataset 下载数据集
 func downloadDataset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dt := userSet.dataset(uid, did)
@@ -952,9 +954,9 @@ func upInsertDataset(c *gin.Context) {
 //deleteDatasets 删除数据集
 func deleteDatasets(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -1010,9 +1012,9 @@ func deleteFeatures(c *gin.Context) {
 
 func createTileLayer(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
@@ -1034,26 +1036,16 @@ func createTileLayer(c *gin.Context) {
 
 func getTileLayer(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			dts, err = ServeDataset(did)
-			if err != nil {
-				// log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
-			res.Fail(c, 4046)
-			return
-		}
+		log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
 	}
 	// lookup our Map
 	placeholder, _ := strconv.ParseUint(c.Param("z"), 10, 32)
@@ -1124,26 +1116,16 @@ func getTileLayer(c *gin.Context) {
 
 func getTileLayerJSON(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			dts, err = ServeDataset(did)
-			if err != nil {
-				// log.Warnf(`getTileLayerJSON, %s's dataset (%s) not found ^^`, uid, did)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
-			res.Fail(c, 4046)
-			return
-		}
+		log.Warnf(`getTileLayer, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
 	}
 	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
@@ -1223,9 +1205,9 @@ func createTileMap(c *gin.Context) {
 
 func getTileMap(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	log.Info(uid)
 	did := c.Param("id")
@@ -1320,9 +1302,9 @@ func getTileMap(c *gin.Context) {
 
 func viewDataset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)

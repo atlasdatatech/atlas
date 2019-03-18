@@ -151,9 +151,9 @@ func deleteFonts(c *gin.Context) {
 //getGlyphs 获取字体pbf,需区别于数据pbf,开启gzip压缩以加快传输,get glyph pbf.
 func getGlyphs(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(ATLAS)
 	if set == nil {

@@ -49,7 +49,7 @@ const (
 	//USER 默认用户组
 	USER        = "user@group"
 	identityKey = "uid"
-	userKey     = "user"
+	userKey     = "id"
 	//DISABLEACCESSTOKEN 不使用accesstoken
 	DISABLEACCESSTOKEN = false
 )
@@ -60,7 +60,6 @@ var (
 	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
 	authMid   *JWTMiddleware
-	accessMid *JWTMiddleware
 	taskQueue = make(chan *Task, 32)
 	userSet   UserSet
 	taskSet   sync.Map
@@ -391,61 +390,7 @@ func initAuthJWT() (*JWTMiddleware, error) {
 		SendCookie:        true,
 		SendAuthorization: true,
 		//禁止abort
-		DisabledAbort: true,
-	}
-	err := jwtmid.MiddlewareInit()
-	if err != nil {
-		return nil, err
-	}
-	return jwtmid, nil
-}
-
-func initAccessJWT() (*JWTMiddleware, error) {
-	jwtmid := &JWTMiddleware{
-		//Realm name to display to the user. Required.
-		//必要项，显示给用户看的域
-		Realm: viper.GetString("jwt.access.realm"),
-		//Secret key used for signing. Required.
-		//用来进行签名的密钥，就是加盐用的
-		Key: []byte(viper.GetString("jwt.access.key")),
-		//Duration that a jwt token is valid. Optional, defaults to one hour
-		//JWT 的有效时间，默认为30天
-		Timeout: viper.GetDuration("jwt.access.timeOut"),
-		// This field allows clients to refresh their token until MaxRefresh has passed.
-		// Note that clients can refresh their token in the last moment of MaxRefresh.
-		// This means that the maximum validity timespan for a token is MaxRefresh + Timeout.
-		// Optional, defaults to 0 meaning not refreshable.
-		//最长的刷新时间，用来给客户端自己刷新 token 用的，设置为3个月
-		MaxRefresh: viper.GetDuration("jwt.access.timeMax"),
-
-		PayloadFunc: func(data interface{}) MapClaims {
-			if user, ok := data.(User); ok {
-				return MapClaims{
-					userKey: user.Name,
-					"ak":    "public",
-				}
-			}
-			return MapClaims{}
-		},
-		// TokenLookup is a string in the form of "<source>:<name>" that is used
-		// to extract token from the request.
-		// Optional. Default value "header:Authorization".
-		// Possible values:
-		// - "header:<name>"
-		// - "query:<name>"
-		// - "cookie:<name>"
-		//这个变量定义了从请求中解析 token 的位置和格式
-		TokenLookup: viper.GetString("jwt.access.lookup"),
-		// TokenLookup: "query:token",
-		// TokenLookup: "cookie:token",
-		// TokenHeadName is a string in the header. Default value is "Bearer"
-		//TokenHeadName 是一个头部信息中的字符串
-		TokenHeadName: viper.GetString("jwt.access.headName"),
-		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
-		//这个指定了提供当前时间的函数，也可以自定义
-		TimeFunc: time.Now,
-		//设置Cookie
-		SendCookie: true,
+		// DisabledAbort: true,
 	}
 	err := jwtmid.MiddlewareInit()
 	if err != nil {
@@ -489,7 +434,14 @@ func initSystemUser() {
 	user.Company = "atlasdata"
 	user.Verification = "yes"
 	//No verification required
-	user.AccessToken, _, _ = accessMid.TokenGenerator(user)
+	claims := MapClaims{
+		userKey: user.Name,
+	}
+	var err error
+	user.AccessToken, err = AccessTokenGenerator(claims)
+	if err != nil {
+		log.Error("super user access token generator error")
+	}
 	user.Activation = "yes"
 	user.Role = []string{role.ID}
 	// insertUser
@@ -505,10 +457,10 @@ func initSystemUser() {
 	casEnf.AddGroupingPolicy(name, ADMIN)
 	casEnf.AddGroupingPolicy(name, USER)
 	//添加管理员组的用户管理权限
-	casEnf.AddPolicy(USER, "/maps/*", "GET")
-	casEnf.AddPolicy(USER, "/fonts/*", "GET")
-	casEnf.AddPolicy(USER, "/ts/*", "GET")
-	casEnf.AddPolicy(USER, "/datasets/*", "GET")
+	casEnf.AddPolicy(USER, "list-atlas-maps", "GET")
+	casEnf.AddPolicy(USER, "list-atlas-fonts", "GET")
+	casEnf.AddPolicy(USER, "list-atlas-ts", "GET")
+	casEnf.AddPolicy(USER, "list-atlas-datasets", "GET")
 }
 
 //initTaskRouter 初始化任务处理线程
@@ -603,7 +555,7 @@ func setupRouter() *gin.Engine {
 		//render
 		account.GET("/index/", renderAccount)
 		account.GET("/update/", renderUpdateUser)
-		account.GET("/password/", renderChangePassword)
+		account.GET("/password/", UserMidHandler(), renderChangePassword)
 		//api
 		account.GET("/", getUser)
 		account.POST("/signout/", signout)
@@ -650,8 +602,8 @@ func setupRouter() *gin.Engine {
 	//maproute
 	maproute := r.Group("/apps")
 	maproute.Use(AuthMidHandler(authMid))
-	maproute.Use(AccessMidHandler(accessMid))
-	maproute.Use(ResourceMidHandler(casEnf))
+	maproute.Use(AccessMidHandler())
+	// maproute.Use(ResourceMidHandler(casEnf))
 	{
 		// > map op
 		maproute.GET("/", listMaps)
@@ -665,8 +617,8 @@ func setupRouter() *gin.Engine {
 
 	styles := r.Group("/maps")
 	styles.Use(AuthMidHandler(authMid))
-	styles.Use(AccessMidHandler(accessMid))
-	styles.Use(ResourceMidHandler(casEnf))
+	styles.Use(AccessMidHandler())
+	// styles.Use(ResourceMidHandler(casEnf))
 	{
 		// > styles
 		styles.GET("/", listStyles)
@@ -697,8 +649,8 @@ func setupRouter() *gin.Engine {
 	}
 	fonts := r.Group("/fonts")
 	fonts.Use(AuthMidHandler(authMid))
-	fonts.Use(AccessMidHandler(accessMid))
-	fonts.Use(ResourceMidHandler(casEnf))
+	fonts.Use(AccessMidHandler())
+	// fonts.Use(ResourceMidHandler(casEnf))
 	{
 		// > fonts
 		fonts.GET("/", listFonts)                      //get font
@@ -709,8 +661,8 @@ func setupRouter() *gin.Engine {
 
 	tilesets := r.Group("/ts")
 	tilesets.Use(AuthMidHandler(authMid))
-	tilesets.Use(AccessMidHandler(accessMid))
-	tilesets.Use(ResourceMidHandler(casEnf))
+	tilesets.Use(AccessMidHandler())
+	// tilesets.Use(ResourceMidHandler(casEnf))
 	{
 		// > tilesets
 		tilesets.GET("/", listTilesets)
@@ -733,8 +685,8 @@ func setupRouter() *gin.Engine {
 
 	datasets := r.Group("/datasets")
 	datasets.Use(AuthMidHandler(authMid))
-	datasets.Use(AccessMidHandler(accessMid))
-	datasets.Use(ResourceMidHandler(casEnf))
+	datasets.Use(AccessMidHandler())
+	// datasets.Use(ResourceMidHandler(casEnf))
 	{
 		// > datasets
 		datasets.GET("/", listDatasets)
@@ -836,10 +788,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("init jwt error: %s", err)
 	}
-	accessMid, err = initAccessJWT()
-	if err != nil {
-		log.Fatalf("init access token error: %s", err)
-	}
+
 	casEnf, err = initEnforcer()
 	if err != nil {
 		log.Fatalf("init enforcer error: %s", err)

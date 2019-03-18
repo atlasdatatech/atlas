@@ -20,9 +20,9 @@ import (
 //listTilesets 获取服务集列表
 func listTilesets(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -35,7 +35,9 @@ func listTilesets(c *gin.Context) {
 	tdb := db
 	pub, y := c.GetQuery("public")
 	if y && strings.ToLower(pub) == "true" {
-		tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		if casEnf.Enforce(uid, "list-atlas-ts", c.Request.Method) {
+			tdb = tdb.Where("owner = ? and public = ? ", ATLAS, true)
+		}
 	} else {
 		tdb = tdb.Where("owner = ?", uid)
 	}
@@ -103,9 +105,9 @@ func listTilesets(c *gin.Context) {
 //getTilesetInfo 获取服务集信息
 func getTilesetInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -120,9 +122,9 @@ func getTilesetInfo(c *gin.Context) {
 //updateTilesetInfo 更新服务集信息
 func updateTilesetInfo(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -148,9 +150,9 @@ func updateTilesetInfo(c *gin.Context) {
 //uploadTileset 上传服务集
 func uploadTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -188,9 +190,9 @@ func uploadTileset(c *gin.Context) {
 //replaceTileset 上传并替换服务集
 func replaceTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -238,9 +240,9 @@ func replaceTileset(c *gin.Context) {
 //publishTileset 上传并发布服务集
 func publishTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	set := userSet.service(uid)
 	if set == nil {
@@ -325,9 +327,9 @@ func publishTileset(c *gin.Context) {
 //publishTileset 上传并发布服务集
 func rePublishTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -341,9 +343,9 @@ func rePublishTileset(c *gin.Context) {
 //createTileset 从数据集创建服务集
 func createTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
@@ -399,9 +401,9 @@ func createTileset(c *gin.Context) {
 //updateTileset 从数据集更新服务集
 func updateTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -445,9 +447,9 @@ func updateTileset(c *gin.Context) {
 //downloadTileset 下载服务集
 func downloadTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
@@ -471,9 +473,9 @@ func downloadTileset(c *gin.Context) {
 //deleteTileset 删除服务集
 func deleteTileset(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("ids")
 	ts := userSet.tileset(uid, tid)
@@ -505,26 +507,16 @@ func deleteTileset(c *gin.Context) {
 //getTilejson 获取服务集tilejson
 func getTileJSON(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			ts, err = ServeTileset(tid)
-			if err != nil {
-				// log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
-			res.Fail(c, 4045)
-			return
-		}
+		log.Warnf("getTileJSON, %s's tilesets (%s) not found ^^", uid, tid)
+		res.Fail(c, 4045)
+		return
 	}
 	mapurl := fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid)          //need use user own service set
 	tileurl := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid) //need use user own service set
@@ -567,26 +559,16 @@ func getTileJSON(c *gin.Context) {
 //getTile 获取瓦片数据
 func getTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)
 	if ts == nil {
-		if DISABLEACCESSTOKEN {
-			var err error
-			ts, err = ServeTileset(tid)
-			if err != nil {
-				// log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
-				res.FailErr(c, err)
-				return
-			}
-		} else {
-			log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
-			res.Fail(c, 4045)
-			return
-		}
+		log.Errorf("getTile, %s's tilesets (%s) not found ^^", uid, tid)
+		res.Fail(c, 4045)
+		return
 	}
 	c.Param("z")
 	c.Param("x")
@@ -657,9 +639,9 @@ func getTile(c *gin.Context) {
 //viewTile 浏览服务集
 func viewTile(c *gin.Context) {
 	res := NewRes()
-	uid := c.GetString(identityKey)
+	uid := c.GetString(userKey)
 	if uid == "" {
-		uid = c.GetString(userKey)
+		uid = c.GetString(identityKey)
 	}
 	tid := c.Param("id")
 	ts := userSet.tileset(uid, tid)

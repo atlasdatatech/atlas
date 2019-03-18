@@ -61,8 +61,8 @@ func (s *Style) Copy() *Style {
 		// Status:s.Status,
 		Thumbnail: s.Thumbnail,
 	}
-	out.Data = make([]byte, len(s.Data))
-	copy(out.Data, s.Data)
+	// out.Data = make([]byte, len(s.Data))
+	// copy(out.Data, s.Data)
 	return out
 }
 
