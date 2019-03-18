@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AtlasMap</title>
-    {{if eq .FMT "pbf"}}
+    <title>{{.Title}}</title>
+    {{if eq .Format "pbf"}}
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl.css"/>
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl-inspect.css"/>
     <script src="/statics/mapbox-gl.js"></script>
@@ -15,7 +15,6 @@
             color: #333;
             font-family: Arial, sans-serif;
         }
-
         #map {
             position: absolute;
             top: 0;
@@ -23,7 +22,6 @@
             right: 250px;
             bottom: 0;
         }
-
         h1 {
             position: absolute;
             top: 5px;
@@ -33,7 +31,6 @@
             line-height: 20px;
             font-size: 20px;
         }
-
         #layerList {
             position: absolute;
             top: 35px;
@@ -42,7 +39,6 @@
             width: 240px;
             overflow: auto;
         }
-
         #layerList div div {
             width: 15px;
             height: 15px;
@@ -58,7 +54,6 @@
             margin: 0;
             padding: 0;
         }
-
         #map {
             position: absolute;
             top: 0;
@@ -69,8 +64,8 @@
     {{end}}
 </head>
 <body>
-{{if eq .FMT "pbf"}}
-<h1>{{.ID}}</h1>
+{{if eq .Format "pbf"}}
+<h1>{{.Name}}</h1>
 <div id="map"></div>
 <div id="layerList"></div>
 <pre id="propertyList"></pre>
@@ -82,7 +77,7 @@
         style: {
             version: 8,
             sources: {
-                'vector_layer_': {
+                'vlayers': {
                     type: 'vector',
                     url: '{{.URL}}'
                 }
@@ -112,7 +107,7 @@
     });
 </script>
 {{else}}
-<h1 style="display:none;">{{.ID}}</h1>
+<h1 style="display:none;">{{.Name}}</h1>
 <div id='map'></div>
 <script>
     var map = L.mapbox.map('map', '{{.URL}}', {zoomControl: false});

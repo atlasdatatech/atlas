@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AtlasMap</title>
-    {{if eq .FMT "pbf"}}
+    <title>{{.Title}}</title>
+    {{if eq .Format "pbf"}}
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl.css" />
     <link rel="stylesheet" type="text/css" href="/statics/mapbox-gl-inspect.css" />
     <script src="/statics/mapbox-gl.js"></script>
@@ -71,8 +71,8 @@
 </head>
 
 <body>
-    {{if eq .FMT "pbf"}}
-    <h1>{{.ID}}</h1>
+    {{if eq .Format "pbf"}}
+    <h1>{{.Name}}</h1>
     <div id="map"></div>
     <div id="layerList"></div>
     <pre id="propertyList"></pre>
@@ -84,44 +84,20 @@
             style: {
                 version: 8,
                 sources: {
-                    Buildingmore: {
+                    "vtiles": {
                         type: 'vector',
                         tiles: ['{{.URL}}']
                     }
                 },
                 layers: [{
-        "id": "416d036083fc4d1bb6c94de8cd6030c9",
-        "maxzoom": 17.5,
-        "source": "Buildingmore",
-        "layout": {
-            "visibility": "visible"
-        },
-        "layerInfo": {
-            "source": "Buildingmore",
-            "prefix": "",
-            "describe": "建筑物",
-            "name": "建筑物-立体",
-            "sourceminzoom": 14.0,
-            "groupname": "",
-            "groupid": "",
-            "datatype": "fill-extrusion",
-            "sourcemaxzoom": 17.5,
-            "zindex": 160
-        },
-        "paint": {
-            "fill-extrusion-color": "#faf8f6",
-            "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": 0.3,
-            "fill-extrusion-translate": [0, 0],
-            "fill-extrusion-height": {
-                "property": "levels",
-                "type": "identity"
-            }
-        },
-        "source-layer": "Buildingmore",
-        "minzoom": 14.0,
-        "type": "fill-extrusion"
-    }]
+                    "id": "default",
+                    "source": "vtiles",
+                    "source-layer": '{{.LayerName}}',
+                    "type": '{{.LayerType}}',
+                    "layout": {
+                        "visibility": "visible"
+                    }
+                }]
             }
         });
         map.addControl(new mapboxgl.NavigationControl());
@@ -146,7 +122,7 @@
         });
     </script>
     {{else}}
-    <h1 style="display:none;">{{.ID}}</h1>
+    <h1 style="display:none;">{{.Name}}</h1>
     <div id='map'></div>
     <script>
         var map = L.mapbox.map('map', '{{.URL}}', {

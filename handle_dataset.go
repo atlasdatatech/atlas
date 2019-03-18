@@ -1319,26 +1319,41 @@ func getTileMap(c *gin.Context) {
 }
 
 func viewDataset(c *gin.Context) {
-	// res := NewRes()
+	res := NewRes()
 	uid := c.GetString(identityKey)
 	if uid == "" {
 		uid = c.GetString(userKey)
 	}
 	did := c.Param("id")
-	// dts := userSet.dataset(uid, did)
-	// if dts == nil {
-	// 	log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
-	// 	res.Fail(c, 4046)
-	// 	return
-	// }
-	//"china-z7.rjA5dSCmR"
-	// tileurl :="http://localhost:8080/maps/map/roads/{z}/{x}/{y}.pbf"
-	tileurl := fmt.Sprintf(`%s/datasets/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), did) //need use user own service set
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Warnf(`viewDataset, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	lrt := "circle"
+	gt, _ := dts.GeoType()
+	switch gt {
+	case "Point", "MultiPoint":
+		lrt = "circle"
+	case "LineString", "MultiLineString":
+		lrt = "line"
+	case "Polygon", "MultiPolygon":
+		lrt = "fill"
+	default:
+		t, y := c.GetQuery("type")
+		if y {
+			lrt = t
+		}
+	}
+	tiles := fmt.Sprintf(`%s/datasets/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), did) //need use user own service set//
 	c.HTML(http.StatusOK, "dataset.html", gin.H{
-		"Title": "PerView",
-		"ID":    did,
-		"Name":  did,
-		"URL":   tileurl,
-		"FMT":   "pbf",
+		"Title":     "数据集预览(T)",
+		"Name":      dts.Name + "@" + dts.ID,
+		"LayerName": dts.ID,
+		"LayerType": lrt,
+		"Format":    "pbf",
+		"URL":       tiles,
 	})
+	return
 }

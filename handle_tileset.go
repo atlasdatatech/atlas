@@ -656,24 +656,43 @@ func getTile(c *gin.Context) {
 
 //viewTile 浏览服务集
 func viewTile(c *gin.Context) {
-	// res := NewRes()
+	res := NewRes()
 	uid := c.GetString(identityKey)
 	if uid == "" {
 		uid = c.GetString(userKey)
 	}
 	tid := c.Param("id")
-	// tss := userSet.tileset(uid, tid)
-	// if tss == nil {
-	// 	log.Warnf("viewTile, %s's tilesets (%s) not found ^^", uid, tid)
-	// 	res.Fail(c, 4045)
-	// 	return
-	// }
-	tileurl := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), tid) //need use user own service set//{z}/{x}/{y}.pbf
-	c.HTML(http.StatusOK, "dataset.html", gin.H{
-		"Title": "PerView",
-		"ID":    tid,
-		"URL":   tileurl,
-		"Name":  "state",
-		"FMT":   "pbf", //tss.Format,
+	ts := userSet.tileset(uid, tid)
+	if ts == nil {
+		log.Warnf("viewTile, %s's tilesets (%s) not found ^^", uid, tid)
+		res.Fail(c, 4045)
+		return
+	}
+	ptiles, istiles := c.GetQuery("tiles")
+	if istiles && strings.Compare(strings.ToLower(ptiles), "yes") == 0 {
+		tiles := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), tid) //need use user own service set//
+		layer := c.Query("layer")
+		lrn, lrt := "", "" //"name type"
+		lrs := strings.Split(layer, ",")
+		if len(lrs) == 2 {
+			lrn = lrs[0]
+			lrt = lrs[1]
+		}
+		c.HTML(http.StatusOK, "dataset.html", gin.H{
+			"Title":     "服务集预览(T)",
+			"Name":      ts.Name + "@" + ts.ID,
+			"LayerName": lrn,
+			"LayerType": lrt,
+			"Format":    ts.Format,
+			"URL":       tiles,
+		})
+		return
+	}
+	tileurl := fmt.Sprintf(`%s/ts/x/%s/`, rootURL(c.Request), tid) //need use user own service set//{z}/{x}/{y}.pbf
+	c.HTML(http.StatusOK, "tileset.html", gin.H{
+		"Title":  "服务集预览(TJ)",
+		"Name":   ts.Name + "@" + ts.ID,
+		"Format": ts.Format,
+		"URL":    tileurl,
 	})
 }

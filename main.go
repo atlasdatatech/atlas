@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -73,7 +74,6 @@ var (
 )
 
 func init() {
-
 	flag.BoolVar(&hf, "h", false, "this help")
 	flag.BoolVar(&initf, "init", false, "init system")
 	flag.StringVar(&cf, "c", "conf.toml", "set config `file`")
@@ -530,6 +530,9 @@ func initTaskRouter() {
 func setupRouter() *gin.Engine {
 	// gin.SetMode(gin.ReleaseMode)
 	// r := gin.New()
+	if runtime.GOOS == "windows" {
+		gin.DisableConsoleColor()
+	}
 	r := gin.Default()
 	//gzip
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
