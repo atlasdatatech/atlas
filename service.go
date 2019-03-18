@@ -490,6 +490,7 @@ func (ss *ServiceSet) AppendTilesets() error {
 				continue
 			}
 			ss.T.Store(tileset.ID, tileset)
+			casEnf.AddPolicy(USER, tileset.ID, "GET")
 			count++
 		}
 	}
@@ -640,6 +641,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 					err = dt.Service()
 					if err == nil {
 						ss.D.Store(dt.ID, dt)
+						casEnf.AddPolicy(USER, dt.ID, "GET")
 					}
 				} else {
 					log.Errorf("import task failed, details: %s", err)

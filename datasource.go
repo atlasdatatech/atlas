@@ -59,6 +59,7 @@ func (ds *DataSource) toDataset() *Dataset {
 		ID:      ds.ID,
 		Name:    ds.Name,
 		Owner:   ds.Owner,
+		Public:  true,
 		Tag:     ds.Tag,
 		Path:    ds.Path,
 		Size:    ds.Size,

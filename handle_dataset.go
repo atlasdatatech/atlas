@@ -226,6 +226,7 @@ func oneClickImport(c *gin.Context) {
 				err = dt.Service()
 				if err == nil {
 					set.D.Store(dt.ID, dt)
+					casEnf.AddPolicy(USER, dt.ID, "GET")
 				}
 			} else {
 				log.Errorf("import task failed, details: %s", err)
@@ -374,6 +375,7 @@ func importFile(c *gin.Context) {
 			err = dt.Service()
 			if err == nil {
 				set.D.Store(dt.ID, dt)
+				casEnf.AddPolicy(USER, dt.ID, "GET")
 			}
 		} else {
 			log.Errorf("import task failed, details: %s", err)

@@ -202,10 +202,7 @@ func privateStyle(c *gin.Context) {
 	}
 
 	//添加管理员组的用户管理权限
-	casEnf.RemovePolicy(USER, fmt.Sprintf("/maps/x/%s/", sid), "GET")
-	casEnf.RemovePolicy(USER, fmt.Sprintf("/maps/x/%s/sprite*", sid), "GET")
-	// casEnf.RemovePolicy(USER, "/ts/x/*", "GET")
-	// casEnf.RemovePolicy(USER, "/datasets/x/*", "GET")
+	casEnf.RemovePolicy(USER, sid, "GET")
 	s.Public = false
 	err := db.Model(s).Select("public").Updates(map[string]interface{}{"public": false}).Error
 	if err != nil {

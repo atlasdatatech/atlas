@@ -184,6 +184,7 @@ func uploadTileset(c *gin.Context) {
 		return
 	}
 	set.T.Store(ts.ID, ts)
+	casEnf.AddPolicy(USER, ts.ID, "GET")
 	res.DoneData(c, ts)
 }
 
@@ -395,6 +396,7 @@ func createTileset(c *gin.Context) {
 		return
 	}
 	set.T.Store(ts.ID, ts)
+	casEnf.AddPolicy(USER, ts.ID, "GET")
 	res.DoneData(c, ts)
 }
 
