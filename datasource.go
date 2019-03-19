@@ -1109,45 +1109,6 @@ func valSizeShp(shp string) int64 {
 	return total
 }
 
-func toMbtiles(outfile string, infiles []string) error {
-	var params []string
-	//显示进度,读取outbuffer缓冲区
-	absPath, err := filepath.Abs(outfile)
-	if err != nil {
-		return err
-	}
-	params = append(params, "-zg")
-	params = append(params, "-o")
-	params = append(params, absPath)
-	params = append(params, "--force")
-	params = append(params, "--drop-densest-as-needed")
-	params = append(params, "--extend-zooms-if-still-dropping")
-	params = append(params, infiles...)
-	fmt.Println(params)
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command("tippecanoe", params...)
-	stdoutIn, _ := cmd.StdoutPipe()
-	stderrIn, _ := cmd.StderrPipe()
-	// var errStdout, errStderr error
-	stdout := io.MultiWriter(os.Stdout, &stdoutBuf)
-	stderr := io.MultiWriter(os.Stderr, &stderrBuf)
-	err = cmd.Start()
-	if err != nil {
-		return err
-	}
-	go func() {
-		io.Copy(stdout, stdoutIn)
-	}()
-	go func() {
-		io.Copy(stderr, stderrIn)
-	}()
-	err = cmd.Wait()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func interfaceFormat(t string, v interface{}) string {
 
 	formatBool := func(v interface{}) string {

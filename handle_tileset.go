@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/teris-io/shortid"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -364,9 +362,8 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 5001)
 		return
 	}
-	id, _ := shortid.Generate()
 	task := &Task{
-		ID:    dts.ID + "." + id,
+		ID:    dts.ID,
 		Name:  dts.Name,
 		Owner: uid,
 		Type:  DS2TS,
