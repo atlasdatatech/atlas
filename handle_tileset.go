@@ -263,7 +263,7 @@ func publishTileset(c *gin.Context) {
 	}
 	task := &Task{
 		ID:    taskid,
-		Name:  ds.Name + "-发布",
+		Name:  ds.Name,
 		Owner: uid,
 		Type:  TSIMPORT,
 		Pipe:  make(chan struct{}),
@@ -364,7 +364,7 @@ func createTileset(c *gin.Context) {
 	}
 	task := &Task{
 		ID:    dts.ID,
-		Name:  dts.Name + "-数据集服务发布",
+		Name:  dts.Name,
 		Owner: uid,
 		Type:  DS2TS,
 		Pipe:  make(chan struct{}),

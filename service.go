@@ -602,6 +602,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 			}
 			task := &Task{
 				ID:    ds.ID,
+				Name:  ds.Name,
 				Owner: ds.Owner,
 				Type:  DSIMPORT,
 				Pipe:  make(chan struct{}),

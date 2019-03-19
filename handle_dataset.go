@@ -184,6 +184,7 @@ func oneClickImport(c *gin.Context) {
 		task := &Task{
 			ID:    ds.ID,
 			Owner: ds.Owner,
+			Name:  ds.Name,
 			Type:  DSIMPORT,
 			Pipe:  make(chan struct{}),
 		}
@@ -331,6 +332,7 @@ func importFile(c *gin.Context) {
 	}
 	task := &Task{
 		ID:    ds.ID,
+		Name:  ds.Name,
 		Owner: ds.Owner,
 		Type:  DSIMPORT,
 		Pipe:  make(chan struct{}),
