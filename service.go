@@ -596,7 +596,7 @@ func (ss *ServiceSet) AppendDatasets() error {
 			}
 			//入库、导入、加载服务
 			ds.Owner = ss.Owner
-			err = ds.Insert()
+			err = ds.Save()
 			if err != nil {
 				log.Errorf(`AppendDatasets, upinsert datafile info error, details: %s`, err)
 			}

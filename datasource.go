@@ -77,8 +77,8 @@ func (ds *DataSource) toDataset() *Dataset {
 	return dt
 }
 
-//Insert 更新/创建数据集概要
-func (ds *DataSource) Insert() error {
+//Save 更新/创建数据集概要
+func (ds *DataSource) Save() error {
 	tmp := &DataSource{}
 	err := db.Where("id = ?", ds.ID).First(tmp).Error
 	if err != nil {

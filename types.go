@@ -102,6 +102,7 @@ type TaskType string
 const (
 	DSIMPORT TaskType = "dsimport" // encoding = gzip
 	TSIMPORT          = "tsimport" // encoding = deflate
+	DS2TS             = "ds2ts"    // encoding = deflate
 )
 
 //TaskTypes 支持的瓦片类型

@@ -5,13 +5,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/render"
@@ -312,6 +310,7 @@ func publishTileset(c *gin.Context) {
 			oldts.Clean()
 		}
 		set.T.Store(ts.ID, ts)
+		casEnf.AddPolicy(USER, ts.ID, "GET")
 		task.Progress = 100
 	}(task, dss)
 
@@ -355,49 +354,76 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	path := filepath.Join(viper.GetString("paths.tilesets"), uid, dts.ID+MBTILESEXT)
-	// download
-	err := dts.CacheMBTiles(path)
+	var dss []*DataSource
+	err := db.Where("id = ?", dts.ID).Find(&dss)
 	if err != nil {
-		log.Errorf("createTileset, could not load tileset %s, details: %s", path, err)
-		res.FailErr(c, err)
+		log.Warnf(`createTileset, %s's tileset (%s) find datasource error ^^`, uid, did)
+		res.Fail(c, 5001)
 		return
 	}
-	ds := &DataSource{
+	task := &Task{
 		ID:    dts.ID,
-		Name:  dts.Name,
+		Name:  dts.Name + "-数据集服务发布",
 		Owner: uid,
-		Path:  path,
+		Type:  DS2TS,
+		Pipe:  make(chan struct{}),
 	}
-	ts, err := LoadTileset(ds)
-	if err != nil {
-		log.Errorf("createTileset, could not load tileset %s, details: %s", path, err)
-		res.FailErr(c, err)
+	//任务队列
+	select {
+	case taskQueue <- task:
+	default:
+		log.Warningf("task queue overflow, request refused...")
+		res.FailMsg(c, "服务器繁忙,请稍后再试")
 		return
 	}
-	ts.ID = did
-	ts.Owner = uid
-	//入库
-	err = ts.UpInsert()
-	if err != nil {
-		log.Errorf(`replaceTileset, upinsert tileser %s error, details: %s`, ts.ID, err)
-	}
-	//加载服务,todo 用户服务无需预加载
-	err = ts.Service()
-	if err != nil {
-		log.Error(err)
-		res.FailErr(c, err)
-		return
-	}
-	set := userSet.service(uid)
-	if set == nil {
-		log.Errorf(`replaceTileset, %s's service set not found ^^`, uid)
-		res.Fail(c, 4043)
-		return
-	}
-	set.T.Store(ts.ID, ts)
-	casEnf.AddPolicy(USER, ts.ID, "GET")
-	res.DoneData(c, ts)
+	taskSet.Store(task.ID, task)
+	task.save()
+
+	go func(task *Task, dss []*DataSource) {
+		defer func() {
+			task.Pipe <- struct{}{}
+		}()
+		s := time.Now()
+		ts, err := sources2ts(task, dss)
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		//入库
+		ts.Owner = task.Owner
+		err = ts.UpInsert()
+		if err != nil {
+			log.Errorf(`publishTileset, upinsert tileset (%s) error, details: %s`, ts.ID, err)
+			task.Error = err.Error()
+		}
+		//加载服务,todo 用户服务无需预加载
+		err = ts.Service()
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		ts.atlasMark()
+		log.Infof("load tilesets(%s), takes: %v", ts.ID, time.Since(s))
+		oldts := userSet.tileset(task.Owner, task.ID)
+		if oldts != nil {
+			oldts.Clean()
+		}
+		set := userSet.service(uid)
+		set.T.Store(ts.ID, ts)
+		casEnf.AddPolicy(USER, ts.ID, "GET")
+		task.Progress = 100
+	}(task, dss)
+
+	//退出队列,通知完成消息
+	go func(task *Task) {
+		<-task.Pipe
+		<-taskQueue
+		task.update()
+	}(task)
+
+	res.DoneData(c, task)
 }
 
 //updateTileset 从数据集更新服务集
@@ -520,8 +546,8 @@ func getTileJSON(c *gin.Context) {
 		res.Fail(c, 4045)
 		return
 	}
-	mapurl := fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid)          //need use user own service set
-	tileurl := fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid) //need use user own service set
+	mapurl := fmt.Sprintf(`atlasdata://ts/view/%s/`, tid)          //need use user own service set
+	tileurl := fmt.Sprintf(`atlasdata://ts/x/%s/{z}/{x}/{y}`, tid) //need use user own service set
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",
 		"id":       tid,
@@ -589,8 +615,8 @@ func getTile(c *gin.Context) {
 		return
 	}
 	x := uint(placeholder)
-	ypbf := c.Param("y")
-	ys := strings.Split(ypbf, ".")
+	yext := c.Param("y")
+	ys := strings.Split(yext, ".")
 	if len(ys) != 2 {
 		res.Fail(c, 4003)
 		return

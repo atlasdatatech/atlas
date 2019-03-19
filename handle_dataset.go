@@ -176,7 +176,7 @@ func oneClickImport(c *gin.Context) {
 	for _, ds := range dss {
 		ds.Owner = uid
 		go func() {
-			err := ds.Insert()
+			err := ds.Save()
 			if err != nil {
 				log.Error(err)
 			}
@@ -260,7 +260,7 @@ func uploadFile(c *gin.Context) {
 	loadFromSources(dss)
 	for _, ds := range dss {
 		ds.Owner = uid
-		err = ds.Insert()
+		err = ds.Save()
 		if err != nil {
 			log.Errorf(`uploadFiles, upinsert datafile info error, details: %s`, err)
 		}
@@ -1056,8 +1056,8 @@ func getTileLayer(c *gin.Context) {
 	z := uint(placeholder)
 	placeholder, _ = strconv.ParseUint(c.Param("x"), 10, 32)
 	x := uint(placeholder)
-	ypbf := c.Param("y")
-	ys := strings.Split(ypbf, ".")
+	yext := c.Param("y")
+	ys := strings.Split(yext, ".")
 	if len(ys) != 2 {
 		res.Fail(c, 404)
 		return
@@ -1166,7 +1166,7 @@ func getTileLayerJSON(c *gin.Context) {
 		MinZoom: dts.tlayer.MinZoom,
 		MaxZoom: dts.tlayer.MaxZoom,
 		Tiles: []string{
-			fmt.Sprintf("%v/datasets/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), dts.tlayer.MVTName()),
+			fmt.Sprintf("atlasdata://datasets/x/%s/{z}/{x}/{y}.pbf", dts.tlayer.MVTName()),
 		},
 	}
 
@@ -1185,7 +1185,7 @@ func getTileLayerJSON(c *gin.Context) {
 	// add our layer to our tile layer response
 	tileJSON.VectorLayers = append(tileJSON.VectorLayers, layer)
 
-	tileURL := fmt.Sprintf("%v/datasets/x/%v/{z}/{x}/{y}.pbf", rootURL(c.Request), did)
+	tileURL := fmt.Sprintf("atlasdata://datasets/x/%s/{z}/{x}/{y}.pbf", did)
 
 	// build our URL scheme for the tile grid
 	tileJSON.Tiles = append(tileJSON.Tiles, tileURL)
