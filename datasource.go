@@ -702,10 +702,10 @@ func (ds *DataSource) Import(task *Task) error {
 				} else {
 					vals = append(vals, fmt.Sprintf(`(%s)`, rval))
 				}
-				if count%1000 == 0 {
+				if (count+1)%1000 == 0 {
 					go func(vs []string) {
 						t := time.Now()
-						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, "),(")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 						query := db.Exec(st)
 						err := query.Error
 						if err != nil {
@@ -721,7 +721,7 @@ func (ds *DataSource) Import(task *Task) error {
 			}
 			t = time.Now()
 			task.Status = "importing"
-			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, "),(")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 			query := db.Exec(st)
 			err = query.Error
 			if err != nil {
@@ -800,14 +800,14 @@ func (ds *DataSource) Import(task *Task) error {
 				// gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
 				gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
 				if rval == "" {
-					vals = append(vals, gval)
+					vals = append(vals, fmt.Sprintf("(%s)", gval))
 				} else {
 					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
 				}
-				if rowNum%1000 == 0 {
+				if (rowNum+1)%1000 == 0 {
 					go func(vs []string) {
 						t := time.Now()
-						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, "),(")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 						query := db.Exec(st)
 						err := query.Error
 						if err != nil {
@@ -823,7 +823,7 @@ func (ds *DataSource) Import(task *Task) error {
 			}
 			log.Info("geojson process ", time.Since(s))
 			task.Status = "importing"
-			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, "),(")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
 			// log.Info(st)
 			query := db.Exec(st)
 			err = query.Error

@@ -326,7 +326,9 @@ func importFile(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-
+	if c.Param("id") != ds.ID {
+		log.Warnf("id not eq")
+	}
 	task := &Task{
 		ID:    ds.ID,
 		Owner: ds.Owner,
