@@ -122,11 +122,12 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 		wg.Add(1)
 		go func(ds *DataSource, i int) {
 			defer wg.Done()
-			err := ds.ToGeojson()
+			outfile := strings.TrimSuffix(ds.Path, ds.Format) + GEOJSONEXT
+			err := ds.ToGeojson(outfile)
 			if err != nil {
 				log.Error(err)
 			} else {
-				inputfiles[i] = ds.Path
+				inputfiles[i] = outfile
 			}
 		}(ds, i)
 	}

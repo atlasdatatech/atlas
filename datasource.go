@@ -107,29 +107,77 @@ func (ds *DataSource) Update() error {
 }
 
 //ToGeojson 数据源转为geojson
-func (ds *DataSource) ToGeojson() error {
-	npath := strings.TrimSuffix(ds.Path, ds.Format) + GEOJSONEXT
+func (ds *DataSource) ToGeojson(outfile string) error {
 	switch ds.Format {
 	case KMLEXT, GPXEXT:
-		err := kg2Geojson(ds.Path, npath)
+		var params []string
+		params = append(params, ds.Path)
+		if runtime.GOOS == "windows" {
+			decoder := mahonia.NewDecoder("gbk")
+			gbk := strings.Join(params, ",")
+			gbk = decoder.ConvertString(gbk)
+			params = strings.Split(gbk, ",")
+		}
+		log.Println(params)
+		cmd := exec.Command("togeojson", params...)
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		err := cmd.Start()
 		if err != nil {
 			return err
 		}
-		ds.Path = npath
-		ds.Format = GEOJSONEXT
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(outfile, stdout.Bytes(), os.ModePerm)
+		if err != nil {
+			log.Errorf("togeojson write geojson file failed,details: %s\n", err)
+			return err
+		}
+		return nil
 	case GEOJSONEXT, CSVEXT:
 		return nil
 	case SHPEXT:
-		err := shp2Geojson(ds.Path, npath)
+		if size := valSizeShp(ds.Path); size == 0 {
+			return fmt.Errorf("invalid shapefile")
+		}
+		var params []string
+		params = append(params, []string{"-f", "GEOJSON", outfile}...)
+		//显示进度,读取outbuffer缓冲区
+		params = append(params, "-progress")
+		params = append(params, "-skipfailures")
+		//-overwrite not works
+		params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
+		//only for shp
+		params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
+		//设置源文件编码
+		switch ds.Encoding {
+		case "gbk", "big5", "gb18030":
+			params = append(params, []string{"--config", "SHAPE_ENCODING", fmt.Sprintf("%s", strings.ToUpper(ds.Encoding))}...)
+			log.Warnf("togeojson, src encoding: %s", ds.Encoding)
+		}
+		params = append(params, ds.Path)
+		//window上参数转码
+		if runtime.GOOS == "windows" {
+			decoder := mahonia.NewDecoder("gbk")
+			gbk := strings.Join(params, ",")
+			gbk = decoder.ConvertString(gbk)
+			params = strings.Split(gbk, ",")
+		}
+		cmd := exec.Command("ogr2ogr", params...)
+		err := cmd.Start()
 		if err != nil {
 			return err
 		}
-		ds.Path = npath
-		ds.Format = GEOJSONEXT
+		err = cmd.Wait()
+		if err != nil {
+			return err
+		}
+		return nil
 	default:
 		return fmt.Errorf("unsupport format")
 	}
-	return nil
 }
 
 // LoadFrom 从数据文件加载信息
@@ -1059,85 +1107,6 @@ func valSizeShp(shp string) int64 {
 	total += info.Size()
 
 	return total
-}
-
-//shp2Geojson convert shapefile to geojson
-func shp2Geojson(infile, outfile string) error {
-	if size := valSizeShp(infile); size == 0 {
-		return fmt.Errorf("invalid shapefile")
-	}
-	var params []string
-	//显示进度,读取outbuffer缓冲区
-	// absPath, err := filepath.Abs(shp)
-	// if err != nil {
-	// 	return err
-	// }
-	if outfile == "" {
-		outfile = strings.TrimSuffix(infile, filepath.Ext(infile)) + GEOJSONEXT
-	}
-	params = append(params, []string{"-f", "GEOJSON", outfile}...)
-	params = append(params, "-progress")
-	params = append(params, "-skipfailures")
-	//-overwrite not works
-	params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
-	//only for shp
-	params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
-	params = append(params, infile)
-	//window上参数转码
-	if runtime.GOOS == "windows" {
-		decoder := mahonia.NewDecoder("gbk")
-		gbk := strings.Join(params, ",")
-		gbk = decoder.ConvertString(gbk)
-		params = strings.Split(gbk, ",")
-	}
-	cmd := exec.Command("ogr2ogr", params...)
-	err := cmd.Start()
-	if err != nil {
-		return err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-//kg2Geojson convert kml/gpx to geojson
-func kg2Geojson(infile, outfile string) error {
-	var params []string
-	//显示进度,读取outbuffer缓冲区
-	// absPath, err := filepath.Abs(df.Path)
-	// if err != nil {
-	// 	return err
-	// }
-	params = append(params, infile)
-	if runtime.GOOS == "windows" {
-		decoder := mahonia.NewDecoder("gbk")
-		gbk := strings.Join(params, ",")
-		gbk = decoder.ConvertString(gbk)
-		params = strings.Split(gbk, ",")
-	}
-	log.Println(params)
-	cmd := exec.Command("togeojson", params...)
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	err := cmd.Start()
-	if err != nil {
-		return err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return err
-	}
-	if outfile == "" {
-		outfile = strings.TrimSuffix(infile, filepath.Ext(infile)) + GEOJSONEXT
-	}
-	err = ioutil.WriteFile(outfile, stdout.Bytes(), os.ModePerm)
-	if err != nil {
-		log.Errorf("togeojson write geojson file failed,details: %s\n", err)
-		return err
-	}
-	return nil
 }
 
 func toMbtiles(outfile string, infiles []string) error {

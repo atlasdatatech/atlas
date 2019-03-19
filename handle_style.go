@@ -303,7 +303,7 @@ func cloneStyle(c *gin.Context) {
 	root := Root{}
 	err = json.Unmarshal(style.Data, &root)
 	if err == nil {
-		root.Sprite = fmt.Sprintf("atlas://maps/x/%s/sprite", ns.ID)
+		root.Sprite = fmt.Sprintf("atlasdata://maps/x/%s/sprite", ns.ID)
 		var buf []byte
 		buf, err = json.Marshal(root)
 		if err == nil {
@@ -935,10 +935,10 @@ func getStyle(c *gin.Context) {
 	}
 	baseurl := rootURL(c.Request)
 	fixURL := func(url string) string {
-		if "" == url || !strings.HasPrefix(url, "atlas://") {
+		if "" == url || !strings.HasPrefix(url, "atlasdata://") {
 			return url
 		}
-		return strings.Replace(url, "atlas:/", baseurl, -1)
+		return strings.Replace(url, "atlasdata:/", baseurl, -1)
 	}
 	style.Glyphs = fixURL(style.Glyphs)
 	style.Sprite = fixURL(style.Sprite)

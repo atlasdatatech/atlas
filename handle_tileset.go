@@ -256,6 +256,7 @@ func publishTileset(c *gin.Context) {
 		return
 	}
 	dss, _ := loadZipSources(ds)
+	loadFromSources(dss)
 	taskid := ds.ID
 	if tid := c.Param("id"); tid != "" {
 		taskid = tid
