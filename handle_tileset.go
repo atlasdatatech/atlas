@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teris-io/shortid"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -351,19 +353,20 @@ func createTileset(c *gin.Context) {
 	did := c.Param("id")
 	dts := userSet.dataset(uid, did)
 	if dts == nil {
-		log.Warnf(`createTileset, %s's tileset (%s) not found ^^`, uid, did)
+		log.Warnf(`createTileset, %s's dataset (%s) not found ^^`, uid, did)
 		res.Fail(c, 4045)
 		return
 	}
-	var dss []*DataSource
-	err := db.Where("id = ?", dts.ID).Find(&dss)
+	ds := &DataSource{}
+	err := db.Where("id = ?", dts.ID).First(ds).Error
 	if err != nil {
-		log.Warnf(`createTileset, %s's tileset (%s) find datasource error ^^`, uid, did)
+		log.Warnf(`createTileset, %s's dataset (%s) find datasource error ^^`, uid, did)
 		res.Fail(c, 5001)
 		return
 	}
+	id, _ := shortid.Generate()
 	task := &Task{
-		ID:    dts.ID,
+		ID:    dts.ID + "." + id,
 		Name:  dts.Name,
 		Owner: uid,
 		Type:  DS2TS,
@@ -415,7 +418,7 @@ func createTileset(c *gin.Context) {
 		set.T.Store(ts.ID, ts)
 		casEnf.AddPolicy(USER, ts.ID, "GET")
 		task.Progress = 100
-	}(task, dss)
+	}(task, []*DataSource{ds})
 
 	//退出队列,通知完成消息
 	go func(task *Task) {
