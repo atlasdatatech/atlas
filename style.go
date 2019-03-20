@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -142,7 +141,11 @@ func (s *Style) GenSprite(sprite string) error {
 	dir := filepath.Join(s.Path, "icons")
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return fmt.Errorf("no icons, can not refresh sprites")
+		err := os.MkdirAll(dir, os.ModePerm)
+		if err != nil {
+			log.Error(err)
+		}
+		// return fmt.Errorf("no icons, can not refresh sprites")
 	}
 
 	symbols := ReadIcons(dir, scale) //readIcons(dir, 1)
