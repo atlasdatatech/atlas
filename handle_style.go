@@ -995,6 +995,9 @@ func getSprite(c *gin.Context) {
 
 	if strings.HasSuffix(strings.ToLower(sprite), ".json") {
 		c.Writer.Header().Set("Content-Type", "application/json")
+		if buf == nil {
+			buf = []byte("{}")
+		}
 	}
 	if strings.HasSuffix(strings.ToLower(sprite), ".png") {
 		p, y := c.GetQuery("base64")
