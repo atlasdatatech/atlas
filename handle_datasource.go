@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/axgle/mahonia"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
@@ -126,12 +129,81 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 		wg.Add(1)
 		go func(ds *DataSource, i int) {
 			defer wg.Done()
-			outfile := strings.TrimSuffix(ds.Path, ds.Format) + GEOJSONEXT
-			err := ds.ToGeojson(outfile)
-			if err != nil {
-				log.Error(err)
-			} else {
+			switch ds.Format {
+			case KMLEXT, GPXEXT:
+				var params []string
+				params = append(params, ds.Path)
+				if runtime.GOOS == "windows" {
+					decoder := mahonia.NewDecoder("gbk")
+					gbk := strings.Join(params, ",")
+					gbk = decoder.ConvertString(gbk)
+					params = strings.Split(gbk, ",")
+				}
+				log.Println(params)
+				cmd := exec.Command("togeojson", params...)
+				var stdout bytes.Buffer
+				cmd.Stdout = &stdout
+				err := cmd.Start()
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				err = cmd.Wait()
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				outfile := strings.TrimSuffix(ds.Path, ds.Format) + GEOJSONEXT
+				err = ioutil.WriteFile(outfile, stdout.Bytes(), os.ModePerm)
+				if err != nil {
+					log.Errorf("togeojson write geojson file failed,details: %s\n", err)
+					return
+				}
 				layers[i] = outfile
+			case GEOJSONEXT, CSVEXT:
+				layers[i] = ds.Path
+			case SHPEXT:
+				if size := valSizeShp(ds.Path); size == 0 {
+					log.Errorf("invalid shapefile")
+					return
+				}
+				var params []string
+				outfile := strings.TrimSuffix(ds.Path, ds.Format) + GEOJSONEXT
+				params = append(params, []string{"-f", "GEOJSON", outfile}...)
+				//显示进度,读取outbuffer缓冲区
+				params = append(params, "-progress")
+				params = append(params, "-skipfailures")
+				//-overwrite not works
+				params = append(params, []string{"-lco", "OVERWRITE=YES"}...)
+				//only for shp
+				params = append(params, []string{"-nlt", "PROMOTE_TO_MULTI"}...)
+				//设置源文件编码
+				switch ds.Encoding {
+				case "gbk", "big5", "gb18030":
+					params = append(params, []string{"--config", "SHAPE_ENCODING", fmt.Sprintf("%s", strings.ToUpper(ds.Encoding))}...)
+					log.Warnf("togeojson, src encoding: %s", ds.Encoding)
+				}
+				params = append(params, ds.Path)
+				//window上参数转码
+				if runtime.GOOS == "windows" {
+					decoder := mahonia.NewDecoder("gbk")
+					gbk := strings.Join(params, ",")
+					gbk = decoder.ConvertString(gbk)
+					params = strings.Split(gbk, ",")
+				}
+				cmd := exec.Command("ogr2ogr", params...)
+				err := cmd.Start()
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				err = cmd.Wait()
+				if err != nil {
+					log.Error(err)
+					return
+				}
+				layers[i] = outfile
+			default:
 			}
 		}(ds, i)
 	}
