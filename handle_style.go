@@ -1014,8 +1014,8 @@ func getSprite(c *gin.Context) {
 				buf = img.Bytes()
 			}
 		}
+		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
 	}
-	c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
 	c.Writer.Write(buf)
 }
 
