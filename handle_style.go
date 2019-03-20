@@ -965,8 +965,8 @@ func getSprite(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	fmt := c.Param("fmt")
-	sprite := "sprite" + fmt
+	fmtext := c.Param("fmt")
+	sprite := "sprite" + fmtext
 	spritePat := `^sprite(@[234]x)?.(?:json|png)$`
 	if ok, _ := regexp.MatchString(spritePat, sprite); !ok {
 		log.Warnf(`getSprite, get sprite MatchString false, sprite : %s; user: %s ^^`, sprite, uid)
@@ -1015,6 +1015,7 @@ func getSprite(c *gin.Context) {
 			}
 		}
 	}
+	c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
 	c.Writer.Write(buf)
 }
 
