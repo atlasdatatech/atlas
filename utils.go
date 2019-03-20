@@ -429,7 +429,7 @@ func DirCopy(src string, dst string) error {
 		dstfp := path.Join(dst, fd.Name())
 
 		if fd.IsDir() {
-			if err = FileCopy(srcfp, dstfp); err != nil {
+			if err = DirCopy(srcfp, dstfp); err != nil {
 				fmt.Println(err)
 			}
 		} else {
