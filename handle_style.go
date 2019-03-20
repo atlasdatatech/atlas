@@ -979,24 +979,25 @@ func getSprite(c *gin.Context) {
 		if os.IsNotExist(err) {
 			err := style.GenSprite(sprite)
 			if err != nil {
-				log.Errorf(`getSprite, sprite not found, and generate error, details: %s ^^`, err)
-				res.FailMsg(c, "not found and generate error")
-				return
+				log.Warnf(`getSprite, sprite not found, and generate error, details: %s ^^`, err)
+				// res.FailMsg(c, "not found and generate error")
+				// return
 			}
-		} else {
-			return
 		}
 	}
 
 	buf, err := ioutil.ReadFile(pathfile)
 	if err != nil {
-		log.Errorf(`getSprite, read sprite file: %v; user: %s ^^`, err, uid)
-		res.Fail(c, 5002)
-		return
+		log.Warnf(`getSprite, read sprite file: %v; user: %s ^^`, err, uid)
+		// res.Fail(c, 5002)
+		// return
 	}
 
 	if strings.HasSuffix(strings.ToLower(sprite), ".json") {
 		c.Writer.Header().Set("Content-Type", "application/json")
+		if buf == nil {
+			buf = []byte("{}")
+		}
 	}
 	if strings.HasSuffix(strings.ToLower(sprite), ".png") {
 		p, y := c.GetQuery("base64")
@@ -1006,6 +1007,9 @@ func getSprite(c *gin.Context) {
 			return
 		}
 		c.Writer.Header().Set("Content-Type", "image/png")
+		if buf == nil {
+			buf = BlankPNG()
+		}
 	}
 	c.Writer.Write(buf)
 }
