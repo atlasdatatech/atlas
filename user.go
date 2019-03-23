@@ -2,7 +2,6 @@ package main
 
 import (
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/jinzhu/gorm"
@@ -59,7 +58,6 @@ type Attempt struct {
 }
 
 func validName(name string) int {
-	name = strings.ToLower(name)
 	if len(name) > lenUsername {
 		log.Warnf("validName, name length greater than 32, name:'%s'", name)
 		return 4012
@@ -83,7 +81,6 @@ func validName(name string) int {
 }
 
 func validEmail(email string) int {
-	email = strings.ToLower(email)
 	if ok := rEmail.MatchString(email); !ok {
 		log.Warnf("validEmail, invalidate email format, email:'%s'", email)
 		return 4013

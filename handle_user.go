@@ -26,13 +26,15 @@ func signup(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
+	name := strings.ToLower(body.Name)
 	// validate signup name
-	if code := validName(body.Name); code != 200 {
+	if code := validName(name); code != 200 {
 		res.Fail(c, code)
 		return
 	}
 	// validate signup email
-	if code := validEmail(body.Email); code != 200 {
+	email := strings.ToLower(body.Email)
+	if code := validEmail(email); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -44,10 +46,10 @@ func signup(c *gin.Context) {
 	// createUser
 	user := User{}
 	user.ID, _ = shortid.Generate()
-	user.Name = body.Name
+	user.Name = name
+	user.Email = email
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
-	user.Email = strings.ToLower(body.Email)
 	//No verification required
 	claims := MapClaims{
 		userKey: user.Name,
@@ -88,16 +90,16 @@ func signup(c *gin.Context) {
 			"VerifyURL":    verifyURL,
 			"Verification": user.Verification,
 			"SigninURL":    rootURL(c.Request) + "/sign/in/",
-			"Email":        body.Email,
-			"Name":         body.Name,
+			"Email":        user.Email,
+			"Name":         user.Name,
 		}
 		mailConf.From = viper.GetString("smtp.from.name") + " <" + viper.GetString("smtp.from.address") + ">"
 		mailConf.Subject = "地图云-用户注册邮件"
-		mailConf.ReplyTo = body.Email
+		mailConf.ReplyTo = user.Email
 		mailConf.HTMLPath = viper.GetString("statics.home") + "email/signup.html"
 
 		if err := mailConf.SendMail(); err != nil {
-			log.Errorf(`signup, sending verify email error, user: %s, details: '%s' ~`, body.Name, err)
+			log.Errorf(`signup, sending verify email error, user: %s, details: '%s' ~`, user.Name, err)
 		}
 	}()
 	CreatePaths(user.Name)
@@ -125,7 +127,8 @@ func addUser(c *gin.Context) {
 		return
 	}
 	// validate
-	if code := validName(body.Name); code != 200 {
+	name := strings.ToLower(body.Name)
+	if code := validName(name); code != 200 {
 		res.Fail(c, code)
 		return
 	}
@@ -137,7 +140,7 @@ func addUser(c *gin.Context) {
 	// createUser
 	user := User{}
 	user.ID, _ = shortid.Generate()
-	user.Name = body.Name
+	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
 	user.Phone = body.Phone
@@ -180,7 +183,7 @@ func signin(c *gin.Context) {
 		return
 	}
 
-	body.Name = strings.ToLower(body.Name)
+	name := strings.ToLower(body.Name)
 
 	// attemptLogin abuseFilter
 	IPCountChan := make(chan int)
@@ -198,13 +201,13 @@ func signin(c *gin.Context) {
 	}
 
 	user := User{}
-	if db.Where("name = ?", body.Name).Or("email = ?", body.Name).First(&user).RecordNotFound() {
+	if db.Where("name = ?", name).Or("email = ?", name).First(&user).RecordNotFound() {
 		res.Fail(c, 4041)
 		return
 	}
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
 	if err != nil {
-		attempt := Attempt{IP: c.ClientIP(), Name: body.Name}
+		attempt := Attempt{IP: c.ClientIP(), Name: name}
 		db.Create(&attempt)
 		res.Fail(c, 4011)
 		return
@@ -309,6 +312,7 @@ func resetPassword(c *gin.Context) {
 		return
 	}
 	name := c.Param("user")
+	name = strings.ToLower(name)
 	user := User{}
 	err = db.Where("name = ?", name).First(&user).Error
 	if err != nil {
@@ -348,6 +352,7 @@ func resetPassword(c *gin.Context) {
 func verify(c *gin.Context) {
 	res := NewRes()
 	name := c.Param("user")
+	name = strings.ToLower(name)
 	user := &User{}
 	if err := db.Where("name = ?", name).First(&user).Error; err != nil {
 		if gorm.IsRecordNotFoundError(err) {

@@ -507,7 +507,6 @@ func setupRouter() *gin.Engine {
 
 	r.GET("/", index)
 	r.GET("/ping", ping)
-	//x
 	r.GET("/crs/", crsList)
 	r.GET("/encoding/", encodingList)
 	r.GET("/ftype/", fieldTypeList)
