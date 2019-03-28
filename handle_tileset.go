@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teris-io/shortid"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -255,34 +257,37 @@ func publishTileset(c *gin.Context) {
 		res.FailErr(c, err)
 		return
 	}
-	dss, _ := loadZipSources(ds)
-	loadFromSources(dss)
-	taskid := ds.ID
+
+	baseid := ds.ID
 	if tid := c.Param("id"); tid != "" {
-		taskid = tid
+		baseid = tid
 	}
+	id, _ := shortid.Generate()
 	task := &Task{
-		ID:    taskid,
+		ID:    id,
+		Base:  baseid,
 		Name:  ds.Name,
 		Owner: uid,
 		Type:  TSIMPORT,
 		Pipe:  make(chan struct{}),
 	}
 	//任务队列
-	select {
-	case taskQueue <- task:
-	default:
-		log.Warningf("task queue overflow, request refused...")
-		res.FailMsg(c, "服务器繁忙,请稍后再试")
-		return
-	}
+	taskQueue <- task
+	// select {
+	// case taskQueue <- task:
+	// default:
+	// 	log.Warningf("task queue overflow, request refused...")
+	// 	res.FailMsg(c, "服务器繁忙,请稍后再试")
+	// 	return
+	// }
 	taskSet.Store(task.ID, task)
-	task.save()
 
-	go func(task *Task, dss []*DataSource) {
+	go func(task *Task, ds *DataSource) {
 		defer func() {
 			task.Pipe <- struct{}{}
 		}()
+		dss, _ := loadZipSources(ds)
+		loadFromSources(dss)
 		s := time.Now()
 		ts, err := sources2ts(task, dss)
 		if err != nil {
@@ -313,13 +318,14 @@ func publishTileset(c *gin.Context) {
 		set.T.Store(ts.ID, ts)
 		casEnf.AddPolicy(USER, ts.ID, "GET")
 		task.Progress = 100
-	}(task, dss)
+	}(task, ds)
 
 	//退出队列,通知完成消息
 	go func(task *Task) {
 		<-task.Pipe
 		<-taskQueue
-		task.update()
+		task.save()
+		taskSet.Delete(task.ID)
 	}(task)
 
 	res.DoneData(c, task)
@@ -356,29 +362,31 @@ func createTileset(c *gin.Context) {
 		return
 	}
 	ds := &DataSource{}
-	err := db.Where("id = ?", dts.ID).First(ds).Error
+	err := db.Where("id = ?", dts.Base).First(ds).Error
 	if err != nil {
 		log.Warnf(`createTileset, %s's dataset (%s) find datasource error ^^`, uid, did)
 		res.Fail(c, 5001)
 		return
 	}
+	id, _ := shortid.Generate()
 	task := &Task{
-		ID:    dts.ID,
+		ID:    id,
+		Base:  ds.ID,
 		Name:  dts.Name,
 		Owner: uid,
 		Type:  DS2TS,
 		Pipe:  make(chan struct{}),
 	}
 	//任务队列
-	select {
-	case taskQueue <- task:
-	default:
-		log.Warningf("task queue overflow, request refused...")
-		res.FailMsg(c, "服务器繁忙,请稍后再试")
-		return
-	}
+	taskQueue <- task
+	// select {
+	// case taskQueue <- task:
+	// default:
+	// 	log.Warningf("task queue overflow, request refused...")
+	// 	res.FailMsg(c, "服务器繁忙,请稍后再试")
+	// 	return
+	// }
 	taskSet.Store(task.ID, task)
-	task.save()
 
 	go func(task *Task, dss []*DataSource) {
 		defer func() {
@@ -421,7 +429,8 @@ func createTileset(c *gin.Context) {
 	go func(task *Task) {
 		<-task.Pipe
 		<-taskQueue
-		task.update()
+		task.save()
+		taskSet.Delete(task.ID)
 	}(task)
 
 	res.DoneData(c, task)

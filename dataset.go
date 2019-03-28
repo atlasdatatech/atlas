@@ -41,12 +41,13 @@ type Field struct {
 
 // Dataset 数据集定义结构
 type Dataset struct {
-	ID        string          `json:"id"`   //字段列表
-	Name      string          `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
+	ID        string          `json:"id" gorm:"primary_key"` //字段列表
+	Name      string          `json:"name"`                  //字段列表// 数据集名称,现用于更方便的ID
 	Tag       string          `json:"-"`
 	Owner     string          `json:"owner"`
 	Public    bool            `json:"public"`
 	Path      string          `json:"-"`
+	Base      string          `json:"-" gorm:"index"`
 	Format    string          `json:"format"`
 	Size      int64           `json:"size"`
 	Total     int             `json:"total"`

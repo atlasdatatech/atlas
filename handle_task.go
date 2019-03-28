@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,20 +15,38 @@ func listTasks(c *gin.Context) {
 	if uid == "" {
 		uid = c.GetString(userKey)
 	}
-	log.Info(uid)
-	id := c.Param("id")
-	task, ok := taskSet.Load(id)
-	if ok {
-		res.DoneData(c, task)
-		return
-	}
-	dbtask := &Task{ID: id}
-	err := dbtask.info()
+
+	var tasks []*Task
+	taskSet.Range(func(_, v interface{}) bool {
+		task, ok := v.(*Task)
+		if ok {
+			if task.Owner == uid {
+				tasks = append(tasks, task)
+			}
+		}
+		return true
+	})
+
+	dbtasks := []*Task{}
+	err := db.Where(`owner = ? `, uid).Find(&dbtasks).Error
 	if err != nil {
-		res.FailMsg(c, "task not found")
-		return
+		log.Errorf(`listTasks, query %s's tasks info error`, uid)
 	}
-	res.DoneData(c, dbtask)
+	for _, t := range dbtasks {
+		updated := false
+		for i, tt := range tasks {
+			if tt.ID == t.ID {
+				tasks[i] = tt
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			tasks = append(tasks, t)
+		}
+	}
+
+	res.DoneData(c, tasks)
 }
 
 func taskQuery(c *gin.Context) {
@@ -36,20 +55,31 @@ func taskQuery(c *gin.Context) {
 	if uid == "" {
 		uid = c.GetString(userKey)
 	}
-	log.Info(uid)
-	id := c.Param("id")
-	task, ok := taskSet.Load(id)
-	if ok {
-		res.DoneData(c, task)
+	ids := c.Param("ids")
+	if ids == "" {
+		res.Fail(c, 4001)
 		return
 	}
-	dbtask := &Task{ID: id}
-	err := dbtask.info()
-	if err != nil {
-		res.FailMsg(c, "task not found")
-		return
+	var tasks []*Task
+	for _, id := range strings.Split(ids, ",") {
+		v, ok := taskSet.Load(id)
+		if ok {
+			task, ok := v.(*Task)
+			if ok {
+				tasks = append(tasks, task)
+				continue
+			}
+		}
+		task := &Task{}
+		err := db.Where(`id = ? `, id).First(task).Error
+		if err == nil {
+			tasks = append(tasks, task)
+			continue
+		}
+		log.Errorf(`taskQuery, query %s's task(%s) info error`, uid, id)
 	}
-	res.DoneData(c, dbtask)
+
+	res.DoneData(c, tasks)
 }
 
 func taskStreamQuery(c *gin.Context) {

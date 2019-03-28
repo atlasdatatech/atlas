@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teris-io/shortid"
+
 	_ "github.com/go-spatial/tegola/provider/postgis"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
@@ -27,6 +29,7 @@ const (
 //Tileset 样式库
 type Tileset struct {
 	ID        string     `json:"id" gorm:"primary_key"`
+	Base      string     `json:"-" gorm:"index"`
 	Version   string     `json:"version"`
 	Name      string     `json:"name" gorm:"not null"`
 	Tag       string     `json:"-"`
@@ -53,8 +56,10 @@ func LoadTileset(ds *DataSource) (*Tileset, error) {
 		log.Errorf(`LoadTileset, read style file info error, details: %s`, err)
 		return nil, err
 	}
+	id, _ := shortid.Generate()
 	out := &Tileset{
-		ID:        ds.ID,
+		ID:        id,
+		Base:      ds.ID,
 		Version:   "v3",
 		Name:      ds.Name,
 		Owner:     ds.Owner,

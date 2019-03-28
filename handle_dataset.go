@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teris-io/shortid"
+
 	geom "github.com/go-spatial/geom"
 	slippy "github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
@@ -181,8 +183,10 @@ func oneClickImport(c *gin.Context) {
 				log.Error(err)
 			}
 		}()
+		id, _ := shortid.Generate()
 		task := &Task{
-			ID:    ds.ID,
+			ID:    id,
+			Base:  ds.ID,
 			Owner: ds.Owner,
 			Name:  ds.Name,
 			Type:  DSIMPORT,
@@ -192,7 +196,6 @@ func oneClickImport(c *gin.Context) {
 		taskQueue <- task
 		//任务集
 		taskSet.Store(task.ID, task)
-		task.save()
 		go func(ds *DataSource, task *Task) {
 			//通知goroutine任务结束
 			defer func(task *Task) {
@@ -214,7 +217,8 @@ func oneClickImport(c *gin.Context) {
 		go func(ds *DataSource, task *Task) {
 			<-task.Pipe
 			<-taskQueue
-			task.update()
+			task.save()
+			taskSet.Delete(task.ID)
 			if task.Error == "" {
 				//todo goroute 导入，以下事务需在task完成后处理
 				dt := ds.toDataset()
@@ -330,24 +334,26 @@ func importFile(c *gin.Context) {
 	if c.Param("id") != ds.ID {
 		log.Warnf("id not eq")
 	}
+	id, _ := shortid.Generate()
 	task := &Task{
-		ID:    ds.ID,
+		ID:    id,
+		Base:  ds.ID,
 		Name:  ds.Name,
 		Owner: ds.Owner,
 		Type:  DSIMPORT,
 		Pipe:  make(chan struct{}),
 	}
 	//任务队列
-	select {
-	case taskQueue <- task:
-	default:
-		log.Warningf("task queue overflow, request refused...")
-		res.FailMsg(c, "task queue overflow, request refused")
-		return
-	}
+	taskQueue <- task
+	// select {
+	// case taskQueue <- task:
+	// default:
+	// 	log.Warningf("task queue overflow, request refused...")
+	// 	res.FailMsg(c, "task queue overflow, request refused")
+	// 	return
+	// }
 	//任务集
 	taskSet.Store(task.ID, task)
-	task.save()
 	go func(ds *DataSource, task *Task) {
 		defer func(task *Task) {
 			task.Pipe <- struct{}{}
@@ -366,7 +372,8 @@ func importFile(c *gin.Context) {
 	go func(ds *DataSource, task *Task) {
 		<-task.Pipe
 		<-taskQueue
-		task.update()
+		task.save()
+		taskSet.Delete(task.ID)
 		if task.Error == "" {
 			//todo goroute 导入，以下事务需在task完成后处理
 			dt := ds.toDataset()

@@ -211,7 +211,8 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	log.Infof("convert %d sources to geojson, takes: %v", len(dss), time.Since(s))
 	s = time.Now()
 
-	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, task.ID+MBTILESEXT)
+	id, _ := shortid.Generate()
+	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, id+MBTILESEXT)
 
 	var params []string
 	//显示进度,读取outbuffer缓冲区
@@ -259,7 +260,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	s = time.Now()
 
 	ds := &DataSource{
-		ID:    task.ID,
+		ID:    task.Base,
 		Name:  task.Name,
 		Owner: task.Owner,
 		Path:  outfile,

@@ -60,7 +60,7 @@ var (
 	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
 	authMid   *JWTMiddleware
-	taskQueue = make(chan *Task, 32)
+	taskQueue = make(chan *Task, 16)
 	userSet   UserSet
 	taskSet   sync.Map
 )
@@ -641,7 +641,9 @@ func setupRouter() *gin.Engine {
 		styles.POST("/icons/:id/", uploadIcons)
 		styles.POST("/icons/:id/delete/", deleteIcons)
 
-		styles.GET("/view/:id/", viewStyle)    //view map style
+		styles.GET("/view/:id", getViewStyle)
+		styles.GET("/view/:id/", viewStyle) //view map style
+
 		styles.POST("/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
@@ -715,7 +717,7 @@ func setupRouter() *gin.Engine {
 	tasks.Use(UserMidHandler())
 	{
 		tasks.GET("/", listTasks)
-		tasks.GET("/info/:id/", taskQuery)
+		tasks.GET("/info/:ids/", taskQuery)
 		tasks.GET("/stream/:id/", taskStreamQuery)
 	}
 	//utilroute

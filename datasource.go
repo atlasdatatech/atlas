@@ -36,8 +36,8 @@ const (
 
 // DataSource 文件数据源集定义结构
 type DataSource struct {
-	ID        string          `json:"id"`   //字段列表
-	Name      string          `json:"name"` //字段列表// 数据集名称,现用于更方便的ID
+	ID        string          `json:"id"  gorm:"primary_key"` //字段列表
+	Name      string          `json:"name"`                   //字段列表// 数据集名称,现用于更方便的ID
 	Owner     string          `json:"owner"`
 	Tag       string          `json:"tag"`
 	Path      string          `json:"path"`
@@ -57,6 +57,7 @@ type DataSource struct {
 func (ds *DataSource) toDataset() *Dataset {
 	dt := &Dataset{
 		ID:      ds.ID,
+		Base:    ds.ID,
 		Name:    ds.Name,
 		Owner:   ds.Owner,
 		Public:  true,
