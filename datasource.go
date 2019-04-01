@@ -396,10 +396,9 @@ func (ds *DataSource) LoadFromShp() error {
 	// fields from the attribute table (DBF)
 	shpfields := shape.Fields()
 	total := shape.AttributeCount()
-	if total == 0 {
-		log.Error(`empty datafile`)
-		return fmt.Errorf(`empty datafile`)
-	}
+	// if total == 0 {
+	// 	return fmt.Errorf(`empty datafile`)
+	// }
 	var fields []Field
 	for _, v := range shpfields {
 		var t FieldType

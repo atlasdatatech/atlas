@@ -1158,7 +1158,7 @@ func getTileLayerJSON(c *gin.Context) {
 	attr := "atlas realtime tile layer"
 	tileJSON := tilejson.TileJSON{
 		Attribution: &attr,
-		Bounds:      dts.tlayer.Bounds.Extent(),
+		Bounds:      [4]float64{dts.BBox.Left(), dts.BBox.Bottom(), dts.BBox.Right(), dts.BBox.Top()},
 		Center:      [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(zoom)},
 		Format:      "pbf",
 		Name:        &dts.Name,

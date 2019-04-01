@@ -113,7 +113,7 @@ func loadFromSources(dss []*DataSource) error {
 			defer wg.Done()
 			err := ds.LoadFrom()
 			if err != nil {
-				log.Error(err)
+				log.Warn(err)
 			}
 		}(ds, i)
 	}
