@@ -69,11 +69,6 @@ func debugSetup() *gin.Engine {
 		log.Fatalf("init jwt error: %s", err)
 	}
 
-	casEnf, err = initEnforcer()
-	if err != nil {
-		log.Fatalf("init enforcer error: %s", err)
-	}
-
 	initSystemUser()
 	initTaskRouter()
 	{

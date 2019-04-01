@@ -747,33 +747,34 @@ func (ds *DataSource) Import(task *Task) error {
 			var rowNum int
 			var vals []string
 			for decoder.More() {
-				ft := &Feature{}
+				// ft := &Feature{}
+				ft := &geojson.Feature{}
 				err := decoder.Decode(ft)
 				if err != nil {
 					log.Errorf(`decode feature error, details:%s`, err)
 					continue
 				}
 				rval := prepValues(ft.Properties, cols)
-				// switch ds.Crs {
-				// case GCJ02:
-				// 	ft.Geometry.GCJ02ToWGS84()
-				// case BD09:
-				// 	ft.Geometry.BD09ToWGS84()
-				// default: //WGS84 & CGCS2000
-				// }
+				switch ds.Crs {
+				case GCJ02:
+					ft.Geometry.GCJ02ToWGS84()
+				case BD09:
+					ft.Geometry.BD09ToWGS84()
+				default: //WGS84 & CGCS2000
+				}
 				// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
 				// err := db.Exec(s).Error
 				// if err != nil {
 				// 	log.Info(err)
 				// }
-				// geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
-				// if err != nil {
-				// 	log.Errorf(`preper geometry error, details:%s`, err)
-				// 	continue
-				// }
+				geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
+				if err != nil {
+					log.Errorf(`preper geometry error, details:%s`, err)
+					continue
+				}
 				// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
-				// gval := fmt.Sprintf(`st_setsrid(st_geomfromgeojson('%s'),4326)`, string(geom))
-				gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
+				gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, string(geom))
+				// gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
 				if rval == "" {
 					vals = append(vals, fmt.Sprintf("(%s)", gval))
 				} else {

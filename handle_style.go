@@ -60,6 +60,12 @@ func listStyles(c *gin.Context) {
 		log.Info(order)
 		tdb = tdb.Order(order)
 	}
+	total := 0
+	err := tdb.Model(&Style{}).Count(&total).Error
+	if err != nil {
+		res.Fail(c, 5001)
+		return
+	}
 	start := 0
 	rows := 10
 	if offset, y := c.GetQuery("start"); y {
@@ -73,8 +79,7 @@ func listStyles(c *gin.Context) {
 		start, _ = strconv.Atoi(offset)
 		tdb = tdb.Offset(start).Limit(rows)
 	}
-	total := 0
-	err := tdb.Find(&styles).Offset(0).Limit(-1).Count(&total).Error
+	err = tdb.Find(&styles).Error
 	if err != nil {
 		res.Fail(c, 5001)
 		return

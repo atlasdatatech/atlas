@@ -21,6 +21,8 @@
 		templates = "statics/templates/*"
 
 	[db]
+		name = "atlas"           
+		type = "postgres"        # sqlite3,postgres
 		host     = "127.0.0.1"
 		port     = 5432
 		user     = "atlas"

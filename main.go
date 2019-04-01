@@ -36,6 +36,7 @@ import (
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	_ "github.com/shaxbee/go-spatialite"
 	"github.com/spf13/viper"
 )
 
@@ -157,18 +158,42 @@ func initConf(cfgFile string) {
 
 //initDb 初始化数据库
 func initDb() (*gorm.DB, error) {
-	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
-	pg, err := gorm.Open("postgres", pgConnInfo)
-	if err != nil {
-		return nil, fmt.Errorf("init gorm pg error, details: %s", err)
+	var conn string
+	dbtype := viper.GetString("db.type")
+	switch dbtype {
+	case "sqlite3":
+		conn = "atlas.db"
+	case "postgres":
+		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
+	default:
+		return nil, fmt.Errorf("unkown database")
 	}
-	log.Info("init gorm pg successfully")
+
+	//initEnforcer 初始化资源访问控制
+	casEnf = casbin.NewEnforcer("./auth.conf", gormadapter.NewAdapter(dbtype, conn, true))
+	if casEnf == nil {
+		return nil, fmt.Errorf("init casbin enforcer error")
+	}
+
+	db, err := gorm.Open(dbtype, conn)
+	if err != nil {
+		return nil, fmt.Errorf("init gorm db error, details: %s", err)
+	}
+	// db1, err := sql.Open("spatialite", "file:dummy.db?mode=memory&cache=shared")
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// _, err = db1.Exec("SELECT InitSpatialMetadata()")
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	log.Info("init gorm db successfully")
 	//gorm自动构建用户表
-	pg.AutoMigrate(&User{}, &Role{}, &Attempt{})
+	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
-	pg.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	return pg, nil
+	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
+	return db, nil
 }
 
 //initProvider 初始化数据库驱动
@@ -397,15 +422,6 @@ func initAuthJWT() (*JWTMiddleware, error) {
 		return nil, err
 	}
 	return jwtmid, nil
-}
-
-//initEnforcer 初始化资源访问控制
-func initEnforcer() (*casbin.Enforcer, error) {
-	pgConnInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
-	casbinAdapter := gormadapter.NewAdapter("postgres", pgConnInfo, true)
-	enforcer := casbin.NewEnforcer("./auth.conf", casbinAdapter)
-	return enforcer, nil
 }
 
 //initSystemUser 初始化系统用户
@@ -717,7 +733,7 @@ func setupRouter() *gin.Engine {
 	tasks.Use(UserMidHandler())
 	{
 		tasks.GET("/", listTasks)
-		tasks.GET("/info/:ids/", taskQuery)
+		tasks.GET("/info/:id/", taskQuery)
 		tasks.GET("/stream/:id/", taskStreamQuery)
 	}
 	//utilroute
@@ -785,10 +801,6 @@ func main() {
 		log.Fatalf("init jwt error: %s", err)
 	}
 
-	casEnf, err = initEnforcer()
-	if err != nil {
-		log.Fatalf("init enforcer error: %s", err)
-	}
 	initSystemUser()
 	if initf {
 		return
