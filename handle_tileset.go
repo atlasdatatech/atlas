@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strconv"
@@ -293,6 +294,7 @@ func publishTileset(c *gin.Context) {
 		}()
 		dss, _ := loadZipSources(ds)
 		loadFromSources(dss)
+		task.Progress = rand.Intn(10)
 		s := time.Now()
 		ts, err := sources2ts(task, dss)
 		if err != nil {

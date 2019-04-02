@@ -46,7 +46,7 @@ func saveSource(c *gin.Context) (*DataSource, error) {
 	}
 	id, _ := shortid.Generate()
 	name := strings.TrimSuffix(file.Filename, ext)
-	dst := filepath.Join(dir, uid, name+lext)
+	dst := filepath.Join(dir, uid, id+"."+name+lext)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		return nil, fmt.Errorf(`handleSources, saving uploaded file error, details: %s`, err)
 	}
@@ -124,11 +124,13 @@ func loadFromSources(dss []*DataSource) error {
 func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	s := time.Now()
 	var wg sync.WaitGroup
+	total := 0
 	layers := make([]string, len(dss))
 	for i, ds := range dss {
 		wg.Add(1)
 		go func(ds *DataSource, i int) {
 			defer wg.Done()
+			total += ds.Total
 			switch ds.Format {
 			case KMLEXT, GPXEXT:
 				var params []string
@@ -213,7 +215,6 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 
 	id, _ := shortid.Generate()
 	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, id+MBTILESEXT)
-
 	var params []string
 	//显示进度,读取outbuffer缓冲区
 	absPath, err := filepath.Abs(outfile)
@@ -245,6 +246,22 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	}()
 	go func() {
 		io.Copy(stderr, stderrIn)
+	}()
+	cp := task.Progress
+	go func() {
+		i := 0
+		ticker := time.NewTicker(1 * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				i++
+				rows := i * 1000
+				task.Progress = rows/total + cp
+				if task.Progress > 99 {
+					task.Progress = 99
+				}
+			}
+		}
 	}()
 	err = cmd.Wait()
 	if err != nil {
