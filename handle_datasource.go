@@ -212,7 +212,6 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	wg.Wait()
 	log.Infof("convert %d sources to geojson, takes: %v", len(dss), time.Since(s))
 	s = time.Now()
-
 	id, _ := shortid.Generate()
 	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, id+MBTILESEXT)
 	var params []string
@@ -248,23 +247,26 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 		io.Copy(stderr, stderrIn)
 	}()
 	cp := task.Progress
+	ticker := time.NewTicker(1 * time.Second)
 	go func(task *Task) {
 		i := 0
-		ticker := time.NewTicker(1 * time.Second)
 		for {
 			select {
 			case <-ticker.C:
 				i++
 				rows := i * 1000
-				task.Progress = rows/total + cp
-				fmt.Println(task.Progress)
+				task.Progress = int(float64(rows)/float64(total)*100) + cp
+				fmt.Println(task.Progress, "....")
 				if task.Progress > 99 {
 					task.Progress = 99
 				}
 			}
 		}
 	}(task)
+
 	err = cmd.Wait()
+	ticker.Stop()
+
 	if err != nil {
 		return nil, err
 	}
