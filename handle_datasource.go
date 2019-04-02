@@ -255,7 +255,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 			select {
 			case <-ticker.C:
 				i++
-				rows := i * 1000
+				rows := i * 3000
 				task.Progress = int(float64(rows)/float64(total)*100) + cp
 				if task.Progress > 99 {
 					task.Progress = 99
