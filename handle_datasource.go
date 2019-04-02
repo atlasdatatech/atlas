@@ -248,7 +248,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 		io.Copy(stderr, stderrIn)
 	}()
 	cp := task.Progress
-	go func() {
+	go func(task *Task) {
 		i := 0
 		ticker := time.NewTicker(1 * time.Second)
 		for {
@@ -257,12 +257,13 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 				i++
 				rows := i * 1000
 				task.Progress = rows/total + cp
+				fmt.Println(task.Progress)
 				if task.Progress > 99 {
 					task.Progress = 99
 				}
 			}
 		}
-	}()
+	}(task)
 	err = cmd.Wait()
 	if err != nil {
 		return nil, err
