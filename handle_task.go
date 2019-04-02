@@ -78,7 +78,6 @@ func taskQuery(c *gin.Context) {
 		}
 		log.Errorf(`taskQuery, query %s's task(%s) info error`, uid, id)
 	}
-
 	res.DoneData(c, tasks)
 }
 

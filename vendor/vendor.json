@@ -1011,6 +1011,12 @@
 			"revisionTime": "2018-10-28T12:27:15Z"
 		},
 		{
+			"checksumSHA1": "W47TECCiHqx70SCa2QkgU6Kt+dE=",
+			"path": "github.com/shaxbee/go-spatialite",
+			"revision": "9b4c81899e0e2ca4beb2e04f0d7f1e48165c2e32",
+			"revisionTime": "2018-04-25T21:21:00Z"
+		},
+		{
 			"checksumSHA1": "CcikTYxxZMd75GL3UwfibQIAWzw=",
 			"path": "github.com/shiena/ansicolor",
 			"revision": "a422bbe96644373c5753384a59d678f7d261ff10",

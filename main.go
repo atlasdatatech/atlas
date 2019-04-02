@@ -733,7 +733,7 @@ func setupRouter() *gin.Engine {
 	tasks.Use(UserMidHandler())
 	{
 		tasks.GET("/", listTasks)
-		tasks.GET("/info/:id/", taskQuery)
+		tasks.GET("/info/:ids/", taskQuery)
 		tasks.GET("/stream/:id/", taskStreamQuery)
 	}
 	//utilroute
