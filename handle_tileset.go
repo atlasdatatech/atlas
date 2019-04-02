@@ -292,8 +292,9 @@ func publishTileset(c *gin.Context) {
 			task.Pipe <- struct{}{}
 		}()
 		dss, _ := loadZipSources(ds)
+		task.Progress = 3
 		loadFromSources(dss)
-		task.Progress = 5
+		task.Progress = 8
 		s := time.Now()
 		ts, err := sources2ts(task, dss)
 		if err != nil {
