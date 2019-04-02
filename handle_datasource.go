@@ -210,6 +210,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 		}(ds, i)
 	}
 	wg.Wait()
+	task.Progress = 20
 	log.Infof("convert %d sources to geojson, takes: %v", len(dss), time.Since(s))
 	s = time.Now()
 	id, _ := shortid.Generate()
@@ -254,7 +255,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 			select {
 			case <-ticker.C:
 				i++
-				rows := i * 1000
+				rows := i * 3000
 				task.Progress = int(float64(rows)/float64(total)*100) + cp
 				fmt.Println(task.Progress, "....")
 				if task.Progress > 99 {
