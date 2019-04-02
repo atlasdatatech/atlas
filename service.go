@@ -174,7 +174,7 @@ func LoadServiceSet(user string) (*ServiceSet, error) {
 	// 	log.Errorf("AddTilesets, add new tileset error, details:%s", err)
 	// }
 	//serve all altas tilesets
-	s.ServeTilesets() //服务启动时，创建服务集
+	err = s.ServeTilesets() //服务启动时，创建服务集
 	if err != nil {
 		log.Errorf("ServeTilesets, serve %s's tileset error, details:%s", ATLAS, err)
 	}
@@ -184,7 +184,7 @@ func LoadServiceSet(user string) (*ServiceSet, error) {
 	// 	log.Errorf("AddDatasets, add new dataset error, details:%s", err)
 	// }
 	//serve all altas datasets
-	s.ServeDatasets() //服务启动时，创建数据集
+	err = s.ServeDatasets() //服务启动时，创建数据集
 	if err != nil {
 		log.Errorf("ServeDatasets, serve %s's dataset error, details:%s", ATLAS, err)
 	}
