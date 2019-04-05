@@ -568,8 +568,8 @@ func getTileJSON(c *gin.Context) {
 	tileurl := fmt.Sprintf(`atlasdata://ts/x/%s/{z}/{x}/{y}`, tid) //need use user own service set
 	// fixurl := c.Query("fixurl")
 	// if fixurl == "yes" {
-	mapurl = fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid) //need use user own service set
-	tileurl = fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid)
+	// 	mapurl = fmt.Sprintf(`%s/ts/view/%s/`, rootURL(c.Request), tid) //need use user own service set
+	// 	tileurl = fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), tid)
 	// }
 	out := map[string]interface{}{
 		"tilejson": "2.1.0",

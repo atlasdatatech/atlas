@@ -1,5 +1,5 @@
 	[app]
-		port="1226"
+		port="6221"
 		ips = 127
 		ipExpiration = "-1m"
 
