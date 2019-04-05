@@ -932,27 +932,6 @@ func getStyle(c *gin.Context) {
 		res.Fail(c, 4044)
 		return
 	}
-	// var style Root
-	// if err := json.Unmarshal(s.Data, &style); err != nil {
-	// 	log.Errorf(`getStyle, unmarshal %s's style (%s) error, details: %s ^^`, uid, sid, err)
-	// 	res.FailErr(c, err)
-	// 	return
-	// }
-	// baseurl := rootURL(c.Request)
-	// fixURL := func(url string) string {
-	// 	if "" == url || !strings.HasPrefix(url, "atlasdata://") {
-	// 		return url
-	// 	}
-	// 	return strings.Replace(url, "atlasdata:/", baseurl, -1)
-	// }
-	// style.Glyphs = fixURL(style.Glyphs)
-	// style.Sprite = fixURL(style.Sprite)
-	// for _, src := range style.Sources {
-	// 	src.URL = fixURL(src.URL)
-	// 	for i := range src.Tiles {
-	// 		src.Tiles[i] = fixURL(src.Tiles[i])
-	// 	}
-	// }
 	c.JSON(http.StatusOK, s.Data)
 }
 
@@ -1019,7 +998,7 @@ func getSprite(c *gin.Context) {
 				buf = img.Bytes()
 			}
 		}
-		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
+		// c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
 	}
 	c.Writer.Write(buf)
 }
