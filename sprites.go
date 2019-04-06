@@ -581,6 +581,7 @@ func ReadIcons(dir string, scale float64) []*Symbol {
 				Name:    base,
 				Width:   w,
 				Height:  h,
+				Scale:   scale,
 				Visible: true,
 				// Data:   buf.Bytes(),
 				Image: img,
