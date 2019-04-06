@@ -998,7 +998,7 @@ func getSprite(c *gin.Context) {
 				buf = img.Bytes()
 			}
 		}
-		// c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
+		c.Writer.Header().Set("Content-Length", fmt.Sprintf("%d", len(buf)))
 	}
 	c.Writer.Write(buf)
 }
@@ -1056,6 +1056,7 @@ func getViewStyle(c *gin.Context) {
 	style.Sprite = fixURL(style.Sprite)
 	for _, src := range style.Sources {
 		src.URL = fixURL(src.URL)
+		src.URL += "?fixurl=yes"
 		for i := range src.Tiles {
 			src.Tiles[i] = fixURL(src.Tiles[i])
 		}

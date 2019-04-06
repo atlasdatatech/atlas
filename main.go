@@ -32,7 +32,6 @@ import (
 	"github.com/casbin/casbin"
 	"github.com/casbin/gorm-adapter"
 	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/contrib/gzip"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
@@ -503,7 +502,7 @@ func setupRouter() *gin.Engine {
 	}
 	r := gin.Default()
 	//gzip
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	// r.Use(gzip.Gzip(gzip.DefaultCompression))
 	//cors
 	config := cors.DefaultConfig()
 	// config.AllowAllOrigins = true
