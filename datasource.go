@@ -245,7 +245,9 @@ func (ds *DataSource) LoadFromCSV() error {
 	}
 	ds.Format = CSVEXT
 	ds.Total = rowNum
-	ds.Geotype = GeoType(x + "," + y)
+	if x != "" && y != "" {
+		ds.Geotype = GeoType(x + "," + y)
+	}
 	ds.Crs = "WGS84"
 	ds.Rows = records
 	flds, err := json.Marshal(fields)
