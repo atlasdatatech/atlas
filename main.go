@@ -659,6 +659,7 @@ func setupRouter() *gin.Engine {
 		styles.GET("/view/:id", getViewStyle)
 		styles.GET("/view/:id/", viewStyle) //view map style
 
+		styles.GET("/search/:id/", search)
 		styles.POST("/edit/:id/", updateStyle) //updateStyle
 	}
 	fonts := r.Group("/fonts")
@@ -719,7 +720,7 @@ func setupRouter() *gin.Engine {
 		datasets.POST("/common/:id/", queryExec)
 
 		datasets.POST("/distinct/:id/", getDistinctValues)
-		datasets.GET("/search/:id/", searchGeos)
+		datasets.GET("/search/:id/", search)
 		datasets.GET("/buffer/:id/", getBuffers)
 
 		datasets.GET("/x/:id/", getTileLayerJSON)

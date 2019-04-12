@@ -921,6 +921,122 @@ func searchGeos(c *gin.Context) {
 	c.JSON(http.StatusOK, ams)
 }
 
+func search(c *gin.Context) {
+	// res := NewRes()
+	id := c.Param("id")
+	tn := strings.ToLower(id)
+	var ams []map[string]interface{}
+
+	search := func(s string, keyword string) {
+		stmt, err := db.DB().Prepare(s)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		defer stmt.Close()
+		rows, err := stmt.Query(keyword)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		defer rows.Close()
+
+		cols, _ := rows.ColumnTypes()
+		for rows.Next() {
+			columns := make([]sql.RawBytes, len(cols))
+			columnPointers := make([]interface{}, len(cols))
+			for i := range columns {
+				columnPointers[i] = &columns[i]
+			}
+
+			// Scan the result into the column pointers...
+			if err := rows.Scan(columnPointers...); err != nil {
+				log.Error(err)
+				continue
+			}
+
+			// Create our map, and retrieve the value for each column from the pointers slice,
+			// storing it in the map with the name of the column as the key.
+			m := make(map[string]interface{})
+			for i, col := range columns {
+				if col == nil {
+					continue
+				}
+				//"NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
+				v := string(col)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					m[cols[i].Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					m[cols[i].Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					m[cols[i].Name()] = v
+				}
+			}
+			ams = append(ams, m)
+		}
+	}
+
+	searchType := c.Query("type")
+	geom, ok := c.GetQuery("geom")
+	var gfilter string
+	if ok {
+		gfilter = fmt.Sprintf(` geom && st_makeenvelope(%s,4326) AND `, geom)
+	}
+
+	limiter := fmt.Sprintf(` LIMIT 10 `)
+	limit, ok := c.GetQuery("limit")
+	if ok {
+		_, err := strconv.ParseUint(limit, 10, 32)
+		if err == nil {
+			limiter = fmt.Sprintf(` LIMIT %s `, limit)
+		}
+	}
+
+	field, ok := c.GetQuery("field")
+	if !ok {
+		field = "名称"
+	}
+
+	var st string
+	switch searchType {
+	case "0":
+		st = fmt.Sprintf(`SELECT gid,"%s",st_asgeojson(geom) as geom FROM %s WHERE %s "%s" ~ $1 %s ;`, field, tn, gfilter, field, limiter)
+	case "1", "2":
+		dt := Dataset{ID: id}
+		err := db.First(&dt).Error
+		if err != nil {
+			log.Error(err)
+			c.JSON(http.StatusOK, ams)
+			return
+		}
+		var fields []Field
+		err = json.Unmarshal(dt.Fields, &fields)
+		if err != nil {
+			log.Error(err)
+		}
+		var flds []string
+		for _, f := range fields {
+			flds = append(flds, f.Name)
+		}
+		switch searchType {
+		case "1":
+			st = fmt.Sprintf(`SELECT gid,"%s",st_asgeojson(geom) as geom FROM "%s" WHERE %s "%s" ~ $1 %s ;`, strings.Join(flds, `","`), tn, gfilter, field, limiter)
+		case "2":
+			st = fmt.Sprintf(`SELECT gid,"%s",st_asgeojson(geom) as geom FROM "%s" WHERE gid = $1 ;`, strings.Join(flds, `","`), tn)
+			search(st, c.Query("gid"))
+			c.JSON(http.StatusOK, ams)
+			return
+		}
+	}
+	search(st, c.Query("keyword"))
+	c.JSON(http.StatusOK, ams)
+}
+
 func upInsertDataset(c *gin.Context) {
 	res := NewRes()
 	did := c.Param("id")
