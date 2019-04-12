@@ -1005,7 +1005,7 @@ func search(c *gin.Context) {
 	var st string
 	switch searchType {
 	case "0":
-		st = fmt.Sprintf(`SELECT gid,"%s",st_asgeojson(geom) as geom FROM %s WHERE %s "%s" ~ $1 %s ;`, field, tn, gfilter, field, limiter)
+		st = fmt.Sprintf(`SELECT gid,"%s",st_asgeojson(geom) as geom FROM "%s" WHERE %s "%s" ~ $1 %s ;`, field, tn, gfilter, field, limiter)
 	case "1", "2":
 		dt := Dataset{ID: id}
 		err := db.First(&dt).Error
