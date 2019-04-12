@@ -498,7 +498,8 @@ func (ds *DataSource) getCreateHeaders() []string {
 		log.Errorf(`createDataTable, Unmarshal fields error, details:%s`, err)
 		return fts
 	}
-	fts = append(fts, "gid serial primary key")
+
+	hasgid := false
 	for _, v := range fields {
 		var t string
 		switch v.Type {
@@ -514,6 +515,12 @@ func (ds *DataSource) getCreateHeaders() []string {
 			t = "TEXT"
 		}
 		fts = append(fts, v.Name+" "+t)
+		if v.Name == "gid" {
+			hasgid = true
+		}
+	}
+	if !hasgid {
+		fts = append([]string{"gid serial primary key"}, fts...)
 	}
 	if ds.Geotype != "" {
 		dbtype := ds.Geotype
