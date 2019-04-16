@@ -429,21 +429,24 @@ func downloadDataset(c *gin.Context) {
 
 func getDistinctValues(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
 	did := c.Param("id")
-	if code := checkDataset(did); code != 200 {
-		res.Fail(c, code)
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
+		log.Warnf(`getDistinctValues, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
 		return
 	}
-	var body struct {
-		Field string `form:"field" json:"field" binding:"required"`
-	}
-	err := c.Bind(&body)
-	if err != nil {
-		log.Error(err)
-		res.Fail(c, 4001)
+	flds, ok := c.GetQuery("fields")
+	if !ok {
+		res.DoneData(c, dt.Fields)
 		return
 	}
-	s := fmt.Sprintf(`SELECT distinct(%s) as val,count(*) as cnt FROM "%s" GROUP BY %s;`, body.Field, did, body.Field)
+	tbname := strings.ToLower(did)
+	s := fmt.Sprintf(`SELECT distinct(%s) as val,count(*) as cnt FROM "%s" GROUP BY %s;`, flds, tbname, flds)
 	fmt.Println(s)
 	rows, err := db.Raw(s).Rows()
 	if err != nil {
@@ -469,15 +472,20 @@ func getDistinctValues(c *gin.Context) {
 
 func getGeojson(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
 	did := c.Param("id")
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
+		log.Warnf(`getDistinctValues, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
 	fields := c.Query("fields")
 	filter := c.Query("filter")
 	tbname := strings.ToLower(did)
-	if code := checkDataset(tbname); code != 200 {
-		res.Fail(c, code)
-		return
-	}
-
 	selStr := "st_asgeojson(geom) as geom "
 	if "" != fields {
 		selStr = selStr + "," + fields
@@ -599,7 +607,7 @@ func queryGeojson(c *gin.Context) {
 		}
 	}
 
-	s := fmt.Sprintf(`SELECT %s FROM %s  %s;`, selStr, did, whrStr)
+	s := fmt.Sprintf(`SELECT %s FROM "%s"  %s;`, selStr, strings.ToLower(did), whrStr)
 	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
@@ -728,6 +736,17 @@ func cubeQuery(c *gin.Context) {
 
 func queryExec(c *gin.Context) {
 	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
+		log.Warnf(`getDistinctValues, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
 	var body struct {
 		SQL string `form:"sql" json:"sql" binding:"required"`
 	}
@@ -736,7 +755,8 @@ func queryExec(c *gin.Context) {
 		res.Fail(c, 4001)
 		return
 	}
-	rows, err := db.Raw(body.SQL).Rows() // (*sql.Rows, error)
+	s := strings.Replace(body.SQL, "!TABLENAME!", fmt.Sprintf(` "%s" `, strings.ToLower(did)), -1)
+	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		log.Error(err)
 		res.Fail(c, 5001)

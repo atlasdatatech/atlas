@@ -719,7 +719,7 @@ func setupRouter() *gin.Engine {
 		datasets.POST("/query/:id/", queryGeojson)
 		datasets.POST("/common/:id/", queryExec)
 
-		datasets.POST("/distinct/:id/", getDistinctValues)
+		datasets.GET("/distinct/:id/", getDistinctValues)
 		datasets.GET("/search/:id/", search)
 		datasets.GET("/buffer/:id/", getBuffers)
 
