@@ -76,7 +76,9 @@ func taskQuery(c *gin.Context) {
 			tasks = append(tasks, task)
 			continue
 		}
-		log.Errorf(`taskQuery, query %s's task(%s) info error`, uid, id)
+		task.ID = id
+		task.Error = "task not found"
+		log.Warnf(`taskQuery, query %s's task(%s) info error`, uid, id)
 	}
 	res.DoneData(c, tasks)
 }
