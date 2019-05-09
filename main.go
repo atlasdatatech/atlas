@@ -51,7 +51,7 @@ const (
 	identityKey = "uid"
 	userKey     = "id"
 	//DISABLEACCESSTOKEN 不使用accesstoken
-	DISABLEACCESSTOKEN = false
+	DISABLEACCESSTOKEN = true
 )
 
 var (
@@ -799,6 +799,10 @@ func main() {
 	authMid, err = initAuthJWT()
 	if err != nil {
 		log.Fatalf("init jwt error: %s", err)
+	}
+
+	if DISABLEACCESSTOKEN {
+		authMid.DisabledAbort = true
 	}
 
 	initSystemUser()

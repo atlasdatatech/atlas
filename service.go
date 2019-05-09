@@ -47,7 +47,7 @@ func (us *UserSet) style(uid, sid string) *Style {
 			}
 		}
 	}
-	if casEnf.Enforce(uid, sid, "GET") {
+	if casEnf.Enforce(uid, sid, "GET") || DISABLEACCESSTOKEN {
 		set = us.service(ATLAS)
 		if set != nil {
 			style, ok := set.S.Load(sid)
@@ -90,7 +90,7 @@ func (us *UserSet) tileset(uid, tid string) *Tileset {
 			}
 		}
 	}
-	if casEnf.Enforce(uid, tid, "GET") {
+	if casEnf.Enforce(uid, tid, "GET") || DISABLEACCESSTOKEN {
 		set = us.service(ATLAS)
 		if set != nil {
 			tile, ok := set.T.Load(tid)
@@ -118,7 +118,7 @@ func (us *UserSet) dataset(uid, did string) *Dataset {
 			}
 		}
 	}
-	if casEnf.Enforce(uid, did, "GET") {
+	if casEnf.Enforce(uid, did, "GET") || DISABLEACCESSTOKEN {
 		set = us.service(ATLAS)
 		if set != nil {
 			data, ok := set.D.Load(did)
