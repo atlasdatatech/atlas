@@ -226,6 +226,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	params = append(params, absPath)
 	params = append(params, []string{"-n", task.Name}...)
 	params = append(params, "--force")
+	params = append(params, "-Bg")
 	params = append(params, "--drop-densest-as-needed")
 	params = append(params, "--extend-zooms-if-still-dropping")
 	params = append(params, layers...)
