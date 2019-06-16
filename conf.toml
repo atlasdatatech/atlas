@@ -71,3 +71,21 @@
 	[import]
 	[import.task]
 		interval = "1s"
+
+	[tree]
+		tables = ["districts","streets"]
+		tableids = ["jNiv90nZg","jNmD90nZgm"]
+		level0s = ["市本级","区本级"]
+	[list]
+		tables = ["roads","houses","buildings"]
+		tableids = ["86jAMx7ZR","jwO1GxnZR","GNifGxnZR"]
+		selectfields = ["","",""]
+	[search]
+		tables = ["roads","houses","buildings"]
+		tableids = ["86jAMx7ZR","jwO1GxnZR","GNifGxnZR"]
+		fields = ["name,districts","name,districts","name,districts"]
+		matchfields = ["name","name","name"]
+		selectfields = ["","",""]
+		typenames = ["道路街巷","城镇居民点","建筑物"]
+	[attachment]
+		path = "redfiles"

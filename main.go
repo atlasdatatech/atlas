@@ -744,6 +744,21 @@ func setupRouter() *gin.Engine {
 		utilroute.GET("/export/maps/", exportMaps)
 		utilroute.POST("/import/maps/", importMaps)
 	}
+
+	//searchroute
+	searchroute := r.Group("/dm")
+	searchroute.Use(AuthMidHandler(authMid))
+	{
+		// > trees
+		searchroute.GET("/tree/", getTreeNodes)
+		searchroute.GET("/tree/:name/", queryTreeNode)
+		searchroute.GET("/list/", getListNodes)
+		searchroute.GET("/list/:gid/", queryAdvanced)
+		searchroute.GET("/search/", searchAdvanced)
+		searchroute.GET("/search/:gid/", queryAdvanced)
+		searchroute.GET("/pdf/:name/", getRedFile)
+	}
+
 	return r
 }
 
