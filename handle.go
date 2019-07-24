@@ -201,7 +201,7 @@ func queryTreeNode(c *gin.Context) {
 	// tables := viper.GetStringSlice("tree.tables")
 	tableids := viper.GetStringSlice("tree.tableids")
 	for _, tbid := range tableids {
-		st := fmt.Sprintf(`SELECT name,code,st_asgeojson(geom) as geom FROM "%s"  WHERE name = $1 ;`, strings.ToLower(tbid))
+		st := fmt.Sprintf(`SELECT name,code,comment,st_asgeojson(geom) as geom FROM "%s"  WHERE name = $1 ;`, strings.ToLower(tbid))
 		ams, err := dbSearch(st, name)
 		if err != nil {
 			log.Error(err)
@@ -249,6 +249,8 @@ func getListNodes(c *gin.Context) {
 		tablename = strings.ToLower(tableids[1])
 	case tables[2]:
 		tablename = strings.ToLower(tableids[2])
+	case tables[3]:
+		tablename = strings.ToLower(tableids[3])
 	default:
 		res.FailMsg(c, "无法识别的查询类型")
 		return
@@ -440,6 +442,7 @@ func getRedFile(c *gin.Context) {
 		res.FailMsg(c, "文件名称不能为空")
 		return
 	}
+	name += ".pdf"
 	path := viper.GetString("attachment.path")
 	file, err := os.Open(filepath.Join(path, name))
 	if err != nil {
