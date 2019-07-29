@@ -391,6 +391,9 @@ func queryAdvanced(c *gin.Context) {
 	case tables[2]:
 		tableid = tableids[2]
 		fields = selectfields[2]
+	case tables[3]:
+		tableid = tableids[3]
+		fields = selectfields[3]
 	default:
 		res.FailMsg(c, "无法识别的查询类型")
 		return
