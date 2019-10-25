@@ -47,6 +47,7 @@ func saveSource(c *gin.Context) (*DataSource, error) {
 	id, _ := shortid.Generate()
 	name := strings.TrimSuffix(file.Filename, ext)
 	dst := filepath.Join(dir, uid, id+"."+name+lext)
+	os.MkdirAll(filepath.Dir(dst), os.ModePerm)
 	if err := c.SaveUploadedFile(file, dst); err != nil {
 		return nil, fmt.Errorf(`handleSources, saving uploaded file error, details: %s`, err)
 	}

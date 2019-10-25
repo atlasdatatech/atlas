@@ -95,6 +95,7 @@ func init() {
 
 	log.SetLevel(log.DebugLevel)
 }
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `atlas version: atlas/0.9.19
 Usage: atlas [-h] [-c filename] [-init]

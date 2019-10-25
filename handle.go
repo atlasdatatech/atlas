@@ -434,6 +434,7 @@ func queryAdvanced(c *gin.Context) {
 	return
 }
 
+//
 func getRedFile(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(userKey)

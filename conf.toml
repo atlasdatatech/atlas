@@ -22,7 +22,7 @@
 
 	[db]
 		name = "atlas"           
-		type = "postgres"        # sqlite3,postgres
+		type = "sqlite3"        # sqlite3,postgres
 		host     = "127.0.0.1"
 		port     = 5432
 		user     = "atlas"
@@ -74,7 +74,7 @@
 
 	[tree]
 		tables = ["districts","streets"]
-		tableids = ["jNiv90nZg","jNmD90nZgm"]
+		tableids = ["9k5vgLHWg","FH8GRYHWg"]
 		level0s = ["市本级","区本级"]
 	[list]
 		tables = ["roads","houses","buildings"]
