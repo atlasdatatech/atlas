@@ -474,7 +474,7 @@ func (ss *ServiceSet) AppendTilesets() error {
 			}
 			tileset, err := LoadTileset(ds)
 			if err != nil {
-				log.Errorf("AddTilesets, could not load font %s, details: %s", file, err)
+				log.Errorf("AddTilesets, could not load tileset %s, details: %s", file, err)
 				continue
 			}
 			tileset.Owner = ss.Owner
