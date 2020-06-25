@@ -190,7 +190,19 @@ func uploadTileset(c *gin.Context) {
 	}
 	set.T.Store(ts.ID, ts)
 	casEnf.AddPolicy(USER, ts.ID, "GET")
-	res.DoneData(c, ts)
+
+	id, _ := shortid.Generate()
+	task := &Task{
+		ID:       id,
+		Base:     ds.ID,
+		Name:     ds.Name,
+		Owner:    uid,
+		Type:     TSUPLOAD,
+		Progress: 100,
+	}
+	task.save()
+	res.DoneData(c, task)
+	// res.DoneData(c, ts)
 }
 
 //replaceTileset 上传并替换服务集
@@ -240,7 +252,18 @@ func replaceTileset(c *gin.Context) {
 		log.Errorf(`replaceTileset, upinsert tileser %s error, details: %s`, tileset.ID, err)
 	}
 
-	res.DoneData(c, tileset)
+	id, _ := shortid.Generate()
+	task := &Task{
+		ID:       id,
+		Base:     ds.ID,
+		Name:     ds.Name,
+		Owner:    uid,
+		Type:     TSUPLOAD,
+		Progress: 100,
+	}
+	task.save()
+	res.DoneData(c, task)
+	// res.DoneData(c, tileset)
 }
 
 //publishTileset 上传并发布服务集

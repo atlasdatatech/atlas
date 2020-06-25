@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
 	"github.com/go-spatial/geom"
@@ -30,7 +31,7 @@ import (
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/casbin/casbin"
-	"github.com/casbin/gorm-adapter"
+	gormadapter "github.com/casbin/gorm-adapter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
@@ -57,6 +58,8 @@ const (
 var (
 	conf      config.Config
 	db        *gorm.DB
+	dbType    = Sqlite3
+	dataDB    *gorm.DB
 	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
 	authMid   *JWTMiddleware
@@ -145,7 +148,8 @@ func initConf(cfgFile string) {
 	viper.SetDefault("db.port", "5432")
 	viper.SetDefault("db.user", "postgres")
 	viper.SetDefault("db.password", "postgres")
-	viper.SetDefault("db.database", "postgres")
+	viper.SetDefault("db.sysdb", "atlas")
+	viper.SetDefault("db.datadb", "atlasdata")
 	viper.SetDefault("casbin.config", "./auth.conf")
 	viper.SetDefault("statics", "statics/")
 
@@ -156,27 +160,27 @@ func initConf(cfgFile string) {
 	viper.SetDefault("paths.uploads", "tmp")
 }
 
-//initDb 初始化数据库
-func initDb() (*gorm.DB, error) {
+//initSysDb 初始化数据库
+func initSysDb() (*gorm.DB, error) {
 	var conn string
-	dbtype := viper.GetString("db.type")
-	switch dbtype {
-	case "sqlite3":
-		conn = "atlas.db"
-	case "postgres":
+	dbType = DBType(viper.GetString("db.type"))
+	switch dbType {
+	case Sqlite3:
+		conn = viper.GetString("db.sysdb")
+	case Postgres:
 		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
+			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.sysdb"))
 	default:
-		return nil, fmt.Errorf("unkown database")
+		return nil, fmt.Errorf("unkown database driver")
 	}
 
 	//initEnforcer 初始化资源访问控制
-	casEnf = casbin.NewEnforcer("./auth.conf", gormadapter.NewAdapter(dbtype, conn, true))
+	casEnf = casbin.NewEnforcer("./auth.conf", gormadapter.NewAdapter(string(dbType), conn, true))
 	if casEnf == nil {
 		return nil, fmt.Errorf("init casbin enforcer error")
 	}
 
-	db, err := gorm.Open(dbtype, conn)
+	db, err := gorm.Open(string(dbType), conn)
 	if err != nil {
 		return nil, fmt.Errorf("init gorm db error, details: %s", err)
 	}
@@ -194,6 +198,51 @@ func initDb() (*gorm.DB, error) {
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
 	return db, nil
+}
+
+//initDataDb 初始化数据库
+func initDataDb() (*gorm.DB, error) {
+	var conn string
+	dbType = DBType(viper.GetString("db.type"))
+	switch dbType {
+	case Sqlite3:
+		conn = viper.GetString("db.datadb")
+		dataDB, err := gorm.Open(string(dbType), conn)
+		if err != nil {
+			return nil, fmt.Errorf("init datadb error, details: %s", err)
+		}
+		//gorm自动构建gpkg表
+		err = dataDB.AutoMigrate(&geopkg.Content{}, &geopkg.GeometryColumn{}, &geopkg.SpatialReferenceSystem{}, &geopkg.Extension{}, &geopkg.TileMatrix{}, &geopkg.TileMatrixSet{}).Error
+		if err != nil {
+			return nil, err
+		}
+		{ //init spatial refs
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('Undefined Cartesian', -1, 'NONE', -1, 'Undefined')").Error
+			if err != nil {
+				return nil, err
+			}
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('Undefined Geographic', 0, 'NONE', 0, 'Undefined')").Error
+			if err != nil {
+				return nil, err
+			}
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('WGS84', 4326, 'epsg', 4326, 'GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]')").Error
+			if err != nil {
+				return nil, err
+			}
+		}
+		return dataDB, nil
+	case Postgres:
+		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.datadb"))
+		dataDB, err := gorm.Open(string(dbType), conn)
+		if err != nil {
+			return nil, fmt.Errorf("init datadb error, details: %s", err)
+		}
+		return dataDB, nil
+	default:
+		return nil, fmt.Errorf("unkown database driver")
+	}
+
 }
 
 //initProvider 初始化数据库驱动
@@ -728,6 +777,8 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/x/:id/:z/:x/:y", getTileLayer)
 		datasets.POST("/x/:id/", createTileLayer)
 
+		datasets.GET("/cache/:id/:min/:max/", getLayerMBTiles)
+
 	}
 	tasks := r.Group("/tasks")
 	tasks.Use(AuthMidHandler(authMid))
@@ -779,11 +830,17 @@ func main() {
 	}
 	initConf(cf)
 	var err error
-	db, err = initDb()
+	db, err = initSysDb()
 	if err != nil {
-		log.Fatalf("init db error, details: %s", err)
+		log.Fatalf("init sysdb error, details: %s", err)
 	}
 	defer db.Close()
+
+	dataDB, err = initDataDb()
+	if err != nil {
+		log.Fatalf("init datadb error, details: %s", err)
+	}
+	defer dataDB.Close()
 
 	{
 		provArr := make([]dict.Dicter, len(conf.Providers))

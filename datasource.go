@@ -3,12 +3,16 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
 	"io"
+	math "math"
 	"os/exec"
 	"runtime"
 	"strconv"
+
+	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 
 	"fmt"
 	"io/ioutil"
@@ -21,6 +25,8 @@ import (
 	"github.com/jinzhu/gorm"
 	shp "github.com/jonas-p/go-shp"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/encoding/wkb"
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -68,10 +74,9 @@ func (ds *DataSource) toDataset() *Dataset {
 		Total:   ds.Total,
 		Geotype: ds.Geotype,
 	}
-	// if strings.Contains(ds.Geotype, ",") {
-	// 	dt.Geotype = Point
-	// }
-	dt.GeoType()
+	if strings.Contains(string(ds.Geotype), ",") {
+		dt.Geotype = Point
+	}
 	dt.FieldsInfo()
 	dt.TotalCount()
 	dt.Bound()
@@ -247,6 +252,8 @@ func (ds *DataSource) LoadFromCSV() error {
 	ds.Total = rowNum
 	if x != "" && y != "" {
 		ds.Geotype = GeoType(x + "," + y)
+	} else {
+		ds.Geotype = Attribute
 	}
 	ds.Crs = "WGS84"
 	ds.Rows = records
@@ -462,22 +469,22 @@ func (ds *DataSource) LoadFromShp() error {
 		}
 	}
 
-	var geoType string
+	var geoType GeoType
 	switch shape.GeometryType {
 	case 1: //POINT
-		geoType = "Point"
+		geoType = Point
 	case 3: //POLYLINE
-		geoType = "LineString"
+		geoType = LineString
 	case 5: //POLYGON
-		geoType = "MultiPolygon"
+		geoType = MultiPolygon
 	case 8: //MULTIPOINT
-		geoType = "MultiPoint"
+		geoType = MultiPoint
 	}
 
 	ds.Format = SHPEXT
 	ds.Size = size
 	ds.Total = total
-	ds.Geotype = GeoType(geoType)
+	ds.Geotype = geoType
 	ds.Crs = "WGS84"
 	ds.Rows = rows
 	jfs, err := json.Marshal(fields)
@@ -492,13 +499,13 @@ func (ds *DataSource) LoadFromShp() error {
 //getCreateHeaders auto add 'gid' & 'geom'
 func (ds *DataSource) getCreateHeaders() []string {
 	var fts []string
+	fts = append(fts, "gid serial primary key")
 	fields := []Field{}
 	err := json.Unmarshal(ds.Fields, &fields)
 	if err != nil {
 		log.Errorf(`createDataTable, Unmarshal fields error, details:%s`, err)
 		return fts
 	}
-	fts = append(fts, "gid serial primary key")
 	for _, v := range fields {
 		if v.Name == "gid" || v.Name == "geom" {
 			continue
@@ -518,12 +525,48 @@ func (ds *DataSource) getCreateHeaders() []string {
 		}
 		fts = append(fts, v.Name+" "+t)
 	}
-	if ds.Geotype != "" {
+	if ds.Geotype != Attribute {
 		dbtype := ds.Geotype
 		if strings.Contains(string(ds.Geotype), ",") {
 			dbtype = Point
 		}
 		fts = append(fts, fmt.Sprintf("geom geometry(%s,4326)", dbtype))
+	}
+	return fts
+}
+
+func (ds *DataSource) getCreateHeadersLite() []string {
+	var fts []string
+	fts = append(fts, "fid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL")
+	fields := []Field{}
+	err := json.Unmarshal(ds.Fields, &fields)
+	if err != nil {
+		log.Errorf(`getCreateHeadersLite, Unmarshal fields error, details:%s`, err)
+		return fts
+	}
+	for _, v := range fields {
+		if v.Name == "fid" || v.Name == "geom" {
+			continue
+		}
+		var t string
+		switch v.Type {
+		case Bool, Int: //sqlite 无bool类型，自动存储为整型
+			t = "INTEGER"
+		case Float:
+			t = "REAL"
+		// case Date://sqlite 无date类型，自动存储为text或者int，这里选择integer
+		// 	t = "DATE"
+		default:
+			t = "TEXT"
+		}
+		fts = append(fts, v.Name+" "+t)
+	}
+	if ds.Geotype != Attribute {
+		dbtype := ds.Geotype
+		if strings.Contains(string(ds.Geotype), ",") {
+			dbtype = Point
+		}
+		fts = append(fts, fmt.Sprintf("geom %s", strings.ToUpper(string(dbtype)))) //自动转换为gpkg geom type，类型大写
 	}
 	return fts
 }
@@ -536,15 +579,25 @@ func (ds *DataSource) createDataTable() error {
 		log.Errorf(`createDataTable, delete dataset error, details:%s`, err)
 		return err
 	}
-	err = db.Exec(fmt.Sprintf(`DROP TABLE if EXISTS "%s";`, tableName)).Error
+	err = dataDB.Exec(fmt.Sprintf(`DROP TABLE if EXISTS "%s";`, tableName)).Error
 	if err != nil {
 		log.Errorf(`createDataTable, drop table error, details:%s`, err)
 		return err
 	}
-	headers := ds.getCreateHeaders()
+	headers := []string{}
+	switch dbType {
+	case Sqlite3:
+		headers = ds.getCreateHeadersLite()
+	case Postgres:
+		headers = ds.getCreateHeaders()
+	case Spatialite:
+		return fmt.Errorf("unsupport spatialite")
+	default:
+		return fmt.Errorf("unkown db driver type: %s", dbType)
+	}
 	st = fmt.Sprintf(`CREATE TABLE "%s" (%s);`, tableName, strings.Join(headers, ","))
 	log.Infoln(st)
-	err = db.Exec(st).Error
+	err = dataDB.Exec(st).Error
 	if err != nil {
 		log.Errorf(`importData, create table error, details:%s`, err)
 		return err
@@ -552,22 +605,11 @@ func (ds *DataSource) createDataTable() error {
 	return nil
 }
 
+//getColumnTypes use datatable column, not fields
 func (ds *DataSource) getColumnTypes() ([]*sql.ColumnType, error) {
 	tableName := strings.ToLower(ds.ID)
-	var st string
-	fields := []Field{}
-	err := json.Unmarshal(ds.Fields, &fields)
-	if err != nil {
-		st = fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0`, tableName)
-	} else {
-		var headers []string
-		for _, v := range fields {
-			headers = append(headers, v.Name)
-		}
-		st = fmt.Sprintf(`SELECT %s FROM "%s" LIMIT 0`, strings.Join(headers, ","), tableName)
-	}
-
-	rows, err := db.Raw(st).Rows() // (*sql.Rows, error)
+	st := fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0`, tableName)
+	rows, err := dataDB.Raw(st).Rows() // (*sql.Rows, error)
 	if err != nil {
 		return nil, err
 	}
@@ -577,11 +619,18 @@ func (ds *DataSource) getColumnTypes() ([]*sql.ColumnType, error) {
 		return nil, err
 	}
 
-	var pureColumns []*sql.ColumnType
+	idName := ""
+	switch dbType {
+	case Sqlite3:
+		idName = "fid"
+	case Postgres:
+		idName = "gid"
+	}
 
+	var pureColumns []*sql.ColumnType
 	for _, col := range cols {
 		switch col.Name() {
-		case "gid", "geom":
+		case idName:
 			continue
 		}
 		pureColumns = append(pureColumns, col)
@@ -592,11 +641,270 @@ func (ds *DataSource) getColumnTypes() ([]*sql.ColumnType, error) {
 //Import 数据源入库import geojson or csv data, can transform from gcj02 or bd09
 func (ds *DataSource) Import(task *Task) error {
 	tableName := strings.ToLower(ds.ID)
+	geoColumn := "geom"
 	switch ds.Format {
-	case CSVEXT, GEOJSONEXT:
+	case CSVEXT:
 		err := ds.createDataTable()
 		if err != nil {
 			return err
+		}
+		switch dbType {
+		case Sqlite3:
+			upperType := strings.ToUpper(string(ds.Geotype))
+			if strings.Index(string(ds.Geotype), ",") != -1 {
+				upperType = "POINT"
+			}
+			geoCol := &geopkg.GeometryColumn{
+				GeometryColumnTableName:  tableName,
+				ColumnName:               geoColumn,
+				GeometryType:             upperType,
+				SpatialReferenceSystemId: 4326,
+			}
+			err := dataDB.Save(geoCol).Error
+			if err != nil {
+				log.Error(err)
+			}
+			// //⑤create rtreeindex
+			sql := fmt.Sprintf("CREATE VIRTUAL TABLE rtree_%s_%s USING rtree(id, minx, maxx, miny, maxy)", tableName, geoColumn)
+			err = dataDB.Exec(sql).Error
+			if err != nil {
+				log.Error(err)
+			}
+			// sql_stmt = sqlite3_mprintf ("INSERT INTO gpkg_extensions "
+			// "(table_name, column_name, extension_name, definition, scope) "
+			// "VALUES (Lower(%Q), Lower(%Q), 'gpkg_rtree_index', "
+			// "'GeoPackage 1.0 Specification Annex L', 'write-only')",
+			// table, column);
+			rtrExt := &geopkg.Extension{
+				Table:      tableName,
+				Column:     &geoColumn,
+				Extension:  "gpkg_rtree_index",
+				Definition: "GeoPackage 1.0 Specification Annex L",
+				Scope:      "write-only",
+			}
+			err = dataDB.Save(rtrExt).Error
+			if err != nil {
+				log.Error(err)
+			}
+		case Postgres:
+		}
+		cols, err := ds.getColumnTypes()
+		if err != nil {
+			return err
+		}
+		var headers []string
+		headermap := make(map[string]int)
+		for i, col := range cols {
+			headers = append(headers, col.Name())
+			headermap[col.Name()] = i
+		}
+		prepIndex := func(cols []*sql.ColumnType, name string) int {
+			for i, col := range cols {
+				if dbType == Postgres {
+					name = strings.ToLower(name)
+				}
+				if col.Name() == name {
+					return i
+				}
+			}
+			return -1
+		}
+
+		ix, iy := -1, -1
+		xy := strings.Split(string(ds.Geotype), ",")
+		if len(xy) == 2 {
+			ix = prepIndex(cols, xy[0])
+			iy = prepIndex(cols, xy[1])
+		}
+		//找到xy字段
+		hasgeom := (ds.Geotype != Attribute) && (ix != -1 && iy != -1)
+
+		t := time.Now()
+		file, err := os.Open(ds.Path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		reader, err := csvReader(file, ds.Encoding)
+		csvHeaders, err := reader.Read()
+		if err != nil {
+			return err
+		}
+		if len(cols) != len(csvHeaders) {
+			log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
+		}
+		log.Info(`process headers and get count, `, time.Since(t))
+		task.Status = "processing"
+		t = time.Now()
+		count := 0
+
+		pvs := []string{}
+		var rstmt *sql.Stmt
+		switch dbType {
+		case Sqlite3:
+			for range headers {
+				pvs = append(pvs, "?")
+			}
+			s := fmt.Sprintf(`INSERT OR REPLACE INTO "rtree_%s_%s" VALUES (?, ?, ?, ?, ?);`, tableName, geoColumn)
+			rstmt, err = dataDB.DB().Prepare(s)
+			if err != nil {
+				log.Error(err)
+			}
+			defer rstmt.Close()
+		case Postgres:
+			for i, c := range headers {
+				if c == "geom" {
+					pvs = append(pvs, fmt.Sprintf("ST_GeomFromWKB($%d,4326)", i+1))
+					continue
+				}
+				pvs = append(pvs, fmt.Sprintf("$%d", i+1))
+			}
+		}
+		sql := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(pvs, ","))
+		log.Println(sql)
+		stmt, err := dataDB.DB().Prepare(sql)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer stmt.Close()
+
+		//for extent
+		var minx, maxx, miny, maxy float64 = 180, -180, 90, -90
+		task.Status = "importing"
+		for {
+			row, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				continue
+			}
+			var vals []interface{}
+			for i, col := range cols {
+				if col.Name() == "geom" {
+					continue
+				}
+				vals = append(vals, valueFormat(col.DatabaseTypeName(), row[i]))
+			}
+
+			var x, y float64
+			if hasgeom {
+				x, _ = strconv.ParseFloat(row[ix], 64)
+				y, _ = strconv.ParseFloat(row[iy], 64)
+				switch ds.Crs {
+				case GCJ02:
+					x, y = Gcj02ToWgs84(x, y)
+				case BD09:
+					x, y = Bd09ToWgs84(x, y)
+				default: //WGS84 & CGCS2000
+				}
+				switch dbType {
+				case Sqlite3:
+					geom := gpkgMakePoint(x, y, 4326)
+					vals = append(vals, geom)
+					if x < minx {
+						minx = x
+					}
+					if x > maxx {
+						maxx = x
+					}
+					if y < miny {
+						miny = y
+					}
+					if y > maxy {
+						maxy = y
+					}
+				case Postgres:
+
+					p := orb.Point{x, y}
+					wbkdata := wkb.Value(p)
+					// str := fmt.Sprintf(`ST_SetSRID(ST_Point(%f,%f),4326)`, x, y)
+					// geom := []byte(str)
+					vals = append(vals, wbkdata)
+					log.Println(vals...)
+				}
+			}
+			r, err := stmt.Exec(vals...)
+			if err != nil {
+				log.Error(err)
+			} else {
+				fid, _ := r.LastInsertId()
+				if hasgeom && dbType == Sqlite3 {
+					rstmt.Exec(fid, x, x, y, y)
+				}
+			}
+			count++
+			task.Progress = int(count / ds.Total / 5)
+		}
+		//add to content
+		switch dbType {
+		case Sqlite3:
+			update := time.Now()
+			cts := &geopkg.Content{
+				ContentTableName:         tableName,
+				DataType:                 "features",
+				Identifier:               tableName,
+				Description:              "none",
+				LastChange:               &update,
+				MinX:                     minx,
+				MinY:                     miny,
+				MaxX:                     maxx,
+				MaxY:                     maxy,
+				SpatialReferenceSystemId: 4326,
+			}
+			err = dataDB.Save(cts).Error
+			if err != nil {
+				log.Error(err)
+			}
+		}
+		log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
+		return nil
+	case GEOJSONEXT:
+
+		err := ds.createDataTable()
+		if err != nil {
+			return err
+		}
+		switch dbType {
+		case Sqlite3:
+			upperType := strings.ToUpper(string(ds.Geotype))
+			if strings.Index(string(ds.Geotype), ",") != -1 {
+				upperType = "POINT"
+			}
+			geoCol := &geopkg.GeometryColumn{
+				GeometryColumnTableName:  tableName,
+				ColumnName:               geoColumn,
+				GeometryType:             upperType,
+				SpatialReferenceSystemId: 4326,
+			}
+			err := dataDB.Save(geoCol).Error
+			if err != nil {
+				log.Error(err)
+			}
+			// //⑤create rtreeindex
+			sql := fmt.Sprintf("CREATE VIRTUAL TABLE rtree_%s_%s USING rtree(id, minx, maxx, miny, maxy)", tableName, geoColumn)
+			err = dataDB.Exec(sql).Error
+			if err != nil {
+				log.Error(err)
+			}
+			// sql_stmt = sqlite3_mprintf ("INSERT INTO gpkg_extensions "
+			// "(table_name, column_name, extension_name, definition, scope) "
+			// "VALUES (Lower(%Q), Lower(%Q), 'gpkg_rtree_index', "
+			// "'GeoPackage 1.0 Specification Annex L', 'write-only')",
+			// table, column);
+			rtrExt := &geopkg.Extension{
+				Table:      tableName,
+				Column:     &geoColumn,
+				Extension:  "gpkg_rtree_index",
+				Definition: "GeoPackage 1.0 Specification Annex L",
+				Scope:      "write-only",
+			}
+			err = dataDB.Save(rtrExt).Error
+			if err != nil {
+				log.Error(err)
+			}
+		case Postgres:
 		}
 		cols, err := ds.getColumnTypes()
 		if err != nil {
@@ -609,216 +917,116 @@ func (ds *DataSource) Import(task *Task) error {
 			headermap[col.Name()] = i
 		}
 
-		switch ds.Format {
-		case CSVEXT:
-			prepValues := func(row []string, cols []*sql.ColumnType) string {
-				var vals []string
-				for i, col := range cols {
-					s := stringFormat(col.DatabaseTypeName(), row[i])
-					vals = append(vals, s)
+		prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
+			vals := make([]string, len(cols))
+			for k, v := range props {
+				ki, ok := headermap[strings.ToLower(k)]
+				if ok {
+					vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
 				}
-				return strings.Join(vals, ",")
 			}
-			t := time.Now()
-			file, err := os.Open(ds.Path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-			reader, err := csvReader(file, ds.Encoding)
-			csvHeaders, err := reader.Read()
-			if err != nil {
-				return err
-			}
-			if len(cols) != len(csvHeaders) {
-				log.Errorf(`dataImport, dbfield len != csvheader len: %s`, err)
-			}
-			prepIndex := func(cols []*sql.ColumnType, name string) int {
-				for i, col := range cols {
-					if col.Name() == strings.ToLower(name) {
-						return i
-					}
-				}
-				return -1
-			}
-			ix, iy := -1, -1
-			xy := strings.Split(string(ds.Geotype), ",")
-			if len(xy) == 2 {
-				ix = prepIndex(cols, xy[0])
-				iy = prepIndex(cols, xy[1])
-			}
-			isgeom := (ix != -1 && iy != -1)
-			if isgeom {
-				headers = append(headers, "geom")
-			}
-			tt := time.Since(t)
-			log.Info(`process headers and get count, `, tt)
-			var vals []string
-			task.Status = "processing"
-			t = time.Now()
-			count := 0
-			for {
-				row, err := reader.Read()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					continue
-				}
-				rval := prepValues(row, cols)
-				if isgeom {
-					x, _ := strconv.ParseFloat(row[ix], 64)
-					y, _ := strconv.ParseFloat(row[iy], 64)
-					switch ds.Crs {
-					case GCJ02:
-						x, y = Gcj02ToWgs84(x, y)
-					case BD09:
-						x, y = Bd09ToWgs84(x, y)
-					default: //WGS84 & CGCS2000
-					}
-					geom := fmt.Sprintf(`ST_SetSRID(ST_Point(%f, %f),4326)`, x, y)
-					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, geom))
-				} else {
-					vals = append(vals, fmt.Sprintf(`(%s)`, rval))
-				}
-				if (count+1)%1000 == 0 {
-					go func(vs []string) {
-						t := time.Now()
-						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-						query := db.Exec(st)
-						err := query.Error
-						if err != nil {
-							log.Error(err)
-						}
-						log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
-					}(vals)
-					var nvals []string
-					vals = nvals
-				}
-				task.Progress = int(count / ds.Total / 5)
-				count++
-			}
-			t = time.Now()
-			task.Status = "importing"
-			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-			query := db.Exec(st)
-			err = query.Error
-			if err != nil {
-				log.Errorf(`task failed, details:%s`, err)
-			}
-			log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
-			return nil
-		case GEOJSONEXT:
-			prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
-				vals := make([]string, len(cols))
-				for k, v := range props {
-					ki, ok := headermap[strings.ToLower(k)]
-					if ok {
-						vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
-					}
-				}
-				// for i, col := range cols {
-				// 	var s string
-				// 	v, ok := props[headers[i]]
-				// 	if ok {
-				// 		s = interfaceFormat(col.DatabaseTypeName(), v)
-				// 	}
-				// 	vals = append(vals, s)
-				// }
-				return strings.Join(vals, ",")
-			}
-			s := time.Now()
-			file, err := os.Open(ds.Path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-			decoder, err := jsonDecoder(file, ds.Encoding)
-			if err != nil {
-				return err
-			}
-			err = movetoFeatures(decoder)
-			if err != nil {
-				return err
-			}
-			type Feature struct {
-				Type       string                 `json:"type"`
-				Geometry   json.RawMessage        `json:"geometry"`
-				Properties map[string]interface{} `json:"properties"`
-			}
-			headers = append(headers, "geom")
-			task.Status = "processing"
-			var rowNum int
-			var vals []string
-			for decoder.More() {
-				// ft := &Feature{}
-				ft := &geojson.Feature{}
-				err := decoder.Decode(ft)
-				if err != nil {
-					log.Errorf(`decode feature error, details:%s`, err)
-					continue
-				}
-				rval := prepValues(ft.Properties, cols)
-				switch ds.Crs {
-				case GCJ02:
-					ft.Geometry.GCJ02ToWGS84()
-				case BD09:
-					ft.Geometry.BD09ToWGS84()
-				default: //WGS84 & CGCS2000
-				}
-				// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
-				// err := db.Exec(s).Error
-				// if err != nil {
-				// 	log.Info(err)
-				// }
-				geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
-				if err != nil {
-					log.Errorf(`preper geometry error, details:%s`, err)
-					continue
-				}
-				// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
-				gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, string(geom))
-				// gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
-				if rval == "" {
-					vals = append(vals, fmt.Sprintf("(%s)", gval))
-				} else {
-					vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
-				}
-				if (rowNum+1)%1000 == 0 {
-					go func(vs []string) {
-						t := time.Now()
-						st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-						query := db.Exec(st)
-						err := query.Error
-						if err != nil {
-							log.Error(err)
-						}
-						log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
-					}(vals)
-					var nvals []string
-					vals = nvals
-				}
-				task.Progress = int(rowNum / ds.Total / 2)
-				rowNum++
-			}
-			log.Info("geojson process ", time.Since(s))
-			task.Status = "importing"
-			st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-			// log.Info(st)
-			query := db.Exec(st)
-			err = query.Error
-			if err != nil {
-				log.Error(err)
-			}
-			log.Infof("total features %d, takes: %v\n", rowNum, time.Since(s))
-			return nil
+			// for i, col := range cols {
+			// 	var s string
+			// 	v, ok := props[headers[i]]
+			// 	if ok {
+			// 		s = interfaceFormat(col.DatabaseTypeName(), v)
+			// 	}
+			// 	vals = append(vals, s)
+			// }
+			return strings.Join(vals, ",")
 		}
+
+		s := time.Now()
+		file, err := os.Open(ds.Path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		decoder, err := jsonDecoder(file, ds.Encoding)
+		if err != nil {
+			return err
+		}
+		err = movetoFeatures(decoder)
+		if err != nil {
+			return err
+		}
+		type Feature struct {
+			Type       string                 `json:"type"`
+			Geometry   json.RawMessage        `json:"geometry"`
+			Properties map[string]interface{} `json:"properties"`
+		}
+		headers = append(headers, "geom")
+		task.Status = "processing"
+		var rowNum int
+		var vals []string
+		for decoder.More() {
+			// ft := &Feature{}
+			ft := &geojson.Feature{}
+			err := decoder.Decode(ft)
+			if err != nil {
+				log.Errorf(`decode feature error, details:%s`, err)
+				continue
+			}
+			rval := prepValues(ft.Properties, cols)
+			switch ds.Crs {
+			case GCJ02:
+				ft.Geometry.GCJ02ToWGS84()
+			case BD09:
+				ft.Geometry.BD09ToWGS84()
+			default: //WGS84 & CGCS2000
+			}
+			// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
+			// err := db.Exec(s).Error
+			// if err != nil {
+			// 	log.Info(err)
+			// }
+			geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
+			if err != nil {
+				log.Errorf(`preper geometry error, details:%s`, err)
+				continue
+			}
+			// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
+			gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, string(geom))
+			// gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
+			if rval == "" {
+				vals = append(vals, fmt.Sprintf("(%s)", gval))
+			} else {
+				vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
+			}
+			if (rowNum+1)%1000 == 0 {
+				go func(vs []string) {
+					t := time.Now()
+					st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+					query := db.Exec(st)
+					err := query.Error
+					if err != nil {
+						log.Error(err)
+					}
+					log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
+				}(vals)
+				var nvals []string
+				vals = nvals
+			}
+			task.Progress = int(rowNum / ds.Total / 2)
+			rowNum++
+		}
+		log.Info("geojson process ", time.Since(s))
+		task.Status = "importing"
+		st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
+		// log.Info(st)
+		query := db.Exec(st)
+		err = query.Error
+		if err != nil {
+			log.Error(err)
+		}
+		log.Infof("total features %d, takes: %v\n", rowNum, time.Since(s))
+		return nil
 	case SHPEXT, KMLEXT, GPXEXT:
 		var params []string
 		//设置数据库
 		params = append(params, []string{"-f", "PostgreSQL"}...)
 		pg := fmt.Sprintf(`PG:dbname=%s host=%s port=%s user=%s password=%s`,
-			viper.GetString("db.database"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
+			viper.GetString("db.datadb"), viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"))
 		params = append(params, pg)
 		params = append(params, []string{"-t_srs", "EPSG:4326"}...)
 		//显示进度,读取outbuffer缓冲区
@@ -923,7 +1131,6 @@ func (ds *DataSource) Import(task *Task) error {
 	default:
 		return fmt.Errorf(`dataImport, importing unkown format data:%s`, ds.Format)
 	}
-	return nil
 }
 
 func csvReader(r io.Reader, encoding string) (*csv.Reader, error) {
@@ -1148,53 +1355,55 @@ func interfaceFormat(t string, v interface{}) string {
 	}
 }
 
-func stringFormat(t, v string) string {
+func valueFormat(t, v string) interface{} {
 
-	formatBool := func(v string) string {
+	formatBool := func(v string) interface{} {
 		if v == "" {
-			return "null"
+			return nil
 		}
 		str := strings.ToLower(v)
 		switch str {
-		case "true", "false", "yes", "no", "1", "0":
+		case "false", "no", "0":
+			return false
+		case "true", "yes", "1":
+			return true
 		default:
-			return "null"
+			return true
 		}
-		return "'" + str + "'"
 	}
 
-	formatInt := func(v string) string {
+	formatInt := func(v string) interface{} {
 		if v == "" {
-			return "null"
+			return nil
 		}
 		i64, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			f, err := strconv.ParseFloat(v, 64)
 			if err != nil {
-				return "null"
+				return nil
 			}
 			i64 = int64(f)
 		}
-		return strconv.FormatInt(i64, 10)
+		return i64
 	}
 
-	formatFloat := func(v string) string {
+	formatFloat := func(v string) interface{} {
 		if v == "" {
-			return "null"
+			return nil
 		}
-		f, err := strconv.ParseFloat(v, 64)
+		f64, err := strconv.ParseFloat(v, 64)
 		if err != nil {
-			return "null"
+			return nil
 		}
-		return strconv.FormatFloat(f, 'g', -1, 64)
+		return f64
 	}
 
-	formatDate := func(v string) string {
+	formatDate := func(v string) interface{} {
 		if v == "" {
-			return "null"
+			return nil
 		}
 		//string shoud filter the invalid time values
-		return "'" + v + "'"
+		return v
 	}
 
 	formatString := func(v string) string {
@@ -1254,4 +1463,35 @@ out:
 		}
 	}
 	return nil
+}
+
+func gpkgMakePoint(x, y float64, srid uint32) []byte {
+	header := make([]byte, 2+1+1+4+32)
+	header[0] = 0x47    // 'G'
+	header[1] = 0x50    // 'P'
+	header[2] = byte(0) //version --> 1
+	p := orb.Point{x, y}
+	buf, err := wkb.Marshal(p, binary.BigEndian)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	header[3] = byte(1 << 1) //flag --> 00000010 正常
+	binary.BigEndian.PutUint32(header[4:8], srid)
+	binary.BigEndian.PutUint64(header[8:16], math.Float64bits(x))
+	binary.BigEndian.PutUint64(header[16:24], math.Float64bits(x))
+	binary.BigEndian.PutUint64(header[24:32], math.Float64bits(y))
+	binary.BigEndian.PutUint64(header[32:], math.Float64bits(y))
+	headerBuf := bytes.Buffer{}
+	_, err = headerBuf.Write(header)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	_, err = headerBuf.Write(buf)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	return headerBuf.Bytes()
 }

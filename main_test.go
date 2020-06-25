@@ -45,7 +45,7 @@ func debugSetup() *gin.Engine {
 	initLoger()
 	initConf("conf.toml")
 	var err error
-	db, err = initDb()
+	db, err = initSysDb()
 	if err != nil {
 		log.Fatalf("init db error, details: %s", err)
 	}

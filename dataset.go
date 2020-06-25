@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io/ioutil"
 
 	"fmt"
 	"os"
@@ -18,15 +19,20 @@ import (
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/mapbox/tilejson"
 	"github.com/go-spatial/tegola/mvt"
 	"github.com/go-spatial/tegola/provider"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	"github.com/paulmach/orb"
+	orbmvt "github.com/paulmach/orb/encoding/mvt"
 	"github.com/paulmach/orb/geojson"
 	"github.com/paulmach/orb/maptile"
 	"github.com/paulmach/orb/maptile/tilecover"
+	"github.com/paulmach/orb/simplify"
+
+	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 	log "github.com/sirupsen/logrus"
 	// "github.com/paulmach/orb/encoding/wkb"
 )
@@ -100,18 +106,36 @@ func (dt *Dataset) Update() error {
 func (dt *Dataset) Bound() (orb.Bound, error) {
 	bbox := orb.Bound{}
 	tbname := strings.ToLower(dt.ID)
-	var extent []byte
-	stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM "%s";`, tbname)
-	err := db.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
-	if err != nil {
-		return bbox, err
+	switch dbType {
+	case Sqlite3:
+		ct := &geopkg.Content{
+			ContentTableName: tbname,
+		}
+		err := dataDB.First(ct).Error // (*sql.Rows, error)
+		if err != nil {
+			return bbox, err
+		}
+		dt.BBox = orb.Bound{
+			Min: orb.Point{ct.MinX, ct.MinY},
+			Max: orb.Point{ct.MaxX, ct.MaxY},
+		}
+	case Postgres:
+		var extent []byte
+		stbox := fmt.Sprintf(`SELECT st_asgeojson(st_extent(geom)) as extent FROM "%s";`, tbname)
+		err := dataDB.Raw(stbox).Row().Scan(&extent) // (*sql.Rows, error)
+		if err != nil {
+			return bbox, err
+		}
+		ext, err := geojson.UnmarshalGeometry(extent)
+		if err != nil {
+			return bbox, err
+		}
+		bbox = ext.Geometry().Bound()
+		dt.BBox = bbox
+	case Spatialite:
+
 	}
-	ext, err := geojson.UnmarshalGeometry(extent)
-	if err != nil {
-		return bbox, err
-	}
-	bbox = ext.Geometry().Bound()
-	dt.BBox = bbox
+
 	return dt.BBox, nil
 }
 
@@ -119,7 +143,7 @@ func (dt *Dataset) Bound() (orb.Bound, error) {
 func (dt *Dataset) TotalCount() (int, error) {
 	tableName := strings.ToLower(dt.ID)
 	var total int
-	err := db.Table(tableName).Count(&total).Error
+	err := dataDB.Table(tableName).Count(&total).Error
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +156,7 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 	//info from data table
 	tableName := strings.ToLower(dt.ID)
 	s := fmt.Sprintf(`SELECT * FROM "%s" LIMIT 0;`, tableName)
-	rows, err := db.Raw(s).Rows() // (*sql.Rows, error)
+	rows, err := dataDB.Raw(s).Rows() // (*sql.Rows, error)
 	if err != nil {
 		return nil, err
 	}
@@ -145,9 +169,9 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 	for _, col := range cols {
 		var t FieldType
 		switch col.DatabaseTypeName() {
-		case "INT", "INT4":
+		case "INT", "INT4", "INTEGER":
 			t = Int
-		case "NUMERIC": //number
+		case "NUMERIC", "REAL": //number
 			t = Float
 		case "BOOL":
 			t = Bool
@@ -180,7 +204,7 @@ func (dt *Dataset) GeoType() (GeoType, error) {
 	tbname := strings.ToLower(dt.ID)
 	var geotype string
 	stbox := fmt.Sprintf(`SELECT st_geometrytype(geom) as geotype FROM "%s" limit 1;`, tbname)
-	err := db.Raw(stbox).Row().Scan(&geotype) // (*sql.Rows, error)
+	err := dataDB.Raw(stbox).Row().Scan(&geotype) // (*sql.Rows, error)
 	if err != nil {
 		return "", err
 	}
@@ -246,6 +270,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 		Name:    dt.ID,
 		MinZoom: 0,
 		MaxZoom: 20,
+		srid:    3857, //注意tilelayer的目标srid
 	}
 	prd, ok := providers["atlas"]
 	if !ok {
@@ -355,19 +380,23 @@ func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error
 	return gzipBuf.Bytes(), nil
 }
 
-// CacheMBTiles 新建服务层
-func (dt *Dataset) CacheMBTiles(path string) error {
+// CacheMBTiles 缓存服务层
+func (dt *Dataset) CacheMBTiles(pathFile string, tileJSON tilejson.TileJSON) error {
 	if dt.tlayer == nil {
 		_, err := dt.NewTileLayer()
 		if err != nil {
 			return err
 		}
 	}
-	dt.Bound()
-	os.Remove(path)
-	dir := filepath.Dir(path)
+	extent, err := dt.Bound()
+	if err != nil {
+		log.Error(err)
+	}
+
+	os.Remove(pathFile)
+	dir := filepath.Dir(pathFile)
 	os.MkdirAll(dir, os.ModePerm)
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite3", pathFile)
 	if err != nil {
 		return err
 	}
@@ -393,17 +422,17 @@ func (dt *Dataset) CacheMBTiles(path string) error {
 		if err != nil {
 			return err
 		}
-		_, err = db.Exec("create unique index name on metadata (name);")
+		_, err = db.Exec("create unique index if not exists name on metadata (name);")
 		if err != nil {
 			return err
 		}
-		_, err = db.Exec("create unique index tile_index on tiles(zoom_level, tile_column, tile_row);")
+		_, err = db.Exec("create unique index if not exists tile_index on tiles(zoom_level, tile_column, tile_row);")
 		if err != nil {
 			return err
 		}
 	}
 
-	minzoom, maxzoom := 7, 9
+	minzoom, maxzoom := 0, 10
 	for z := minzoom; z <= maxzoom; z++ {
 		tiles := tilecover.Bound(dt.BBox, maptile.Zoom(z))
 		log.Infof("zoom: %d, count: %d", z, len(tiles))
@@ -436,6 +465,142 @@ func (dt *Dataset) CacheMBTiles(path string) error {
 		}
 	}
 	//should save tilejson
+
+	db.Exec("insert into metadata (name, value) values (?, ?)", "name", dt.Name)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "bounds", fmt.Sprintf("%f,%f,%f,%f", extent.Left(), extent.Bottom(), extent.Right(), extent.Top()))
+	db.Exec("insert into metadata (name, value) values (?, ?)", "center", fmt.Sprintf("%f,%f,%d", extent.Center().X(), extent.Center().Y(), maxzoom))
+	db.Exec("insert into metadata (name, value) values (?, ?)", "maxzoom", maxzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "minzoom", minzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "format", "pbf")
+	data, err := json.Marshal(tileJSON)
+	fmt.Println(string(data))
+	if err == nil {
+		db.Exec("insert into metadata (name, value) values (?, ?)", "json", string(data))
+	}
+
 	db.Close()
+	return nil
+}
+
+// GeoJSON2MBTiles 缓存服务层
+func (dt *Dataset) GeoJSON2MBTiles(tileJSON tilejson.TileJSON) error {
+	extent, err := dt.Bound()
+	if err != nil {
+		log.Error(err)
+	}
+	outname := dt.Name + ".mbtiles"
+	os.Remove(outname)
+	dir := filepath.Dir(dt.Path)
+	os.MkdirAll(dir, os.ModePerm)
+	db, err := sql.Open("sqlite3", outname)
+	if err != nil {
+		return err
+	}
+	{
+		_, err := db.Exec("PRAGMA synchronous=0")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("PRAGMA locking_mode=EXCLUSIVE")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("PRAGMA journal_mode=DELETE")
+
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create table if not exists tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create table if not exists metadata (name text, value text);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create unique index if not exists name on metadata (name);")
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec("create unique index if not exists tile_index on tiles(zoom_level, tile_column, tile_row);")
+		if err != nil {
+			return err
+		}
+	}
+
+	data, err := ioutil.ReadFile(dt.Path)
+	if err != nil {
+		return err
+	}
+	collection, err := geojson.UnmarshalFeatureCollection(data)
+	if err != nil {
+		return err
+	}
+	log.Printf("%+v", collection.BBox)
+	log.Printf("length of collection %d", len(collection.Features))
+	// layerName := filepath.Base(dt.Path)
+	layerName := dt.Name
+
+	cnt := 0
+	st := time.Now()
+	minzoom, maxzoom := tileJSON.MinZoom, tileJSON.MaxZoom
+	for z := minzoom; z <= maxzoom; z++ {
+		tiles := tilecover.Bound(dt.BBox, maptile.Zoom(z))
+		log.Infof("zoom: %d, count: %d", z, len(tiles))
+		for t, v := range tiles {
+			if !v {
+				continue
+			}
+			collections := map[string]*geojson.FeatureCollection{layerName: collection}
+			layers := orbmvt.NewLayers(collections)
+			for _, l := range layers {
+				log.Printf("layer %s , has %d features", l.Name, len(l.Features))
+				log.Printf("layer first geom %+v", l.Features[0].Geometry)
+				log.Printf("collection first geom %+v", collection.Features[0].Geometry)
+			}
+			layers.ProjectToTile(maptile.New(t.X, t.Y, t.Z))
+			layers.Simplify(simplify.DouglasPeucker(1.0))
+			layers.RemoveEmpty(1.0, 2.0)
+			for _, l := range layers {
+				log.Printf("layer %s , has %d features", l.Name, len(l.Features))
+				log.Printf("layer first geom %+v", l.Features[0].Geometry)
+				log.Printf("collection first geom %+v", collection.Features[0].Geometry)
+			}
+			pbyte, err := orbmvt.MarshalGzipped(layers) // this data is NOT gzipped.
+			if err != nil {
+				errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+				log.Error(errMsg)
+				continue
+			}
+			if len(pbyte) == 0 {
+				continue
+			}
+			log.Infof("%+v", t)
+			_, err = db.Exec("insert into tiles (zoom_level, tile_column, tile_row, tile_data) values (?, ?, ?, ?);", t.Z, t.X, (1<<z)-1-t.Y, pbyte)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			cnt++
+
+		}
+	}
+	//should save tilejson
+	db.Exec("insert into metadata (name, value) values (?, ?)", "name", layerName)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "bounds", fmt.Sprintf("%f,%f,%f,%f", extent.Left(), extent.Bottom(), extent.Right(), extent.Top()))
+	// db.Exec("insert into metadata (name, value) values (?, ?)", "bounds", "-180,-85,180,85")
+	db.Exec("insert into metadata (name, value) values (?, ?)", "center", fmt.Sprintf("%f,%f,%d", extent.Center().X(), extent.Center().Y(), maxzoom))
+	db.Exec("insert into metadata (name, value) values (?, ?)", "maxzoom", maxzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "minzoom", minzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "format", "pbf")
+	data, err = json.Marshal(tileJSON.VectorLayers)
+	fmt.Println(string(data))
+	if err == nil {
+		db.Exec("insert into metadata (name, value) values (?, ?)", "json", `{"vector_layers":`+string(data)+"}")
+	}
+
+	db.Close()
+
+	log.Printf("%d tiles , used %f s", cnt, time.Since(st).Seconds())
 	return nil
 }

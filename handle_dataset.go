@@ -1494,3 +1494,72 @@ func viewDataset(c *gin.Context) {
 	})
 	return
 }
+
+func getLayerMBTiles(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Warnf(`getLayerMBTiles, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	attr := "atlas realtime tile layer"
+	minzoom, err := strconv.Atoi(c.Param("min"))
+	if err != nil {
+		log.Println("minzoom error ")
+	}
+	maxzoom, err := strconv.Atoi(c.Param("max"))
+	if err != nil {
+		log.Println("minzoom error ")
+	}
+	tileJSON := tilejson.TileJSON{
+		Attribution: &attr,
+		// Bounds:      dts.tlayer.Bounds.Extent(),
+		Bounds:   [4]float64{dts.BBox.Left(), dts.BBox.Bottom(), dts.BBox.Right(), dts.BBox.Top()},
+		Center:   [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(maxzoom)},
+		Format:   "pbf",
+		Name:     &dts.Name,
+		Scheme:   tilejson.SchemeXYZ,
+		TileJSON: tilejson.Version,
+		Version:  "1.0.0",
+		Grids:    make([]string, 0),
+		Data:     make([]string, 0),
+	}
+
+	tileJSON.MinZoom = uint(minzoom)
+	tileJSON.MaxZoom = uint(maxzoom)
+	//	build our vector layer details
+	layer := tilejson.VectorLayer{
+		Version: 2,
+		ID:      dts.Name,
+		Name:    dts.Name,
+		MinZoom: uint(minzoom),
+		MaxZoom: uint(maxzoom),
+	}
+
+	// add our layer to our tile layer response
+	tileJSON.VectorLayers = append(tileJSON.VectorLayers, layer)
+
+	tileURL := fmt.Sprintf("atlasdata://datasets/x/%s/{z}/{x}/{y}.pbf", did)
+
+	// build our URL scheme for the tile grid
+	tileJSON.Tiles = append(tileJSON.Tiles, tileURL)
+
+	// content type
+	c.Header("Content-Type", "application/json")
+
+	// cache control headers (no-cache)
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+
+	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
+		log.Printf("error encoding tileJSON for layer (%v)", did)
+	}
+	dts.GeoJSON2MBTiles(tileJSON)
+}

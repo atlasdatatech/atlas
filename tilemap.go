@@ -148,6 +148,9 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 
 		// check if the feature SRID and map SRID are different. If they are then reporject
 		if f.SRID != tl.srid {
+			if f.SRID == 0 {
+				f.SRID = 4326
+			}
 			// TODO(arolek): support for additional projections
 			g, err := basic.ToWebMercator(f.SRID, geo)
 			if err != nil {
@@ -168,6 +171,7 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 			Tags:     f.Tags,
 			Geometry: geo,
 		})
+		log.Println("add feature:", geo)
 
 		return nil
 	})
@@ -203,7 +207,6 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 
 	// generate our tile
 	vtile, err := mvtTile.VTile(ctx, tegolaTile)
-
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +217,7 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 		return nil, err
 	}
 
+	log.Printf("tile:%v,size:%d\n", tile, len(tileBytes))
 	// buffer to store our compressed bytes
 	var gzipBuf bytes.Buffer
 
