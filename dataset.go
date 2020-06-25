@@ -318,6 +318,7 @@ func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error
 
 		return nil
 	})
+
 	if err != nil {
 		switch err {
 		case context.Canceled:
@@ -506,7 +507,6 @@ func (dt *Dataset) GeoJSON2MBTiles(tileJSON tilejson.TileJSON) error {
 			return err
 		}
 		_, err = db.Exec("PRAGMA journal_mode=DELETE")
-
 		if err != nil {
 			return err
 		}

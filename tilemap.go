@@ -168,8 +168,6 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 			Tags:     f.Tags,
 			Geometry: geo,
 		})
-		log.Println("add feature:", geo)
-
 		return nil
 	})
 	if err != nil {
@@ -214,7 +212,6 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 		return nil, err
 	}
 
-	log.Printf("tile:%v,size:%d\n", tile, len(tileBytes))
 	// buffer to store our compressed bytes
 	var gzipBuf bytes.Buffer
 

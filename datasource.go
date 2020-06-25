@@ -523,7 +523,8 @@ func (ds *DataSource) getCreateHeaders() []string {
 		default:
 			t = "TEXT"
 		}
-		fts = append(fts, v.Name+" "+t)
+
+		fts = append(fts, fmt.Sprintf(`"%s" %s`, v.Name, t))
 	}
 	if ds.Geotype != Attribute {
 		dbtype := ds.Geotype
@@ -559,7 +560,7 @@ func (ds *DataSource) getCreateHeadersLite() []string {
 		default:
 			t = "TEXT"
 		}
-		fts = append(fts, v.Name+" "+t)
+		fts = append(fts, fmt.Sprintf(`"%s" %s`, v.Name, t))
 	}
 	if ds.Geotype != Attribute {
 		dbtype := ds.Geotype
@@ -700,9 +701,6 @@ func (ds *DataSource) Import(task *Task) error {
 		}
 		prepIndex := func(cols []*sql.ColumnType, name string) int {
 			for i, col := range cols {
-				if dbType == Postgres {
-					name = strings.ToLower(name)
-				}
 				if col.Name() == name {
 					return i
 				}
@@ -718,7 +716,6 @@ func (ds *DataSource) Import(task *Task) error {
 		}
 		//找到xy字段
 		hasgeom := (ds.Geotype != Attribute) && (ix != -1 && iy != -1)
-
 		t := time.Now()
 		file, err := os.Open(ds.Path)
 		if err != nil {
@@ -736,12 +733,13 @@ func (ds *DataSource) Import(task *Task) error {
 		log.Info(`process headers and get count, `, time.Since(t))
 		task.Status = "processing"
 		t = time.Now()
-		count := 0
 
 		pvs := []string{}
 		var rstmt *sql.Stmt
 		switch dbType {
 		case Sqlite3:
+			dataDB.Exec("PRAGMA locking_mode=EXCLUSIVE")    //NORMAL
+			defer dataDB.Exec("PRAGMA locking_mode=NORMAL") //NORMAL
 			for range headers {
 				pvs = append(pvs, "?")
 			}
@@ -760,7 +758,7 @@ func (ds *DataSource) Import(task *Task) error {
 				pvs = append(pvs, fmt.Sprintf("$%d", i+1))
 			}
 		}
-		sql := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(pvs, ","))
+		sql := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, fmt.Sprintf(`"%s"`, strings.Join(headers, `","`)), strings.Join(pvs, ","))
 		log.Println(sql)
 		stmt, err := dataDB.DB().Prepare(sql)
 		if err != nil {
@@ -769,9 +767,10 @@ func (ds *DataSource) Import(task *Task) error {
 		}
 		defer stmt.Close()
 
-		//for extent
-		var minx, maxx, miny, maxy float64 = 180, -180, 90, -90
 		task.Status = "importing"
+		count := 0
+		//for extent
+		var minx, maxx, miny, maxy float64 = 181, -181, 91, -91
 		for {
 			row, err := reader.Read()
 			if err == io.EOF {
@@ -799,9 +798,10 @@ func (ds *DataSource) Import(task *Task) error {
 					x, y = Bd09ToWgs84(x, y)
 				default: //WGS84 & CGCS2000
 				}
+				pt := orb.Point{x, y}
 				switch dbType {
 				case Sqlite3:
-					geom := gpkgMakePoint(x, y, 4326)
+					geom := buildGpkgGeom(pt, 4326)
 					vals = append(vals, geom)
 					if x < minx {
 						minx = x
@@ -816,28 +816,23 @@ func (ds *DataSource) Import(task *Task) error {
 						maxy = y
 					}
 				case Postgres:
-
-					p := orb.Point{x, y}
-					wbkdata := wkb.Value(p)
-					// str := fmt.Sprintf(`ST_SetSRID(ST_Point(%f,%f),4326)`, x, y)
-					// geom := []byte(str)
+					wbkdata := wkb.Value(pt)
 					vals = append(vals, wbkdata)
-					log.Println(vals...)
 				}
 			}
 			r, err := stmt.Exec(vals...)
 			if err != nil {
 				log.Error(err)
-			} else {
-				fid, _ := r.LastInsertId()
-				if hasgeom && dbType == Sqlite3 {
-					rstmt.Exec(fid, x, x, y, y)
-				}
+				continue
+			}
+			fid, _ := r.LastInsertId()
+			if hasgeom && dbType == Sqlite3 {
+				rstmt.Exec(fid, x, x, y, y)
 			}
 			count++
 			task.Progress = int(count / ds.Total / 5)
 		}
-		//add to content
+		//gpkg provide add dataset to content
 		switch dbType {
 		case Sqlite3:
 			update := time.Now()
@@ -861,7 +856,7 @@ func (ds *DataSource) Import(task *Task) error {
 		log.Infof("inserted %d rows, takes: %v", count, time.Since(t))
 		return nil
 	case GEOJSONEXT:
-
+		s := time.Now()
 		err := ds.createDataTable()
 		if err != nil {
 			return err
@@ -883,16 +878,11 @@ func (ds *DataSource) Import(task *Task) error {
 				log.Error(err)
 			}
 			// //⑤create rtreeindex
-			sql := fmt.Sprintf("CREATE VIRTUAL TABLE rtree_%s_%s USING rtree(id, minx, maxx, miny, maxy)", tableName, geoColumn)
+			sql := fmt.Sprintf(`CREATE VIRTUAL TABLE "rtree_%s_%s" USING rtree(id, minx, maxx, miny, maxy)`, tableName, geoColumn)
 			err = dataDB.Exec(sql).Error
 			if err != nil {
 				log.Error(err)
 			}
-			// sql_stmt = sqlite3_mprintf ("INSERT INTO gpkg_extensions "
-			// "(table_name, column_name, extension_name, definition, scope) "
-			// "VALUES (Lower(%Q), Lower(%Q), 'gpkg_rtree_index', "
-			// "'GeoPackage 1.0 Specification Annex L', 'write-only')",
-			// table, column);
 			rtrExt := &geopkg.Extension{
 				Table:      tableName,
 				Column:     &geoColumn,
@@ -916,27 +906,6 @@ func (ds *DataSource) Import(task *Task) error {
 			headers = append(headers, col.Name())
 			headermap[col.Name()] = i
 		}
-
-		prepValues := func(props geojson.Properties, cols []*sql.ColumnType) string {
-			vals := make([]string, len(cols))
-			for k, v := range props {
-				ki, ok := headermap[strings.ToLower(k)]
-				if ok {
-					vals[ki] = interfaceFormat(cols[ki].DatabaseTypeName(), v)
-				}
-			}
-			// for i, col := range cols {
-			// 	var s string
-			// 	v, ok := props[headers[i]]
-			// 	if ok {
-			// 		s = interfaceFormat(col.DatabaseTypeName(), v)
-			// 	}
-			// 	vals = append(vals, s)
-			// }
-			return strings.Join(vals, ",")
-		}
-
-		s := time.Now()
 		file, err := os.Open(ds.Path)
 		if err != nil {
 			return err
@@ -955,19 +924,61 @@ func (ds *DataSource) Import(task *Task) error {
 			Geometry   json.RawMessage        `json:"geometry"`
 			Properties map[string]interface{} `json:"properties"`
 		}
-		headers = append(headers, "geom")
-		task.Status = "processing"
+
+		pvs := []string{}
+		var rstmt *sql.Stmt
+		switch dbType {
+		case Sqlite3:
+			dataDB.Exec("PRAGMA locking_mode=EXCLUSIVE")    //NORMAL
+			defer dataDB.Exec("PRAGMA locking_mode=NORMAL") //NORMAL
+
+			for range headers {
+				pvs = append(pvs, "?")
+			}
+			s := fmt.Sprintf(`INSERT OR REPLACE INTO "rtree_%s_%s" VALUES (?, ?, ?, ?, ?);`, tableName, geoColumn)
+			rstmt, err = dataDB.DB().Prepare(s)
+			if err != nil {
+				log.Error(err)
+			}
+			defer rstmt.Close()
+		case Postgres:
+			for i, c := range headers {
+				if c == "geom" {
+					pvs = append(pvs, fmt.Sprintf("ST_GeomFromWKB($%d,4326)", i+1))
+					continue
+				}
+				pvs = append(pvs, fmt.Sprintf("$%d", i+1))
+			}
+		}
+		sql := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s) ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(pvs, ","))
+		log.Println(sql)
+		stmt, err := dataDB.DB().Prepare(sql)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		defer stmt.Close()
+		log.Printf("starting importing ,time: %v", time.Since(s).Seconds())
+		task.Status = "importing"
 		var rowNum int
-		var vals []string
+		bbox := orb.Bound{Min: orb.Point{181, 91}, Max: orb.Point{-181, -91}}
+		s = time.Now()
 		for decoder.More() {
-			// ft := &Feature{}
 			ft := &geojson.Feature{}
 			err := decoder.Decode(ft)
 			if err != nil {
 				log.Errorf(`decode feature error, details:%s`, err)
 				continue
 			}
-			rval := prepValues(ft.Properties, cols)
+			//Properties
+			vals := make([]interface{}, len(cols))
+			for k, v := range ft.Properties {
+				ki, ok := headermap[k]
+				if ok {
+					vals[ki] = v
+				}
+			}
+			//Geometry
 			switch ds.Crs {
 			case GCJ02:
 				ft.Geometry.GCJ02ToWGS84()
@@ -975,49 +986,52 @@ func (ds *DataSource) Import(task *Task) error {
 				ft.Geometry.BD09ToWGS84()
 			default: //WGS84 & CGCS2000
 			}
-			// s := fmt.Sprintf("INSERT INTO ggg (id,geom) VALUES (%d,st_setsrid(ST_GeomFromWKB('%s'),4326))", i, wkb.Value(f.Geometry))
-			// err := db.Exec(s).Error
-			// if err != nil {
-			// 	log.Info(err)
-			// }
-			geom, err := geojson.NewGeometry(ft.Geometry).MarshalJSON()
+			gb := orb.Bound{}
+			switch dbType {
+			case Sqlite3:
+				geom := buildGpkgGeom(ft.Geometry, 4326)
+				vals[len(cols)-1] = geom
+				gb = ft.Geometry.Bound()
+				bbox = bbox.Union(gb)
+			case Postgres:
+				vals[len(cols)-1] = wkb.Value(ft.Geometry)
+			}
+			r, err := stmt.Exec(vals...)
 			if err != nil {
-				log.Errorf(`preper geometry error, details:%s`, err)
+				log.Error(err)
 				continue
 			}
-			// gval := fmt.Sprintf(`st_setsrid(ST_GeomFromWKB('%s'),4326)`, wkb.Value(f.Geometry))
-			gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, string(geom))
-			// gval := fmt.Sprintf(`st_setsrid(st_force2d(st_geomfromgeojson('%s')),4326)`, ft.Geometry)
-			if rval == "" {
-				vals = append(vals, fmt.Sprintf("(%s)", gval))
-			} else {
-				vals = append(vals, fmt.Sprintf(`(%s,%s)`, rval, gval))
+			rowid, _ := r.LastInsertId()
+			switch dbType {
+			case Sqlite3:
+				rstmt.Exec(rowid, gb.Left(), gb.Right(), gb.Bottom(), gb.Top())
 			}
-			if (rowNum+1)%1000 == 0 {
-				go func(vs []string) {
-					t := time.Now()
-					st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vs, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-					query := db.Exec(st)
-					err := query.Error
-					if err != nil {
-						log.Error(err)
-					}
-					log.Infof("inserted %d rows, takes: %v", query.RowsAffected, time.Since(t))
-				}(vals)
-				var nvals []string
-				vals = nvals
+			if rowNum%1000 == 0 {
+				log.Printf("inserting %d rows ,time: %v，", rowNum, time.Since(s))
 			}
-			task.Progress = int(rowNum / ds.Total / 2)
 			rowNum++
+			task.Progress = int(rowNum / ds.Total / 2)
 		}
-		log.Info("geojson process ", time.Since(s))
-		task.Status = "importing"
-		st := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES %s ON CONFLICT DO NOTHING;`, tableName, strings.Join(headers, ","), strings.Join(vals, ",")) // ON CONFLICT (id) DO UPDATE SET (%s) = (%s)
-		// log.Info(st)
-		query := db.Exec(st)
-		err = query.Error
-		if err != nil {
-			log.Error(err)
+		//gpkg provide add dataset to content
+		switch dbType {
+		case Sqlite3:
+			update := time.Now()
+			cts := &geopkg.Content{
+				ContentTableName:         tableName,
+				DataType:                 "features",
+				Identifier:               tableName,
+				Description:              "none",
+				LastChange:               &update,
+				MinX:                     bbox.Left(),
+				MinY:                     bbox.Bottom(),
+				MaxX:                     bbox.Right(),
+				MaxY:                     bbox.Top(),
+				SpatialReferenceSystemId: 4326,
+			}
+			err = dataDB.Save(cts).Error
+			if err != nil {
+				log.Error(err)
+			}
 		}
 		log.Infof("total features %d, takes: %v\n", rowNum, time.Since(s))
 		return nil
@@ -1484,6 +1498,40 @@ func gpkgMakePoint(x, y float64, srid uint32) []byte {
 	binary.BigEndian.PutUint64(header[32:], math.Float64bits(y))
 	headerBuf := bytes.Buffer{}
 	_, err = headerBuf.Write(header)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	_, err = headerBuf.Write(buf)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	return headerBuf.Bytes()
+}
+
+func buildGpkgGeom(geom orb.Geometry, srid uint32) []byte {
+	//build headers
+	header := make([]byte, 2+1+1+4+32)
+	header[0] = 0x47         // 'G'
+	header[1] = 0x50         // 'P'
+	header[2] = byte(0)      //version --> 1
+	header[3] = byte(1 << 1) //flag --> 00000010 正常
+	binary.BigEndian.PutUint32(header[4:8], srid)
+	//1: envelope is [minx, maxx, miny, maxy], 32 bytes
+	gb := geom.Bound()
+	binary.BigEndian.PutUint64(header[8:16], math.Float64bits(gb.Left()))
+	binary.BigEndian.PutUint64(header[16:24], math.Float64bits(gb.Right()))
+	binary.BigEndian.PutUint64(header[24:32], math.Float64bits(gb.Bottom()))
+	binary.BigEndian.PutUint64(header[32:], math.Float64bits(gb.Top()))
+
+	headerBuf := bytes.Buffer{}
+	_, err := headerBuf.Write(header)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	buf, err := wkb.Marshal(geom, binary.BigEndian)
 	if err != nil {
 		log.Error(err)
 		return nil

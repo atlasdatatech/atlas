@@ -1284,7 +1284,7 @@ func getTileLayerJSON(c *gin.Context) {
 	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
-			log.Warn(err)
+			log.Errorf("create tilelayer failed : %v", err)
 			// res.FailMsg(c, "tilelayer empty")
 			// return
 		}

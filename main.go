@@ -88,14 +88,9 @@ func init() {
 		TimestampFormat: "2006-01-02 15:04:05.000",
 		// FieldsOrder: []string{"component", "category"},
 	})
-
-	// // force colors on for TextFormatter
-	// log.Formatter = &logrus.TextFormatter{
-	//     ForceColors: true,
-	// }
-	// then wrap the log output with it
+	log.SetReportCaller(true)
+	// force colors on for TextFormatter
 	log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
-
 	log.SetLevel(log.DebugLevel)
 }
 
@@ -211,6 +206,18 @@ func initDataDb() (*gorm.DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("init datadb error, details: %s", err)
 		}
+		err = dataDB.Exec("PRAGMA synchronous=0").Error
+		if err != nil {
+			return nil, err
+		}
+		// err = dataDB.Exec("PRAGMA locking_mode=EXCLUSIVE").Error
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// err = dataDB.Exec("PRAGMA journal_mode=DELETE").Error
+		// if err != nil {
+		// 	return nil, err
+		// }
 		//gorm自动构建gpkg表
 		err = dataDB.AutoMigrate(&geopkg.Content{}, &geopkg.GeometryColumn{}, &geopkg.SpatialReferenceSystem{}, &geopkg.Extension{}, &geopkg.TileMatrix{}, &geopkg.TileMatrixSet{}).Error
 		if err != nil {
@@ -230,6 +237,7 @@ func initDataDb() (*gorm.DB, error) {
 				return nil, err
 			}
 		}
+
 		return dataDB, nil
 	case Postgres:
 		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
