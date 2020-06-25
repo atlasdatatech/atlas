@@ -665,7 +665,7 @@ func (ds *DataSource) Import(task *Task) error {
 				log.Error(err)
 			}
 			// //⑤create rtreeindex
-			sql := fmt.Sprintf("CREATE VIRTUAL TABLE rtree_%s_%s USING rtree(id, minx, maxx, miny, maxy)", tableName, geoColumn)
+			sql := fmt.Sprintf(`CREATE VIRTUAL TABLE "rtree_%s_%s" USING rtree(id, minx, maxx, miny, maxy)`, tableName, geoColumn)
 			err = dataDB.Exec(sql).Error
 			if err != nil {
 				log.Error(err)
@@ -858,7 +858,7 @@ func (ds *DataSource) Import(task *Task) error {
 				log.Error(err)
 			}
 		}
-		log.Infof("inserted %d rows, takes: %v/n", count, time.Since(t))
+		log.Infof("inserted %d rows, takes: %v", count, time.Since(t))
 		return nil
 	case GEOJSONEXT:
 

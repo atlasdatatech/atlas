@@ -39,7 +39,7 @@
 		user = "atlas"         # postgis database user
 		password = "atlas"           # postgis database password
 		database = "devdata"       # postgis database name
-		srid = 3857 #默认目标是3857，原始数据层可以是3857但通常是4326   
+		srid = 4326 #默认目标是3857，原始数据层可以是3857但通常是4326   
 
 	[jwt]
 	[jwt.auth]
