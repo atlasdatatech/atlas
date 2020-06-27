@@ -13,11 +13,11 @@ import (
 	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/internal/log"
 	"github.com/go-spatial/tegola/provider"
 )
 
@@ -96,11 +96,16 @@ func extractColsAndPKFromSQL(sql string) ([]string, string) {
 
 	// match unquoted (`column_name`) or quoted (`"column name"`) indentifiers
 	for _, def := range defs {
-		matches := colFinder.FindStringSubmatch(def)
-		if matches == nil {
-			continue
+		colName := ""
+		sa := strings.Split(def, " ")
+		if len(sa) > 0 {
+			colName = strings.TrimSpace(sa[0])
 		}
-		colName := matches[2] + matches[3] // either from unquoted, or quoted submatch
+		// matches := colFinder.FindStringSubmatch(def)
+		// if matches == nil {
+		// 	continue
+		// }
+		// colName := matches[2] + matches[3] // either from unquoted, or quoted submatch
 		colNames = append(colNames, colName)
 
 		if strings.Contains(strings.ToLower(def), "primary key") {
@@ -219,7 +224,6 @@ func featureTableMetaData(gpkg *sql.DB) (map[string]featureTableDetails, error) 
 	return geomTableDetails, nil
 }
 
-//NewTileProvider 创建pgkg瓦片驱动
 func NewTileProvider(config dict.Dicter) (provider.Tiler, error) {
 	log.Infof("%v", config)
 
@@ -227,7 +231,6 @@ func NewTileProvider(config dict.Dicter) (provider.Tiler, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	if filepath == "" {
 		return nil, ErrInvalidFilePath{filepath}
 	}

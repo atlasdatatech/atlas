@@ -377,7 +377,7 @@ func (ds *DataSource) LoadFromJSON() error {
 		}
 		rowNum++
 	}
-	fmt.Printf("total features %d, takes: %v\n", rowNum, time.Since(s))
+	// fmt.Printf("total features %d, takes: %v\n", rowNum, time.Since(s))
 
 	ds.Format = GEOJSONEXT
 	ds.Total = rowNum
@@ -1033,7 +1033,7 @@ func (ds *DataSource) Import(task *Task) error {
 				log.Error(err)
 			}
 		}
-		log.Infof("total features %d, takes: %v\n", rowNum, time.Since(s))
+		log.Infof("total features %d, takes: %v", rowNum, time.Since(s))
 		return nil
 	case SHPEXT, KMLEXT, GPXEXT:
 		var params []string

@@ -14,8 +14,8 @@ import (
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/basic"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/internal/log"
 	"github.com/go-spatial/tegola/provider"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -52,7 +52,6 @@ func decodeGeometry(bytes []byte) (*BinaryHeader, geom.Geometry, error) {
 	return h, geo, nil
 }
 
-//Provider 定义geopackage 驱动
 type Provider struct {
 	// path to the geopackage file
 	Filepath string
@@ -62,7 +61,6 @@ type Provider struct {
 	db *sql.DB
 }
 
-//AddLayer 添加gpkg要素图层
 func (p *Provider) AddLayer(layerConf dict.Dicter) error {
 
 	layerName, err := layerConf.String(ConfigKeyLayerName, nil)
@@ -148,9 +146,10 @@ func (p *Provider) AddLayer(layerConf dict.Dicter) error {
 			[2]float64{maxX.Float64, maxY.Float64},
 		)
 
-		_, pkCol := extractColsAndPKFromSQL(tableSql.String)
+		tags, pkCol := extractColsAndPKFromSQL(tableSql.String)
 		layer.geomFieldname = geomCol.String
 		layer.geomType = tg
+		layer.tagFieldnames = tags
 		layer.idFieldname = pkCol
 		layer.srid = uint64(srid.Int64)
 		layer.bbox = *bbox
@@ -222,7 +221,6 @@ func (p *Provider) AddLayer(layerConf dict.Dicter) error {
 	return nil
 }
 
-//Layers 获取所有注册的图层列表
 func (p *Provider) Layers() ([]provider.LayerInfo, error) {
 	log.Debug("attempting gpkg.Layers()")
 
@@ -239,7 +237,6 @@ func (p *Provider) Layers() ([]provider.LayerInfo, error) {
 	return ls, nil
 }
 
-//TileFeatures 查询并切片
 func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider.Tile, fn func(f *provider.Feature) error) error {
 	log.Debugf("fetching layer %v", layer)
 
@@ -251,6 +248,7 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 	// TODO(arolek): reimplement once the geom package has reprojection
 	// check if the SRID of the layer differs from that of the tile. tileSRID is assumed to always be WebMercator
 	if pLayer.srid != tileSRID {
+
 		minGeo, err := basic.FromWebMercator(pLayer.srid, basic.Point{tileBBox.MinX(), tileBBox.MinY()})
 		if err != nil {
 			return fmt.Errorf("error converting point: %v ", err)
@@ -276,7 +274,7 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 		selectClause := fmt.Sprintf("SELECT l.%v, l.%v", pLayer.idFieldname, pLayer.geomFieldname)
 
 		for _, tf := range pLayer.tagFieldnames {
-			selectClause += fmt.Sprintf(", l.`%v`", tf)
+			selectClause += fmt.Sprintf(", l.%v", tf)
 		}
 
 		// l - layer table, si - spatial index
@@ -365,6 +363,7 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 			default:
 				// Grab any non-nil, non-id, non-bounding box, & non-geometry column as a tag
 				switch v := vals[i].(type) {
+
 				case []uint8:
 					asBytes := make([]byte, len(v))
 					for j := 0; j < len(v); j++ {
@@ -374,6 +373,9 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 					feature.Tags[cols[i]] = string(asBytes)
 				case int64:
 					feature.Tags[cols[i]] = v
+				case float64:
+					feature.Tags[cols[i]] = v
+
 				default:
 					// TODO(arolek): return this error?
 					log.Errorf("unexpected type for sqlite column data: %v: %T", cols[i], v)

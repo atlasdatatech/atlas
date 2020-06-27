@@ -47,7 +47,6 @@ func listTilesets(c *gin.Context) {
 	}
 	order, y := c.GetQuery("order")
 	if y {
-		log.Info(order)
 		tdb = tdb.Order(order)
 	}
 	total := 0
@@ -455,6 +454,82 @@ func createTileset(c *gin.Context) {
 		casEnf.AddPolicy(USER, ts.ID, "GET")
 		task.Progress = 100
 	}(task, []*DataSource{ds})
+
+	//退出队列,通知完成消息
+	go func(task *Task) {
+		<-task.Pipe
+		<-taskQueue
+		task.save()
+		taskSet.Delete(task.ID)
+	}(task)
+
+	res.DoneData(c, task)
+}
+
+//createTilesetLite 从数据集创建服务集
+func createTilesetLite(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Warnf(`createTilesetLite, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4045)
+		return
+	}
+
+	id, _ := shortid.Generate()
+	task := &Task{
+		ID:    id,
+		Base:  dts.ID,
+		Name:  dts.Name,
+		Owner: uid,
+		Type:  DS2TS,
+		Pipe:  make(chan struct{}),
+	}
+	//任务队列
+	taskQueue <- task
+	taskSet.Store(task.ID, task)
+
+	go func(task *Task, dts *Dataset) {
+		defer func() {
+			task.Pipe <- struct{}{}
+		}()
+		s := time.Now()
+		ts, err := dts2tsLite(task, dts)
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		//入库
+		ts.Owner = task.Owner
+		err = ts.UpInsert()
+		if err != nil {
+			log.Errorf(`publishTileset, upinsert tileset (%s) error, details: %s`, ts.ID, err)
+			task.Error = err.Error()
+		}
+		//加载服务,todo 用户服务无需预加载
+		err = ts.Service()
+		if err != nil {
+			log.Error(err)
+			task.Error = err.Error()
+			return
+		}
+		ts.atlasMark()
+		log.Infof("load tilesets(%s), takes: %v", ts.ID, time.Since(s))
+		oldts := userSet.tileset(task.Owner, task.ID)
+		if oldts != nil {
+			oldts.Clean()
+		}
+		set := userSet.service(uid)
+		set.T.Store(ts.ID, ts)
+		casEnf.AddPolicy(USER, ts.ID, "GET")
+		task.Progress = 100
+	}(task, dts)
 
 	//退出队列,通知完成消息
 	go func(task *Task) {

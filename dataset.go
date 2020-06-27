@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"io/ioutil"
 
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -27,6 +24,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	"github.com/paulmach/orb"
 	orbmvt "github.com/paulmach/orb/encoding/mvt"
+	"github.com/paulmach/orb/encoding/wkb"
 	"github.com/paulmach/orb/geojson"
 	"github.com/paulmach/orb/maptile"
 	"github.com/paulmach/orb/maptile/tilecover"
@@ -269,7 +267,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 		ID:      dt.ID,
 		Name:    dt.ID,
 		MinZoom: 0,
-		MaxZoom: 20,
+		MaxZoom: 19,
 		srid:    3857, //注意tilelayer的目标srid
 	}
 	prd, ok := providers["atlas"]
@@ -394,43 +392,9 @@ func (dt *Dataset) CacheMBTiles(pathFile string, tileJSON tilejson.TileJSON) err
 		log.Error(err)
 	}
 
-	os.Remove(pathFile)
-	dir := filepath.Dir(pathFile)
-	os.MkdirAll(dir, os.ModePerm)
-	db, err := sql.Open("sqlite3", pathFile)
+	db, err := CreateMBTileTables(pathFile, true)
 	if err != nil {
 		return err
-	}
-	{
-		_, err := db.Exec("PRAGMA synchronous=0")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("PRAGMA locking_mode=EXCLUSIVE")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("PRAGMA journal_mode=DELETE")
-
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create table if not exists tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create table if not exists metadata (name text, value text);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create unique index if not exists name on metadata (name);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create unique index if not exists tile_index on tiles(zoom_level, tile_column, tile_row);")
-		if err != nil {
-			return err
-		}
 	}
 
 	minzoom, maxzoom := 0, 10
@@ -483,51 +447,17 @@ func (dt *Dataset) CacheMBTiles(pathFile string, tileJSON tilejson.TileJSON) err
 	return nil
 }
 
-// GeoJSON2MBTiles 缓存服务层
-func (dt *Dataset) GeoJSON2MBTiles(tileJSON tilejson.TileJSON) error {
+// GeoJSON2MBTilesBak 缓存服务层
+func (dt *Dataset) GeoJSON2MBTilesBak(tileJSON tilejson.TileJSON) error {
 	extent, err := dt.Bound()
 	if err != nil {
 		log.Error(err)
 	}
-	outname := dt.Name + ".mbtiles"
-	os.Remove(outname)
-	dir := filepath.Dir(dt.Path)
-	os.MkdirAll(dir, os.ModePerm)
-	db, err := sql.Open("sqlite3", outname)
+	pathFile := dt.Name + ".mbtiles"
+	db, err := CreateMBTileTables(pathFile, true)
 	if err != nil {
 		return err
 	}
-	{
-		_, err := db.Exec("PRAGMA synchronous=0")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("PRAGMA locking_mode=EXCLUSIVE")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("PRAGMA journal_mode=DELETE")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create table if not exists tiles (zoom_level integer, tile_column integer, tile_row integer, tile_data blob);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create table if not exists metadata (name text, value text);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create unique index if not exists name on metadata (name);")
-		if err != nil {
-			return err
-		}
-		_, err = db.Exec("create unique index if not exists tile_index on tiles(zoom_level, tile_column, tile_row);")
-		if err != nil {
-			return err
-		}
-	}
-
 	data, err := ioutil.ReadFile(dt.Path)
 	if err != nil {
 		return err
@@ -602,5 +532,168 @@ func (dt *Dataset) GeoJSON2MBTiles(tileJSON tilejson.TileJSON) error {
 	db.Close()
 
 	log.Printf("%d tiles , used %f s", cnt, time.Since(st).Seconds())
+	return nil
+}
+
+// Dump2GeoJSON 缓存服务层
+func (dt *Dataset) Dump2GeoJSON() (*geojson.FeatureCollection, error) {
+	tableName := strings.ToLower(dt.ID)
+	switch dbType {
+	case Sqlite3:
+		// qtext := fmt.Sprintf(`SELECT l.* FROM "%v" l JOIN "rtree_%v_geom" si ON l.fid = si.id WHERE l.geom IS NOT NULL AND minx <= %f AND maxx >= %f AND miny <= %f AND maxy >= %f ;`, tableName, tableName, b.Right(), b.Left(), b.Top(), b.Bottom())
+		qtext := fmt.Sprintf(`SELECT * FROM "%v";`, tableName)
+		rows, err := dataDB.Raw(qtext).Rows()
+		if err != nil {
+			// log.Errorf("dump geojson from %v error: %v", dt.ID, err)
+			return nil, err
+		}
+		defer rows.Close()
+		cols, err := rows.Columns()
+		if err != nil {
+			return nil, err
+		}
+		fc := geojson.NewFeatureCollection()
+		for rows.Next() {
+			// check if the context cancelled or timed out
+			vals := make([]interface{}, len(cols))
+			valPtrs := make([]interface{}, len(cols))
+			for i := 0; i < len(cols); i++ {
+				valPtrs[i] = &vals[i]
+			}
+
+			if err = rows.Scan(valPtrs...); err != nil {
+				log.Errorf("err reading row values: %v", err)
+				return nil, err
+			}
+
+			f := geojson.NewFeature(nil)
+			for i := range cols {
+				if vals[i] == nil {
+					continue
+				}
+				switch cols[i] {
+				case "fid":
+					f.ID = vals[i]
+				case "geom":
+					// log.Debug("extracting geopackage geometry header.", vals[i])
+					bytes, ok := vals[i].([]byte)
+					if !ok {
+						log.Errorf("unexpected column type for geom field. got %t", vals[i])
+						return nil, fmt.Errorf("unexpected column type for geom field. expected blob")
+					}
+					geom, err := wkb.Unmarshal(bytes[40:])
+					if err != nil {
+						return nil, err
+					}
+					f.Geometry = geom
+				case "minx", "miny", "maxx", "maxy", "min_zoom", "max_zoom":
+					// Skip these columns used for bounding box and zoom filtering
+					continue
+				default:
+					// Grab any non-nil, non-id, non-bounding box, & non-geometry column as a tag
+					switch v := vals[i].(type) {
+					case []byte:
+						asBytes := make([]byte, len(v))
+						for j := 0; j < len(v); j++ {
+							asBytes[j] = v[j]
+						}
+						f.Properties[cols[i]] = string(asBytes)
+					case int64:
+						f.Properties[cols[i]] = v
+					case float64:
+						f.Properties[cols[i]] = v
+					default:
+						// TODO(arolek): return this error?
+						log.Errorf("unexpected type for sqlite column data: %v: %T", cols[i], v)
+					}
+				}
+			}
+			fc.Append(f)
+		}
+		return fc, nil
+	case Postgres:
+	case Spatialite:
+	default:
+	}
+	return nil, fmt.Errorf("unsupported dirver")
+}
+
+// GeoJSON2MBTiles 缓存服务层
+func (dt *Dataset) GeoJSON2MBTiles(outPathFile string, layerName string, force bool) error {
+	st := time.Now()
+	db, err := CreateMBTileTables(outPathFile, force)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	fc, err := dt.Dump2GeoJSON()
+	if err != nil {
+		return err
+	}
+	total := len(fc.Features)
+	minzoom := 0
+	t := time.Now()
+	maxzoom, scnt := SplitTile(db, fc, layerName, 0, 0, 0)
+	log.Printf("tiler finished,time:%.2f s", time.Since(t).Seconds())
+
+	bound := fc.BBox.Bound()
+	// log.Printf("bbox: %v ", bound)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "name", layerName)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "bounds", fmt.Sprintf("%f,%f,%f,%f", bound.Left(), bound.Bottom(), bound.Right(), bound.Top()))
+	// db.Exec("insert into metadata (name, value) values (?, ?)", "bounds", "-180,-85,180,85")
+	db.Exec("insert into metadata (name, value) values (?, ?)", "center", fmt.Sprintf("%f,%f,%d", bound.Center().X(), bound.Center().Y(), maxzoom))
+	db.Exec("insert into metadata (name, value) values (?, ?)", "maxzoom", maxzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "minzoom", minzoom)
+	db.Exec("insert into metadata (name, value) values (?, ?)", "format", "pbf")
+
+	type VectorLayer struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		MinZoom     int    `json:"minzoom"`
+		MaxZoom     int    `json:"maxzoom"`
+	}
+	type Layer struct {
+		Name     string `json:"layer"`
+		Count    int    `json:"count"`
+		Geometry string `json:"geometry"`
+	}
+	type TileStata struct {
+		LayerCount int     `json:"layerCount"`
+		Layers     []Layer `json:"layers"`
+	}
+	type TileJSON struct {
+		VectorLayers []VectorLayer `json:"vector_layers"`
+		Tilestats    TileStata     `json:"tilestats"`
+	}
+
+	vl := VectorLayer{
+		ID:      layerName,
+		Name:    layerName,
+		MinZoom: minzoom,
+		MaxZoom: maxzoom,
+	}
+	vectorlayer := []VectorLayer{vl}
+	lyr := Layer{
+		Name:     layerName,
+		Count:    total,
+		Geometry: string(dt.Geotype),
+	}
+	tilestats := TileStata{
+		LayerCount: 1,
+		Layers:     []Layer{lyr},
+	}
+	tilejson := TileJSON{
+		VectorLayers: vectorlayer,
+		Tilestats:    tilestats,
+	}
+	data, err := json.Marshal(tilejson)
+	log.Printf("tilejson:%s", string(data))
+	if err == nil {
+		db.Exec("insert into metadata (name, value) values (?, ?)", "json", string(data))
+	}
+	db.Close()
+	log.Printf("tiler finished, tiles: %d , time: %.2f s , maxzoom guess: %d ", scnt, time.Since(st).Seconds(), maxzoom)
 	return nil
 }

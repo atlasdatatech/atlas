@@ -61,6 +61,12 @@
 			"revisionTime": "2020-06-24T10:41:38Z"
 		},
 		{
+			"checksumSHA1": "JISW4FKTeotI3K3JsUjZiMXRR0k=",
+			"path": "github.com/atlasdatatech/orb/clip",
+			"revision": "61b08eb0ed8737592bbe1d33730a66e4d526e0ed",
+			"revisionTime": "2020-06-20T04:19:17Z"
+		},
+		{
 			"checksumSHA1": "SXVAw8moZ0mzQd9URNHocVUEh7A=",
 			"origin": "github.com/go-spatial/tegola/vendor/github.com/aws/aws-sdk-go/aws",
 			"path": "github.com/aws/aws-sdk-go/aws",

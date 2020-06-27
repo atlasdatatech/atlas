@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/tegola/dict"
-	log "github.com/sirupsen/logrus"
+	"github.com/go-spatial/tegola/internal/log"
 )
 
 type Tile interface {

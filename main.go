@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -82,13 +83,19 @@ func init() {
 	// 改变默认的 Usage，flag包中的Usage 其实是一个函数类型。这里是覆盖默认函数实现，具体见后面Usage部分的分析
 	flag.Usage = usage
 	//InitLog 初始化日志
+	//设置打印文件名和行号
+	log.SetReportCaller(true)
 	log.SetFormatter(&nested.Formatter{
 		HideKeys:        true,
 		ShowFullLevel:   true,
 		TimestampFormat: "2006-01-02 15:04:05.000",
-		// FieldsOrder: []string{"component", "category"},
+		FieldsOrder:     []string{"component", "category"},
+		CallerFirst:     true,
+		CustomCallerFormatter: func(f *runtime.Frame) string {
+			return fmt.Sprintf(" %s:%d ", path.Base(f.File), f.Line)
+			// return fmt.Sprintf(" %s:%d %s ", path.Base(f.File), f.Line, f.Function)
+		},
 	})
-	log.SetReportCaller(true)
 	// force colors on for TextFormatter
 	log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
 	log.SetLevel(log.DebugLevel)
@@ -208,16 +215,8 @@ func initDataDb() (*gorm.DB, error) {
 		}
 		err = dataDB.Exec("PRAGMA synchronous=0").Error
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("exec PRAGMA synchronous=0 error, details: %s", err)
 		}
-		// err = dataDB.Exec("PRAGMA locking_mode=EXCLUSIVE").Error
-		// if err != nil {
-		// 	return nil, err
-		// }
-		// err = dataDB.Exec("PRAGMA journal_mode=DELETE").Error
-		// if err != nil {
-		// 	return nil, err
-		// }
 		//gorm自动构建gpkg表
 		err = dataDB.AutoMigrate(&geopkg.Content{}, &geopkg.GeometryColumn{}, &geopkg.SpatialReferenceSystem{}, &geopkg.Extension{}, &geopkg.TileMatrix{}, &geopkg.TileMatrixSet{}).Error
 		if err != nil {
@@ -745,8 +744,8 @@ func setupRouter() *gin.Engine {
 		tilesets.POST("/replace/:id/", replaceTileset)
 		tilesets.POST("/publish/", publishTileset)
 		tilesets.POST("/publish/:id/", rePublishTileset)
-		tilesets.POST("/create/:id/", createTileset)
-		tilesets.POST("/update/:id/", createTileset)
+		tilesets.POST("/create/:id/", createTilesetLite)
+		tilesets.POST("/update/:id/", createTilesetLite)
 		tilesets.GET("/download/:id/", downloadTileset)
 		tilesets.POST("/delete/:ids/", deleteTileset)
 		tilesets.POST("/merge/:ids/", getTile)
@@ -785,7 +784,7 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/x/:id/:z/:x/:y", getTileLayer)
 		datasets.POST("/x/:id/", createTileLayer)
 
-		datasets.GET("/cache/:id/:min/:max/", getLayerMBTiles)
+		datasets.GET("/publish/:id/:min/:max/", publishToMBTiles)
 
 	}
 	tasks := r.Group("/tasks")
