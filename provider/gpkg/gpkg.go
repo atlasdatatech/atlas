@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/atlasdatatech/atlas/provider"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/encoding/wkb"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/basic"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/internal/log"
-	"github.com/go-spatial/tegola/provider"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -238,7 +238,7 @@ func (p *Provider) Layers() ([]provider.LayerInfo, error) {
 }
 
 func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider.Tile, fn func(f *provider.Feature) error) error {
-	log.Debugf("fetching layer %v", layer)
+	// log.Debugf("fetching layer %v", layer)
 
 	pLayer := p.layers[layer]
 
@@ -288,8 +288,7 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 		qtext = replaceTokens(pLayer.sql, z, tileBBox)
 	}
 
-	log.Debugf("qtext: %v", qtext)
-
+	// log.Debugf("qtext: %v", qtext)
 	rows, err := p.db.Query(qtext)
 	if err != nil {
 		log.Errorf("err during query: %v - %v", qtext, err)
@@ -340,8 +339,7 @@ func (p *Provider) TileFeatures(ctx context.Context, layer string, tile provider
 				}
 
 			case pLayer.geomFieldname:
-				log.Debug("extracting geopackage geometry header.", vals[i])
-
+				// log.Debug("extracting geopackage geometry header.", vals[i])
 				geomData, ok := vals[i].([]byte)
 				if !ok {
 					log.Errorf("unexpected column type for geom field. got %t", vals[i])

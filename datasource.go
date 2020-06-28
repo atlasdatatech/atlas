@@ -279,7 +279,7 @@ func (ds *DataSource) LoadFromJSON() error {
 	if err != nil {
 		return err
 	}
-	s := time.Now()
+	// s := time.Now()
 	err = movetoFeatures(dec)
 	if err != nil {
 		return err

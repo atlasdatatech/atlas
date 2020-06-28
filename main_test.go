@@ -58,10 +58,6 @@ func debugSetup() *gin.Engine {
 		if err != nil {
 			log.Fatalf("could not register providers: %v", err)
 		}
-		// init our maps
-		if err = initMaps(nil, conf.Maps, providers); err != nil {
-			log.Fatalf("could not register maps: %v", err)
-		}
 	}
 
 	authMid, err = initAuthJWT()

@@ -7,10 +7,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/atlasdatatech/atlas/provider"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
 )
 
 const Name = "debug"

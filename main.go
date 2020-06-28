@@ -3,26 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
-	"html"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/atlasdatatech/atlas/provider"
+	_ "github.com/atlasdatatech/atlas/provider/debug"
+	_ "github.com/atlasdatatech/atlas/provider/gpkg"
+	_ "github.com/atlasdatatech/atlas/provider/postgis"
 	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
-	"github.com/go-spatial/geom"
-	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/atlas"
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
+
 	"github.com/go-spatial/tegola/server"
 
 	"github.com/shiena/ansicolor"
@@ -31,13 +31,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
+
 	"github.com/casbin/casbin"
 	gormadapter "github.com/casbin/gorm-adapter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	_ "github.com/shaxbee/go-spatialite"
 	"github.com/spf13/viper"
 )
 
@@ -289,105 +289,6 @@ func initProviders(provArr []dict.Dicter) (map[string]provider.Tiler, error) {
 	}
 
 	return providers, nil
-}
-
-// Maps registers maps with with atlas
-func initMaps(a *atlas.Atlas, maps []config.Map, providers map[string]provider.Tiler) error {
-
-	// iterate our maps
-	for _, m := range maps {
-		newMap := atlas.NewWebMercatorMap(string(m.Name))
-		newMap.Attribution = html.EscapeString(string(m.Attribution))
-
-		// convert from env package
-		centerArr := [3]float64{}
-		for i, v := range m.Center {
-			centerArr[i] = float64(v)
-		}
-
-		newMap.Center = centerArr
-
-		if len(m.Bounds) == 4 {
-			newMap.Bounds = geom.NewExtent(
-				[2]float64{float64(m.Bounds[0]), float64(m.Bounds[1])},
-				[2]float64{float64(m.Bounds[2]), float64(m.Bounds[3])},
-			)
-		}
-
-		// iterate our layers
-		for _, l := range m.Layers {
-			// split our provider name (provider.layer) into [provider,layer]
-			providerLayer := strings.Split(string(l.ProviderLayer), ".")
-
-			// we're expecting two params in the provider layer definition
-			if len(providerLayer) != 2 {
-				return fmt.Errorf("invalid provider layer (%v) for map (%v)", l.ProviderLayer, m.Name)
-			}
-
-			// lookup our proivder
-			provider, ok := providers[providerLayer[0]]
-			if !ok {
-				return fmt.Errorf("provider (%v) not defined", providerLayer[0])
-			}
-
-			// read the provider's layer names
-			layerInfos, err := provider.Layers()
-			if err != nil {
-				return fmt.Errorf("error fetching layer info from provider (%v)", providerLayer[0])
-			}
-
-			// confirm our providerLayer name is registered
-			var found bool
-			var layerGeomType tegola.Geometry
-			for i := range layerInfos {
-				if layerInfos[i].Name() == providerLayer[1] {
-					found = true
-
-					// read the layerGeomType
-					layerGeomType = layerInfos[i].GeomType()
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("map (%v) 'provider_layer' (%v) is not registered with provider (%v)", m.Name, l.ProviderLayer, providerLayer[0])
-			}
-
-			var defaultTags map[string]interface{}
-			if l.DefaultTags != nil {
-				var ok bool
-				defaultTags, ok = l.DefaultTags.(map[string]interface{})
-				if !ok {
-					return fmt.Errorf("'default_tags' for 'provider_layer' (%v) should be a TOML table", l.ProviderLayer)
-				}
-			}
-
-			var minZoom uint
-			if l.MinZoom != nil {
-				minZoom = uint(*l.MinZoom)
-			}
-
-			var maxZoom uint
-			if l.MaxZoom != nil {
-				maxZoom = uint(*l.MaxZoom)
-			}
-
-			// add our layer to our layers slice
-			newMap.Layers = append(newMap.Layers, atlas.Layer{
-				Name:              string(l.Name),
-				ProviderLayerName: providerLayer[1],
-				MinZoom:           minZoom,
-				MaxZoom:           maxZoom,
-				Provider:          provider,
-				DefaultTags:       defaultTags,
-				GeomType:          layerGeomType,
-				DontSimplify:      bool(l.DontSimplify),
-			})
-		}
-
-		a.AddMap(newMap)
-	}
-
-	return nil
 }
 
 // Cache registers cache backends
@@ -857,10 +758,6 @@ func main() {
 		providers, err = initProviders(provArr)
 		if err != nil {
 			log.Fatalf("could not register providers: %v", err)
-		}
-		// init our maps
-		if err = initMaps(nil, conf.Maps, providers); err != nil {
-			log.Fatalf("could not register maps: %v", err)
 		}
 
 		if len(conf.Cache) > 0 {

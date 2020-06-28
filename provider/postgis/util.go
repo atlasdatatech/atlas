@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/atlasdatatech/atlas/provider"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/basic"
-	"github.com/go-spatial/tegola/provider"
 	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/pgtype"
 )
