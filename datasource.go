@@ -830,7 +830,7 @@ func (ds *DataSource) Import(task *Task) error {
 				rstmt.Exec(fid, x, x, y, y)
 			}
 			count++
-			task.Progress = int(count / ds.Total / 5)
+			task.Progress = int(float64(count) / float64(ds.Total) * 100)
 		}
 		//gpkg provide add dataset to content
 		switch dbType {
@@ -1010,7 +1010,7 @@ func (ds *DataSource) Import(task *Task) error {
 				log.Printf("inserting %d rows ,time: %v，", rowNum, time.Since(s))
 			}
 			rowNum++
-			task.Progress = int(rowNum / ds.Total / 2)
+			task.Progress = int(float64(rowNum) / float64(ds.Total) * 100)
 		}
 		//gpkg provide add dataset to content
 		switch dbType {
