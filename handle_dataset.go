@@ -1648,9 +1648,9 @@ func publishToMBTiles(c *gin.Context) {
 func dts2tsLite(task *Task, dts *Dataset) (*Tileset, error) {
 	s := time.Now()
 	task.Progress = 20
-	id, _ := shortid.Generate()
-	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, id+MBTILESEXT)
-	err := dts.GeoJSON2MBTiles(outfile, task.Name, true)
+	// id, _ := shortid.Generate()
+	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, dts.ID+MBTILESEXT)
+	err := dts.GeoJSON2MBTiles(outfile, dts.Name, true)
 	if err != nil {
 		return nil, err
 	}

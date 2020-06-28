@@ -12,15 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atlasdatatech/atlas/provider"
 	"github.com/jackc/pgx"
 
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/encoding/wkb"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
-
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
 )
 
 const Name = "postgis"

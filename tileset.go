@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-spatial/tegola/provider/postgis"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"

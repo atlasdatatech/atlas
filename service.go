@@ -445,7 +445,8 @@ func (ss *ServiceSet) AppendTilesets() error {
 		ext := filepath.Ext(name)
 		lext := strings.ToLower(ext)
 		if strings.Compare(MBTILESEXT, lext) == 0 {
-			files[strings.TrimSuffix(name, ext)] = filepath.Join(dir, name)
+			files[name[:strings.Index(name, ".")]] = filepath.Join(dir, name) //id
+			// files[strings.TrimPrefix(name, ext)] = filepath.Join(dir, name)//文件名
 		}
 	}
 	//获取数据库.mbtiles服务

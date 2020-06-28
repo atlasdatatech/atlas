@@ -12,13 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atlasdatatech/atlas/provider"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/dict"
 	"github.com/go-spatial/tegola/mapbox/tilejson"
 	"github.com/go-spatial/tegola/mvt"
-	"github.com/go-spatial/tegola/provider"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
@@ -200,13 +200,31 @@ func (dt *Dataset) FieldsInfo() ([]Field, error) {
 // GeoType 更新获取几何类型
 func (dt *Dataset) GeoType() (GeoType, error) {
 	tbname := strings.ToLower(dt.ID)
-	var geotype string
-	stbox := fmt.Sprintf(`SELECT st_geometrytype(geom) as geotype FROM "%s" limit 1;`, tbname)
-	err := dataDB.Raw(stbox).Row().Scan(&geotype) // (*sql.Rows, error)
-	if err != nil {
-		return "", err
+
+	switch dbType {
+	case Sqlite3:
+		var geotype string
+		stbox := fmt.Sprintf(`SELECT geometry_type_name AS geotype FROM gpkg_geometry_columns WHERE table_name = "%s";`, tbname)
+		err := dataDB.Raw(stbox).Row().Scan(&geotype) // (*sql.Rows, error)
+		if err != nil {
+			return "", err
+		}
+		for _, t := range GeoTypes {
+			if geotype == strings.ToUpper(string(t)) {
+				dt.Geotype = t
+				break
+			}
+		}
+	case Postgres:
+		var geotype string
+		stbox := fmt.Sprintf(`SELECT st_geometrytype(geom) as geotype FROM "%s" limit 1;`, tbname)
+		err := dataDB.Raw(stbox).Row().Scan(&geotype) // (*sql.Rows, error)
+		if err != nil {
+			return "", err
+		}
+		dt.Geotype = GeoType(strings.TrimPrefix(geotype, "ST_"))
 	}
-	dt.Geotype = GeoType(strings.TrimPrefix(geotype, "ST_"))
+
 	return dt.Geotype, nil
 }
 

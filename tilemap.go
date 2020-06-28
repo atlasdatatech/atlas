@@ -12,13 +12,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/atlasdatatech/atlas/provider"
+	"github.com/atlasdatatech/atlas/provider/debug"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/basic"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
-	"github.com/go-spatial/tegola/provider/debug"
+
 	"github.com/jinzhu/gorm"
 
 	"github.com/go-spatial/tegola/mvt"
