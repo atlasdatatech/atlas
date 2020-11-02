@@ -53,7 +53,7 @@ func listMaps(c *gin.Context) {
 	}
 
 	uperms := casEnf.GetPermissionsForUser(id)
-	roles := casEnf.GetRolesForUser(id)
+	roles, _ := casEnf.GetRolesForUser(id)
 	for _, role := range roles {
 		rperms := casEnf.GetPermissionsForUser(role)
 		uperms = append(uperms, rperms...)
@@ -106,7 +106,8 @@ func getMap(c *gin.Context) {
 func createMap(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	if id == ATLAS || casEnf.HasRoleForUser(id, "admin@group") {
+	ok, _ := casEnf.HasRoleForUser(id, "admin@group")
+	if id == ATLAS || ok {
 		body := &MapBind{}
 		err := c.Bind(&body)
 		if err != nil {
@@ -254,7 +255,7 @@ func exportMaps(c *gin.Context) {
 		}
 	} else {
 		uperms := casEnf.GetPermissionsForUser(id)
-		roles := casEnf.GetRolesForUser(id)
+		roles, _ := casEnf.GetRolesForUser(id)
 		for _, role := range roles {
 			rperms := casEnf.GetPermissionsForUser(role)
 			uperms = append(uperms, rperms...)
@@ -299,7 +300,8 @@ func exportMaps(c *gin.Context) {
 func importMaps(c *gin.Context) {
 	res := NewRes()
 	id := c.GetString(identityKey)
-	if id == ATLAS || casEnf.HasRoleForUser(id, "admin@group") {
+	ok, _ := casEnf.HasRoleForUser(id, "admin@group")
+	if id == ATLAS || ok {
 		file, err := c.FormFile("file")
 		if err != nil {
 			res.Fail(c, 4048)

@@ -11,10 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/atlasdatatech/atlas/provider"
-	_ "github.com/atlasdatatech/atlas/provider/debug"
-	_ "github.com/atlasdatatech/atlas/provider/gpkg"
-	_ "github.com/atlasdatatech/atlas/provider/postgis"
 	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
@@ -22,6 +18,10 @@ import (
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/provider"
+	_ "github.com/go-spatial/tegola/provider/debug"
+	_ "github.com/go-spatial/tegola/provider/gpkg"
+	_ "github.com/go-spatial/tegola/provider/postgis"
 
 	"github.com/go-spatial/tegola/server"
 
@@ -61,7 +61,7 @@ var (
 	db        *gorm.DB
 	dbType    = Sqlite3
 	dataDB    *gorm.DB
-	providers = make(map[string]provider.Tiler)
+	providers = make(map[string]provider.TilerUnion)
 	casEnf    *casbin.Enforcer
 	authMid   *JWTMiddleware
 	taskQueue = make(chan *Task, 16)
@@ -253,8 +253,8 @@ func initDataDb() (*gorm.DB, error) {
 }
 
 //initProvider 初始化数据库驱动
-func initProviders(provArr []dict.Dicter) (map[string]provider.Tiler, error) {
-	providers := map[string]provider.Tiler{}
+func initProviders(provArr []dict.Dicter) (map[string]provider.TilerUnion, error) {
+	providers := map[string]provider.TilerUnion{}
 	// init our providers
 	// but first convert []env.Map -> []dict.Dicter
 	for _, p := range provArr {
@@ -316,10 +316,10 @@ func initTegolaServer() {
 	server.Version = VERSION
 	server.HostName = string(conf.Webserver.HostName)
 	// set the http reply headers
-	server.Headers = conf.Webserver.Headers
+	// server.Headers = conf.Webserver.Headers
 	// set tile buffer
 	if conf.TileBuffer != nil {
-		server.TileBuffer = float64(*conf.TileBuffer)
+		// server.TileBuffer = float64(*conf.TileBuffer)
 	}
 	// start our webserver
 	server.Start(nil, serverPort)

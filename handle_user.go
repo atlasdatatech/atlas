@@ -586,7 +586,7 @@ func getUserRoles(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	roles := casEnf.GetRolesForUser(uid)
+	roles, _ := casEnf.GetRolesForUser(uid)
 	res.DoneData(c, roles)
 }
 
@@ -599,7 +599,7 @@ func getUserMaps(c *gin.Context) {
 	}
 	uperms := casEnf.GetPermissionsForUser(id)
 
-	roles := casEnf.GetRolesForUser(id)
+	roles, _ := casEnf.GetRolesForUser(id)
 	for _, role := range roles {
 		rperms := casEnf.GetPermissionsForUser(role)
 		uperms = append(uperms, rperms...)
@@ -905,6 +905,6 @@ func getRoleUsers(c *gin.Context) {
 		res.Fail(c, code)
 		return
 	}
-	users := casEnf.GetUsersForRole(rid)
+	users, _ := casEnf.GetUsersForRole(rid)
 	res.DoneData(c, users)
 }

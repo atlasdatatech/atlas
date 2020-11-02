@@ -12,17 +12,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/atlasdatatech/atlas/provider"
-	"github.com/atlasdatatech/atlas/provider/debug"
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
-	"github.com/go-spatial/tegola/basic"
-	"github.com/go-spatial/tegola/dict"
+	"github.com/go-spatial/tegola/provider"
+	"github.com/go-spatial/tegola/provider/debug"
 
 	"github.com/jinzhu/gorm"
 
-	"github.com/go-spatial/tegola/mvt"
+	"github.com/go-spatial/geom/encoding/mvt"
 	proto "github.com/golang/protobuf/proto"
 
 	// "github.com/jackc/pgx"
@@ -77,10 +75,11 @@ type TileLayer struct {
 	MinZoom           uint                   `json:"min_zoom"`
 	MaxZoom           uint                   `json:"max_zoom"`
 	Bounds            *geom.Extent           `gorm:"-"`
-	Provider          provider.Tiler         `gorm:"-"`
+	Provider          provider.TilerUnion    `gorm:"-"`
 	DefaultTags       map[string]interface{} `json:"default_tags" gorm:"-"`
 	GeomType          geom.Geometry          `gorm:"-"`
 	DontSimplify      bool                   `json:"dont_simplify"`
+	DontClip          bool
 	Fields            string
 	idFied            string
 	geomFied          string
@@ -135,12 +134,13 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 	var mvtTile mvt.Tile
 	// wait group for concurrent layer fetching
 	mvtLayer := mvt.Layer{
-		Name:         tl.MVTName(),
-		DontSimplify: tl.DontSimplify,
+		Name: tl.MVTName(),
 	}
 
+	ptile := provider.NewTile(tile.Z, tile.X, tile.Y,
+		uint(TileBuffer), uint(tl.srid))
 	// fetch layer from data provider
-	err := tl.Provider.TileFeatures(ctx, tl.ProviderLayerName, tile, func(f *provider.Feature) error {
+	err := tl.Provider.Std.TileFeatures(ctx, tl.ProviderLayerName, ptile, func(f *provider.Feature) error {
 		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
 		geo, err := ToTegola(f.Geometry)
 		if err != nil {
@@ -148,14 +148,6 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 		}
 
 		// check if the feature SRID and map SRID are different. If they are then reporject
-		if f.SRID != tl.srid {
-			// TODO(arolek): support for additional projections
-			g, err := basic.ToWebMercator(f.SRID, geo)
-			if err != nil {
-				return fmt.Errorf("unable to transform geometry to webmercator from SRID (%v) for feature %v due to error: %v", f.SRID, f.ID, err)
-			}
-			geo = g.Geometry
-		}
 
 		// add default tags, but don't overwrite a tag that already exists
 		for k, v := range tl.DefaultTags {
@@ -196,13 +188,8 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 	// add layers to our tile
 	mvtTile.AddLayers(&mvtLayer)
 
-	z, x, y := tile.ZXY()
-
-	// TODO (arolek): change out the tile type for VTile. tegola.Tile will be deprecated
-	tegolaTile := tegola.NewTile(uint(z), uint(x), uint(y))
-
 	// generate our tile
-	vtile, err := mvtTile.VTile(ctx, tegolaTile)
+	vtile, err := mvtTile.VTile(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -239,14 +226,7 @@ func (tm TileMap) TileFormat() TileFormat {
 
 //Tile 获取瓦片
 func (tm TileMap) Tile(ctx context.Context, z uint8, x uint, y uint) ([]byte, error) {
-	tile := slippy.NewTile(uint(z), x, y, TileBuffer, tegola.WebMercator)
-	{
-		// Check to see that the zxy is within the bounds of the map.
-		textent := geom.Extent(tile.Bounds())
-		if !tm.Bounds.Contains(&textent) {
-			return nil, fmt.Errorf("not contains")
-		}
-	}
+	tile := slippy.NewTile(uint(z), x, y)
 
 	// check for the debug query string
 	if true {
@@ -276,24 +256,24 @@ func (tm TileMap) AddDebugLayers() TileMap {
 	tm.Layers = layers
 
 	// setup a debug provider
-	debugProvider, _ := debug.NewTileProvider(dict.Dict{})
+	// debugProvider, _ := debug.NewTileProvider(dict.Dict{})
 
 	tm.Layers = append(layers, []TileLayer{
 		{
 			Name:              debug.LayerDebugTileOutline,
 			ProviderLayerName: debug.LayerDebugTileOutline,
-			Provider:          debugProvider,
-			GeomType:          geom.LineString{},
-			MinZoom:           0,
-			MaxZoom:           22,
+			// Provider:          debugProvider,
+			GeomType: geom.LineString{},
+			MinZoom:  0,
+			MaxZoom:  22,
 		},
 		{
 			Name:              debug.LayerDebugTileCenter,
 			ProviderLayerName: debug.LayerDebugTileCenter,
-			Provider:          debugProvider,
-			GeomType:          geom.Point{},
-			MinZoom:           0,
-			MaxZoom:           22,
+			// Provider:          debugProvider,
+			GeomType: geom.Point{},
+			MinZoom:  0,
+			MaxZoom:  22,
 		},
 	}...)
 
@@ -358,31 +338,21 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 		// go routine for fetching the layer concurrently
 		go func(i int, l TileLayer) {
 			mvtLayer := mvt.Layer{
-				Name:         l.MVTName(),
-				DontSimplify: l.DontSimplify,
+				Name: l.MVTName(),
 			}
 
 			// on completion let the wait group know
 			defer wg.Done()
 
+			ptile := provider.NewTile(tile.Z, tile.X, tile.Y,
+				uint(TileBuffer), uint(tm.SRID))
 			// fetch layer from data provider
-			err := l.Provider.TileFeatures(ctx, l.ProviderLayerName, tile, func(f *provider.Feature) error {
+			err := l.Provider.Std.TileFeatures(ctx, l.ProviderLayerName, ptile, func(f *provider.Feature) error {
 				// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
 				geo, err := ToTegola(f.Geometry)
 				if err != nil {
 					return err
 				}
-
-				// check if the feature SRID and map SRID are different. If they are then reporject
-				if f.SRID != tm.SRID {
-					// TODO(arolek): support for additional projections
-					g, err := basic.ToWebMercator(f.SRID, geo)
-					if err != nil {
-						return fmt.Errorf("unable to transform geometry to webmercator from SRID (%v) for feature %v due to error: %v", f.SRID, f.ID, err)
-					}
-					geo = g.Geometry
-				}
-
 				// add default tags, but don't overwrite a tag that already exists
 				for k, v := range l.DefaultTags {
 					if _, ok := f.Tags[k]; !ok {
@@ -432,13 +402,8 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 	// add layers to our tile
 	mvtTile.AddLayers(mvtLayers...)
 
-	z, x, y := tile.ZXY()
-
-	// TODO (arolek): change out the tile type for VTile. tegola.Tile will be deprecated
-	tegolaTile := tegola.NewTile(uint(z), uint(x), uint(y))
-
 	// generate our tile
-	vtile, err := mvtTile.VTile(ctx, tegolaTile)
+	vtile, err := mvtTile.VTile(ctx)
 
 	if err != nil {
 		return nil, err

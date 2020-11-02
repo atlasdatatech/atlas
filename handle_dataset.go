@@ -21,11 +21,10 @@ import (
 	"github.com/teris-io/shortid"
 
 	geom "github.com/go-spatial/geom"
+	"github.com/go-spatial/geom/encoding/mvt"
 	slippy "github.com/go-spatial/geom/slippy"
-	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/atlas"
 	"github.com/go-spatial/tegola/mapbox/tilejson"
-	"github.com/go-spatial/tegola/mvt"
 	"github.com/go-spatial/tegola/server"
 
 	"github.com/jinzhu/gorm"
@@ -1269,15 +1268,7 @@ func getTileLayer(c *gin.Context) {
 		return
 	}
 
-	tile := slippy.NewTile(z, x, y, TileBuffer, tegola.WebMercator)
-
-	{
-		// Check to see that the zxy is within the bounds of the map.
-		textent := geom.Extent(tile.Bounds())
-		if !dts.tlayer.Bounds.Contains(&textent) {
-			return
-		}
-	}
+	tile := slippy.NewTile(z, x, y)
 
 	pbyte, err := dts.tlayer.Encode(c.Request.Context(), tile)
 	if err != nil {
@@ -1466,15 +1457,7 @@ func getTileMap(c *gin.Context) {
 		}
 	}
 
-	tile := slippy.NewTile(z, x, y, TileBuffer, tegola.WebMercator)
-
-	{
-		// Check to see that the zxy is within the bounds of the map.
-		textent := geom.Extent(tile.Bounds())
-		if !m.Bounds.Contains(&textent) {
-			return
-		}
-	}
+	tile := slippy.NewTile(z, x, y)
 
 	// check for the debug query string
 	if true {
@@ -1616,7 +1599,6 @@ func getLayerMBTiles(c *gin.Context) {
 	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
 		log.Printf("error encoding tileJSON for layer (%v)", did)
 	}
-	dts.GeoJSON2MBTilesBak(tileJSON)
 }
 
 func publishToMBTiles(c *gin.Context) {
