@@ -55,6 +55,18 @@
 			"revisionTime": "2019-01-15T06:56:23Z"
 		},
 		{
+			"checksumSHA1": "zlmxfiV039KcqbaQRuXpfCTqIAc=",
+			"path": "github.com/atlasdatatech/go-gpkg/gpkg",
+			"revision": "252bcd3cfe22a3944957491d0426824d9a98d9a2",
+			"revisionTime": "2020-06-24T10:41:38Z"
+		},
+		{
+			"checksumSHA1": "JISW4FKTeotI3K3JsUjZiMXRR0k=",
+			"path": "github.com/atlasdatatech/orb/clip",
+			"revision": "61b08eb0ed8737592bbe1d33730a66e4d526e0ed",
+			"revisionTime": "2020-06-20T04:19:17Z"
+		},
+		{
 			"checksumSHA1": "SXVAw8moZ0mzQd9URNHocVUEh7A=",
 			"origin": "github.com/go-spatial/tegola/vendor/github.com/aws/aws-sdk-go/aws",
 			"path": "github.com/aws/aws-sdk-go/aws",
@@ -701,6 +713,12 @@
 			"revisionTime": "2018-11-09T21:58:47Z"
 		},
 		{
+			"checksumSHA1": "jnSBctrtbfjyZCnEY0bHW5JGW5s=",
+			"path": "github.com/gogo/protobuf/proto",
+			"revision": "5669497fd64452f28d142899eeb1bfd7e8b26ac8",
+			"revisionTime": "2018-08-30T16:04:56Z"
+		},
+		{
 			"checksumSHA1": "Rz+jeTntp13wrnlqUfEaRsnuHrI=",
 			"path": "github.com/golang/freetype/raster",
 			"revision": "e2365dfdc4a05e4b8299a783240d4a7d5a65d4e4",
@@ -857,6 +875,12 @@
 			"revisionTime": "2018-09-14T07:53:49Z"
 		},
 		{
+			"checksumSHA1": "YBNroGKEItNe0bENTEKbx71DyGQ=",
+			"path": "github.com/jinzhu/gorm/dialects/sqlite",
+			"revision": "5be9bd34135805e0332b993378864b159784d8a8",
+			"revisionTime": "2018-09-14T07:53:49Z"
+		},
+		{
 			"checksumSHA1": "mfb/EusMwfajCPq0lwLWM/pvqI4=",
 			"path": "github.com/jinzhu/inflection",
 			"revision": "04140366298a54a039076d798123ffa108fff46c",
@@ -967,6 +991,12 @@
 			"revisionTime": "2018-09-11T19:35:47Z"
 		},
 		{
+			"checksumSHA1": "Umv/vA8RFg5VvGGvgiiU90mLZgs=",
+			"path": "github.com/paulmach/orb/internal/length",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
 			"checksumSHA1": "7admJWutuFJ7lLJKIgxyknU5zKo=",
 			"path": "github.com/paulmach/orb/internal/mercator",
 			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
@@ -981,6 +1011,24 @@
 		{
 			"checksumSHA1": "3GDzq2JP0ZrM5iletz0BJrcw7CU=",
 			"path": "github.com/paulmach/orb/maptile/tilecover",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "vYhK8uJ2Q8do/vq1/+8MbGHbbnI=",
+			"path": "github.com/paulmach/orb/planar",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "NwWPE3dm1g4Oy6ssbshoYefT78k=",
+			"path": "github.com/paulmach/orb/project",
+			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
+			"revisionTime": "2018-09-11T19:35:47Z"
+		},
+		{
+			"checksumSHA1": "iSxv9LFF/sXX4HN9cHytOOR3ZdY=",
+			"path": "github.com/paulmach/orb/simplify",
 			"revision": "bc6a8119bdb53275974078ef2da0e8e45ef0ebe2",
 			"revisionTime": "2018-09-11T19:35:47Z"
 		},
@@ -1009,6 +1057,12 @@
 			"path": "github.com/pmezard/go-difflib/difflib",
 			"revision": "8019298d9fa5a04fc2ad10ae03349df3483096a6",
 			"revisionTime": "2018-10-28T12:27:15Z"
+		},
+		{
+			"checksumSHA1": "oLKSipdbyK/vc56IZ0Z0QwgVIlM=",
+			"path": "github.com/prometheus/common/log",
+			"revision": "c7de2306084e37d54b8be01f3541a8464345e9a5",
+			"revisionTime": "2018-08-01T06:44:54Z"
 		},
 		{
 			"checksumSHA1": "W47TECCiHqx70SCa2QkgU6Kt+dE=",
@@ -1209,6 +1263,12 @@
 			"revisionTime": "2018-09-11T21:37:47Z"
 		},
 		{
+			"checksumSHA1": "Ld0iviZSRGAKK6WSoti+3++1RmY=",
+			"path": "golang.org/x/sys/internal/unsafeheader",
+			"revision": "ed371f2e16b4b305ee99df548828de367527b76b",
+			"revisionTime": "2020-06-22T21:07:51Z"
+		},
+		{
 			"checksumSHA1": "KCYCTBMeP7P1B8CSa94/9Nse9Wc=",
 			"path": "golang.org/x/sys/unix",
 			"revision": "eda9bb28ed513021f3e6a2a361031adc3d8a6301",
@@ -1219,6 +1279,18 @@
 			"path": "golang.org/x/sys/windows",
 			"revision": "eda9bb28ed513021f3e6a2a361031adc3d8a6301",
 			"revisionTime": "2018-10-20T16:41:32Z"
+		},
+		{
+			"checksumSHA1": "QkGcmV/rr56ZUKi6E7mdevKUE0g=",
+			"path": "golang.org/x/sys/windows/registry",
+			"revision": "f43be2a4598cf3a47be9f94f0c28197ed9eae611",
+			"revisionTime": "2019-10-29T08:55:52Z"
+		},
+		{
+			"checksumSHA1": "uVlUSSKplihZG7N+QJ6fzDZ4Kh8=",
+			"path": "golang.org/x/sys/windows/svc/eventlog",
+			"revision": "f43be2a4598cf3a47be9f94f0c28197ed9eae611",
+			"revisionTime": "2019-10-29T08:55:52Z"
 		},
 		{
 			"checksumSHA1": "tqqo7DEeFCclb58XbN44WwdpWww=",

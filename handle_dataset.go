@@ -8,9 +8,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/paulmach/orb/maptile"
+	"github.com/paulmach/orb/maptile/tilecover"
+
+	"github.com/paulmach/orb"
 
 	"github.com/teris-io/shortid"
 
@@ -58,7 +64,6 @@ func listDatasets(c *gin.Context) {
 	}
 	order, y := c.GetQuery("order")
 	if y {
-		log.Info(order)
 		tdb = tdb.Order(order)
 	}
 	total := 0
@@ -566,6 +571,41 @@ func getGeojson(c *gin.Context) {
 	ext, err := geojson.UnmarshalGeometry(extent)
 	if err == nil {
 		fc.BBox = geojson.NewBBox(ext.Geometry().Bound())
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+		res.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
+	}
+	c.JSON(http.StatusOK, json.RawMessage(gj))
+}
+
+func getGeojsonLite(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dt := userSet.dataset(uid, did)
+	if dt == nil {
+		log.Warnf(`getGeojsonLite %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	fc, err := dt.Dump2GeoJSON()
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+
+	var minx, maxx, miny, maxy float64
+	stbox := fmt.Sprintf(`SELECT min(minx),max(maxx),min(miny),max(maxy) FROM "rtree_%s_geom";`, strings.ToLower(dt.ID))
+	err = db.Raw(stbox).Row().Scan(&minx, &maxx, &miny, &maxy) // (*sql.Rows, error)
+	if err == nil {
+		fc.BBox = []float64{minx, miny, maxx, maxy}
 	}
 	gj, err := fc.MarshalJSON()
 	if err != nil {
@@ -1261,7 +1301,6 @@ func getTileLayer(c *gin.Context) {
 	c.Header("Content-Length", fmt.Sprintf("%d", len(pbyte)))
 	c.Writer.WriteHeader(http.StatusOK)
 	c.Writer.Write(pbyte)
-	log.Info(len(pbyte))
 	// check for tile size warnings
 	if len(pbyte) > server.MaxTileSize {
 		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
@@ -1284,19 +1323,31 @@ func getTileLayerJSON(c *gin.Context) {
 	if dts.tlayer == nil {
 		_, err := dts.NewTileLayer()
 		if err != nil {
-			log.Warn(err)
+			log.Errorf("create tilelayer failed : %v", err)
 			// res.FailMsg(c, "tilelayer empty")
 			// return
 		}
 		dts.Bound()
 	}
-	zoom := (dts.tlayer.MinZoom + dts.tlayer.MaxZoom) / 2
+	guessZoom := func(box orb.Bound, total int) int {
+		z := 0
+		for ; z < 20; z++ {
+			tc := tilecover.BoundCount(box, maptile.Zoom(z))
+			if tc > int64(total/100) {
+				return z - 1
+			}
+		}
+		return z
+	}
+	gz := guessZoom(dts.BBox, dts.Total)
+
+	// zoom := (dts.tlayer.MinZoom + dts.tlayer.MaxZoom) / 2
 	attr := "atlas realtime tile layer"
 	tileJSON := tilejson.TileJSON{
 		Attribution: &attr,
-		Bounds:      dts.tlayer.Bounds.Extent(),
-		// Bounds:      [4]float64{dts.BBox.Left(), dts.BBox.Bottom(), dts.BBox.Right(), dts.BBox.Top()},
-		Center:   [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(zoom)},
+		// Bounds:      dts.tlayer.Bounds.Extent(),
+		Bounds:   [4]float64{dts.BBox.Left(), dts.BBox.Bottom(), dts.BBox.Right(), dts.BBox.Top()},
+		Center:   [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(gz)},
 		Format:   "pbf",
 		Name:     &dts.Name,
 		Scheme:   tilejson.SchemeXYZ,
@@ -1307,6 +1358,10 @@ func getTileLayerJSON(c *gin.Context) {
 	}
 
 	tileJSON.MinZoom = dts.tlayer.MinZoom
+	// minzoom := uint(gz) - 3
+	// if minzoom >= tileJSON.MinZoom {
+	// 	tileJSON.MinZoom = minzoom
+	// }
 	tileJSON.MaxZoom = dts.tlayer.MaxZoom
 	//	build our vector layer details
 	layer := tilejson.VectorLayer{
@@ -1493,4 +1548,127 @@ func viewDataset(c *gin.Context) {
 		"URL":       tiles,
 	})
 	return
+}
+
+func getLayerMBTiles(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Warnf(`getLayerMBTiles, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	attr := "atlas realtime tile layer"
+	minzoom, err := strconv.Atoi(c.Param("min"))
+	if err != nil {
+		log.Println("minzoom error ")
+	}
+	maxzoom, err := strconv.Atoi(c.Param("max"))
+	if err != nil {
+		log.Println("minzoom error ")
+	}
+	tileJSON := tilejson.TileJSON{
+		Attribution: &attr,
+		// Bounds:      dts.tlayer.Bounds.Extent(),
+		Bounds:   [4]float64{dts.BBox.Left(), dts.BBox.Bottom(), dts.BBox.Right(), dts.BBox.Top()},
+		Center:   [3]float64{dts.BBox.Center().X(), dts.BBox.Center().Y(), float64(maxzoom)},
+		Format:   "pbf",
+		Name:     &dts.Name,
+		Scheme:   tilejson.SchemeXYZ,
+		TileJSON: tilejson.Version,
+		Version:  "1.0.0",
+		Grids:    make([]string, 0),
+		Data:     make([]string, 0),
+	}
+
+	tileJSON.MinZoom = uint(minzoom)
+	tileJSON.MaxZoom = uint(maxzoom)
+	//	build our vector layer details
+	layer := tilejson.VectorLayer{
+		Version: 2,
+		ID:      dts.Name,
+		Name:    dts.Name,
+		MinZoom: uint(minzoom),
+		MaxZoom: uint(maxzoom),
+	}
+
+	// add our layer to our tile layer response
+	tileJSON.VectorLayers = append(tileJSON.VectorLayers, layer)
+
+	tileURL := fmt.Sprintf("atlasdata://datasets/x/%s/{z}/{x}/{y}.pbf", did)
+
+	// build our URL scheme for the tile grid
+	tileJSON.Tiles = append(tileJSON.Tiles, tileURL)
+
+	// content type
+	c.Header("Content-Type", "application/json")
+
+	// cache control headers (no-cache)
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+
+	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
+		log.Printf("error encoding tileJSON for layer (%v)", did)
+	}
+	dts.GeoJSON2MBTilesBak(tileJSON)
+}
+
+func publishToMBTiles(c *gin.Context) {
+	res := NewRes()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	did := c.Param("id")
+	dts := userSet.dataset(uid, did)
+	if dts == nil {
+		log.Warnf(`publishToMBTiles, %s's dataset (%s) not found ^^`, uid, did)
+		res.Fail(c, 4046)
+		return
+	}
+	//dump geojson
+	pathFile := dts.Name + ".mbtiles"
+	err := dts.GeoJSON2MBTiles(pathFile, dts.Name, true)
+	if err != nil {
+		log.Error(err)
+		res.Fail(c, 5001)
+		return
+	}
+	res.DoneData(c, gin.H{
+		"file": pathFile,
+	})
+}
+
+func dts2tsLite(task *Task, dts *Dataset) (*Tileset, error) {
+	s := time.Now()
+	task.Progress = 20
+	// id, _ := shortid.Generate()
+	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, dts.ID+MBTILESEXT)
+	err := dts.GeoJSON2MBTiles(outfile, dts.Name, true)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("publish %v data source to tilesets(%s), takes: %v", dts.Name, outfile, time.Since(s))
+	s = time.Now()
+
+	ds := &DataSource{
+		ID:    task.Base,
+		Name:  task.Name,
+		Owner: task.Owner,
+		Path:  outfile,
+	}
+	//加载mbtiles
+	ts, err := LoadTileset(ds)
+	if err != nil {
+		log.Errorf("publishTileset, could not load the new tileset %s, details: %s", outfile, err)
+		return nil, err
+	}
+	log.Infof("load tilesets(%s), takes: %v", outfile, time.Since(s))
+	return ts, nil
 }

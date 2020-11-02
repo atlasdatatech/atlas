@@ -25,19 +25,21 @@
 		type = "sqlite3"        # sqlite3,postgres
 		host     = "127.0.0.1"
 		port     = 5432
-		user     = "atlas"
+		user     = "postgres"
 		password = "atlas"
-		database = "dev"
+		sysdb = "dev"
+		datadb = "devdata"
 	# data providers
 	[[providers]]
 		name = "atlas"           # provider name is referenced from map layers
-		type = "postgis"        # the type of data provider. currently only supports postgis
+		type = "gpkg"        # postgis,gpkg 
+		filepath = "devdata"
 		host = "127.0.0.1"      # postgis database host
 		port = 5432             # postgis database port
-		user = "atlas"         # postgis database user
+		user = "postgres"         # postgis database user
 		password = "atlas"           # postgis database password
-		database = "dev"       # postgis database name
-		srid = 4326   
+		database = "devdata"       # postgis database name
+		srid = 4326 #默认目标是3857，原始数据层可以是3857但通常是4326   
 
 	[jwt]
 	[jwt.auth]

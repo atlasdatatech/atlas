@@ -3,24 +3,26 @@ package main
 import (
 	"flag"
 	"fmt"
-	"html"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/atlasdatatech/atlas/provider"
+	_ "github.com/atlasdatatech/atlas/provider/debug"
+	_ "github.com/atlasdatatech/atlas/provider/gpkg"
+	_ "github.com/atlasdatatech/atlas/provider/postgis"
+	geopkg "github.com/atlasdatatech/go-gpkg/gpkg"
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
-	"github.com/go-spatial/geom"
-	"github.com/go-spatial/tegola"
 	"github.com/go-spatial/tegola/atlas"
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
+
 	"github.com/go-spatial/tegola/server"
 
 	"github.com/shiena/ansicolor"
@@ -29,13 +31,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
+
 	"github.com/casbin/casbin"
-	"github.com/casbin/gorm-adapter"
+	gormadapter "github.com/casbin/gorm-adapter"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	_ "github.com/shaxbee/go-spatialite"
 	"github.com/spf13/viper"
 )
 
@@ -57,6 +59,8 @@ const (
 var (
 	conf      config.Config
 	db        *gorm.DB
+	dbType    = Sqlite3
+	dataDB    *gorm.DB
 	providers = make(map[string]provider.Tiler)
 	casEnf    *casbin.Enforcer
 	authMid   *JWTMiddleware
@@ -79,20 +83,21 @@ func init() {
 	// 改变默认的 Usage，flag包中的Usage 其实是一个函数类型。这里是覆盖默认函数实现，具体见后面Usage部分的分析
 	flag.Usage = usage
 	//InitLog 初始化日志
+	//设置打印文件名和行号
+	log.SetReportCaller(true)
 	log.SetFormatter(&nested.Formatter{
 		HideKeys:        true,
 		ShowFullLevel:   true,
 		TimestampFormat: "2006-01-02 15:04:05.000",
-		// FieldsOrder: []string{"component", "category"},
+		FieldsOrder:     []string{"component", "category"},
+		CallerFirst:     true,
+		CustomCallerFormatter: func(f *runtime.Frame) string {
+			return fmt.Sprintf(" %s:%d ", path.Base(f.File), f.Line)
+			// return fmt.Sprintf(" %s:%d %s ", path.Base(f.File), f.Line, f.Function)
+		},
 	})
-
-	// // force colors on for TextFormatter
-	// log.Formatter = &logrus.TextFormatter{
-	//     ForceColors: true,
-	// }
-	// then wrap the log output with it
+	// force colors on for TextFormatter
 	log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
-
 	log.SetLevel(log.DebugLevel)
 }
 
@@ -145,7 +150,8 @@ func initConf(cfgFile string) {
 	viper.SetDefault("db.port", "5432")
 	viper.SetDefault("db.user", "postgres")
 	viper.SetDefault("db.password", "postgres")
-	viper.SetDefault("db.database", "postgres")
+	viper.SetDefault("db.sysdb", "atlas")
+	viper.SetDefault("db.datadb", "atlasdata")
 	viper.SetDefault("casbin.config", "./auth.conf")
 	viper.SetDefault("statics", "statics/")
 
@@ -156,27 +162,27 @@ func initConf(cfgFile string) {
 	viper.SetDefault("paths.uploads", "tmp")
 }
 
-//initDb 初始化数据库
-func initDb() (*gorm.DB, error) {
+//initSysDb 初始化数据库
+func initSysDb() (*gorm.DB, error) {
 	var conn string
-	dbtype := viper.GetString("db.type")
-	switch dbtype {
-	case "sqlite3":
-		conn = "atlas.db"
-	case "postgres":
+	dbType = DBType(viper.GetString("db.type"))
+	switch dbType {
+	case Sqlite3:
+		conn = viper.GetString("db.sysdb")
+	case Postgres:
 		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.database"))
+			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.sysdb"))
 	default:
-		return nil, fmt.Errorf("unkown database")
+		return nil, fmt.Errorf("unkown database driver")
 	}
 
 	//initEnforcer 初始化资源访问控制
-	casEnf = casbin.NewEnforcer("./auth.conf", gormadapter.NewAdapter(dbtype, conn, true))
+	casEnf = casbin.NewEnforcer("./auth.conf", gormadapter.NewAdapter(string(dbType), conn, true))
 	if casEnf == nil {
 		return nil, fmt.Errorf("init casbin enforcer error")
 	}
 
-	db, err := gorm.Open(dbtype, conn)
+	db, err := gorm.Open(string(dbType), conn)
 	if err != nil {
 		return nil, fmt.Errorf("init gorm db error, details: %s", err)
 	}
@@ -194,6 +200,56 @@ func initDb() (*gorm.DB, error) {
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
 	return db, nil
+}
+
+//initDataDb 初始化数据库
+func initDataDb() (*gorm.DB, error) {
+	var conn string
+	dbType = DBType(viper.GetString("db.type"))
+	switch dbType {
+	case Sqlite3:
+		conn = viper.GetString("db.datadb")
+		dataDB, err := gorm.Open(string(dbType), conn)
+		if err != nil {
+			return nil, fmt.Errorf("init datadb error, details: %s", err)
+		}
+		err = dataDB.Exec("PRAGMA synchronous=0").Error
+		if err != nil {
+			return nil, fmt.Errorf("exec PRAGMA synchronous=0 error, details: %s", err)
+		}
+		//gorm自动构建gpkg表
+		err = dataDB.AutoMigrate(&geopkg.Content{}, &geopkg.GeometryColumn{}, &geopkg.SpatialReferenceSystem{}, &geopkg.Extension{}, &geopkg.TileMatrix{}, &geopkg.TileMatrixSet{}).Error
+		if err != nil {
+			return nil, err
+		}
+		{ //init spatial refs
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('Undefined Cartesian', -1, 'NONE', -1, 'Undefined')").Error
+			if err != nil {
+				return nil, err
+			}
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('Undefined Geographic', 0, 'NONE', 0, 'Undefined')").Error
+			if err != nil {
+				return nil, err
+			}
+			err = dataDB.Exec("INSERT OR REPLACE INTO gpkg_spatial_ref_sys (srs_name, srs_id, organization, organization_coordsys_id, definition) VALUES ('WGS84', 4326, 'epsg', 4326, 'GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]')").Error
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return dataDB, nil
+	case Postgres:
+		conn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			viper.GetString("db.host"), viper.GetString("db.port"), viper.GetString("db.user"), viper.GetString("db.password"), viper.GetString("db.datadb"))
+		dataDB, err := gorm.Open(string(dbType), conn)
+		if err != nil {
+			return nil, fmt.Errorf("init datadb error, details: %s", err)
+		}
+		return dataDB, nil
+	default:
+		return nil, fmt.Errorf("unkown database driver")
+	}
+
 }
 
 //initProvider 初始化数据库驱动
@@ -233,105 +289,6 @@ func initProviders(provArr []dict.Dicter) (map[string]provider.Tiler, error) {
 	}
 
 	return providers, nil
-}
-
-// Maps registers maps with with atlas
-func initMaps(a *atlas.Atlas, maps []config.Map, providers map[string]provider.Tiler) error {
-
-	// iterate our maps
-	for _, m := range maps {
-		newMap := atlas.NewWebMercatorMap(string(m.Name))
-		newMap.Attribution = html.EscapeString(string(m.Attribution))
-
-		// convert from env package
-		centerArr := [3]float64{}
-		for i, v := range m.Center {
-			centerArr[i] = float64(v)
-		}
-
-		newMap.Center = centerArr
-
-		if len(m.Bounds) == 4 {
-			newMap.Bounds = geom.NewExtent(
-				[2]float64{float64(m.Bounds[0]), float64(m.Bounds[1])},
-				[2]float64{float64(m.Bounds[2]), float64(m.Bounds[3])},
-			)
-		}
-
-		// iterate our layers
-		for _, l := range m.Layers {
-			// split our provider name (provider.layer) into [provider,layer]
-			providerLayer := strings.Split(string(l.ProviderLayer), ".")
-
-			// we're expecting two params in the provider layer definition
-			if len(providerLayer) != 2 {
-				return fmt.Errorf("invalid provider layer (%v) for map (%v)", l.ProviderLayer, m.Name)
-			}
-
-			// lookup our proivder
-			provider, ok := providers[providerLayer[0]]
-			if !ok {
-				return fmt.Errorf("provider (%v) not defined", providerLayer[0])
-			}
-
-			// read the provider's layer names
-			layerInfos, err := provider.Layers()
-			if err != nil {
-				return fmt.Errorf("error fetching layer info from provider (%v)", providerLayer[0])
-			}
-
-			// confirm our providerLayer name is registered
-			var found bool
-			var layerGeomType tegola.Geometry
-			for i := range layerInfos {
-				if layerInfos[i].Name() == providerLayer[1] {
-					found = true
-
-					// read the layerGeomType
-					layerGeomType = layerInfos[i].GeomType()
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("map (%v) 'provider_layer' (%v) is not registered with provider (%v)", m.Name, l.ProviderLayer, providerLayer[0])
-			}
-
-			var defaultTags map[string]interface{}
-			if l.DefaultTags != nil {
-				var ok bool
-				defaultTags, ok = l.DefaultTags.(map[string]interface{})
-				if !ok {
-					return fmt.Errorf("'default_tags' for 'provider_layer' (%v) should be a TOML table", l.ProviderLayer)
-				}
-			}
-
-			var minZoom uint
-			if l.MinZoom != nil {
-				minZoom = uint(*l.MinZoom)
-			}
-
-			var maxZoom uint
-			if l.MaxZoom != nil {
-				maxZoom = uint(*l.MaxZoom)
-			}
-
-			// add our layer to our layers slice
-			newMap.Layers = append(newMap.Layers, atlas.Layer{
-				Name:              string(l.Name),
-				ProviderLayerName: providerLayer[1],
-				MinZoom:           minZoom,
-				MaxZoom:           maxZoom,
-				Provider:          provider,
-				DefaultTags:       defaultTags,
-				GeomType:          layerGeomType,
-				DontSimplify:      bool(l.DontSimplify),
-			})
-		}
-
-		a.AddMap(newMap)
-	}
-
-	return nil
 }
 
 // Cache registers cache backends
@@ -688,8 +645,8 @@ func setupRouter() *gin.Engine {
 		tilesets.POST("/replace/:id/", replaceTileset)
 		tilesets.POST("/publish/", publishTileset)
 		tilesets.POST("/publish/:id/", rePublishTileset)
-		tilesets.POST("/create/:id/", createTileset)
-		tilesets.POST("/update/:id/", createTileset)
+		tilesets.POST("/create/:id/", createTilesetLite)
+		tilesets.POST("/update/:id/", createTilesetLite)
 		tilesets.GET("/download/:id/", downloadTileset)
 		tilesets.POST("/delete/:ids/", deleteTileset)
 		tilesets.POST("/merge/:ids/", getTile)
@@ -727,6 +684,8 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/x/:id/", getTileLayerJSON)
 		datasets.GET("/x/:id/:z/:x/:y", getTileLayer)
 		datasets.POST("/x/:id/", createTileLayer)
+
+		datasets.GET("/publish/:id/:min/:max/", publishToMBTiles)
 
 	}
 	tasks := r.Group("/tasks")
@@ -779,11 +738,17 @@ func main() {
 	}
 	initConf(cf)
 	var err error
-	db, err = initDb()
+	db, err = initSysDb()
 	if err != nil {
-		log.Fatalf("init db error, details: %s", err)
+		log.Fatalf("init sysdb error, details: %s", err)
 	}
 	defer db.Close()
+
+	dataDB, err = initDataDb()
+	if err != nil {
+		log.Fatalf("init datadb error, details: %s", err)
+	}
+	defer dataDB.Close()
 
 	{
 		provArr := make([]dict.Dicter, len(conf.Providers))
@@ -793,10 +758,6 @@ func main() {
 		providers, err = initProviders(provArr)
 		if err != nil {
 			log.Fatalf("could not register providers: %v", err)
-		}
-		// init our maps
-		if err = initMaps(nil, conf.Maps, providers); err != nil {
-			log.Fatalf("could not register maps: %v", err)
 		}
 
 		if len(conf.Cache) > 0 {

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-spatial/tegola/provider/postgis"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
 	log "github.com/sirupsen/logrus"
@@ -312,12 +311,14 @@ func stringToFloats(str string) ([]float64, error) {
 	return out, nil
 }
 
-//SetupMBTileTables 初始化配置MBTile库
-func SetupMBTileTables(path string) (*Tileset, error) {
-	os.Remove(path)
-	dir := filepath.Dir(path)
+//CreateMBTileTables 初始化配置MBTile库
+func CreateMBTileTables(pathFile string, force bool) (*sql.DB, error) {
+	if force {
+		os.Remove(pathFile)
+	}
+	dir := filepath.Dir(pathFile)
 	os.MkdirAll(dir, os.ModePerm)
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite3", pathFile)
 	if err != nil {
 		return nil, err
 	}
@@ -349,9 +350,5 @@ func SetupMBTileTables(path string) (*Tileset, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &Tileset{
-		Path: path, //should not add / at the end
-		db:   db,
-	}
-	return out, nil
+	return db, nil
 }

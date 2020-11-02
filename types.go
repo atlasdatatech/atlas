@@ -1,5 +1,15 @@
 package main
 
+// DBType 数据库类型
+type DBType string
+
+// Supported db drivers
+const (
+	Sqlite3    DBType = "sqlite3"
+	Postgres          = "postgres"
+	Spatialite        = "spatialite"
+)
+
 // CRS coordinate reference system
 type CRS string
 
@@ -101,6 +111,7 @@ type TaskType string
 // Constants representing TileFormat types
 const (
 	DSIMPORT TaskType = "dsimport" // encoding = gzip
+	TSUPLOAD          = "tsupload" // encoding = deflate
 	TSIMPORT          = "tsimport" // encoding = deflate
 	DS2TS             = "ds2ts"    // encoding = deflate
 )

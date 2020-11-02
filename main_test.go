@@ -45,7 +45,7 @@ func debugSetup() *gin.Engine {
 	initLoger()
 	initConf("conf.toml")
 	var err error
-	db, err = initDb()
+	db, err = initSysDb()
 	if err != nil {
 		log.Fatalf("init db error, details: %s", err)
 	}
@@ -57,10 +57,6 @@ func debugSetup() *gin.Engine {
 		providers, err = initProviders(provArr)
 		if err != nil {
 			log.Fatalf("could not register providers: %v", err)
-		}
-		// init our maps
-		if err = initMaps(nil, conf.Maps, providers); err != nil {
-			log.Fatalf("could not register maps: %v", err)
 		}
 	}
 
