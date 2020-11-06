@@ -199,6 +199,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
+	db.AutoMigrate(&Scene{})
 	return db, nil
 }
 
@@ -502,6 +503,24 @@ func setupRouter() *gin.Engine {
 		sign.POST("/reset/", sendReset)
 		sign.POST("/reset/:user/:token/", resetPassword)
 		sign.GET("/verify/:user/:token/", verify)
+	}
+
+	//scene 场景接口
+	scene := r.Group("/scene")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		scene.GET("/", listScenes)
+		scene.GET("/:id/", getScene)
+		scene.POST("/", createScene)
+	}
+
+	//serve3d 其他接口
+	other := r.Group("/other")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		other.GET("/geocoder", geoCoder)
 	}
 
 	//studio

@@ -22,7 +22,6 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/protobuf v1.4.2
 	github.com/jackc/fake v0.0.0-20150926172116-812a484cc733 // indirect
-	github.com/jackc/pgx v3.6.0+incompatible // indirect
 	github.com/jinzhu/gorm v1.9.16
 	github.com/jonas-p/go-shp v0.1.1
 	github.com/lib/pq v1.8.0
