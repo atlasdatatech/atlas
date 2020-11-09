@@ -178,7 +178,7 @@ func listScenes(c *gin.Context) {
 	}
 	kw, y := c.GetQuery("keyword")
 	if y {
-		tdb = tdb.Where("name ~ ?", kw)
+		tdb = tdb.Where(fmt.Sprintf(`name like '%%%s%%'`, kw))
 	}
 	order, y := c.GetQuery("order")
 	if y {
