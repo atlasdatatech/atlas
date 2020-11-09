@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
@@ -55,49 +56,117 @@ type Location struct {
 	Lng float64 `json:"lng"`
 }
 
-//Scene 场景库
-type Scene struct {
-	Map
+//SceneBase 样式库
+type SceneBase struct {
+	ID        string    `json:"id" gorm:"primary_key"`
+	Version   string    `json:"version"`
+	Name      string    `json:"name" gorm:"index"`
+	Summary   string    `json:"summary"`
+	Owner     string    `json:"owner" gorm:"index"`
+	Base      string    `json:"base" gorm:"index"`
+	URL       string    `json:"url"`
+	Public    bool      `json:"public"`
+	Status    bool      `json:"status"`
+	Thumbnail string    `json:"thumbnail"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func getScene(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	mid := c.Param("id")
-	if mid == "" {
-		res.Fail(c, 4001)
-		return
+//Scene 样式库
+type Scene struct {
+	SceneBase
+	Config []byte `json:"config"`
+}
+
+//SceneBind 样式库
+type SceneBind struct {
+	SceneBase
+	Config interface{} `json:"config"`
+}
+
+func (b *SceneBind) toScene() *Scene {
+	out := &Scene{
+		SceneBase: SceneBase{
+			ID:        b.ID,
+			Version:   b.Version,
+			Name:      b.Name,
+			Summary:   b.Summary,
+			Owner:     b.Owner,
+			Base:      b.Base,
+			URL:       b.URL,
+			Public:    b.Public,
+			Status:    b.Status,
+			Thumbnail: b.Thumbnail,
+		},
 	}
-	if !casEnf.Enforce(id, mid, "(READ)|(EDIT)") {
-		res.Fail(c, 403)
-		return
+	// thumb := Thumbnail(300, 168, b.Thumbnail)
+	// if thumb == "" {
+	// 	out.Thumbnail = b.Thumbnail
+	// } else {
+	// 	out.Thumbnail = thumb
+	// }
+	out.Config, _ = json.Marshal(b.Config)
+	return out
+}
+
+func (s *Scene) toBind() *SceneBind {
+	out := &SceneBind{
+		SceneBase: SceneBase{
+			ID:        s.ID,
+			Version:   s.Version,
+			Name:      s.Name,
+			Summary:   s.Summary,
+			Owner:     s.Owner,
+			Base:      s.Base,
+			URL:       s.URL,
+			Public:    s.Public,
+			Status:    s.Status,
+			Thumbnail: s.Thumbnail,
+		},
 	}
-	m := &Map{}
-	if err := db.Where("id = ?", mid).First(&m).Error; err != nil {
-		if !gorm.IsRecordNotFoundError(err) {
-			log.Error(err)
-			res.Fail(c, 5001)
+	// thumb := Thumbnail(300, 168, b.Thumbnail)
+	// if thumb == "" {
+	// 	out.Thumbnail = b.Thumbnail
+	// } else {
+	// 	out.Thumbnail = thumb
+	// }
+	json.Unmarshal(s.Config, &out.Config)
+	return out
+}
+
+//UpInsert 创建场景
+func (s *Scene) UpInsert() error {
+	tmp := &Scene{}
+	err := db.Where("id = ?", s.ID).First(tmp).Error
+	if err != nil {
+		if gorm.IsRecordNotFoundError(err) {
+			s.CreatedAt = time.Time{}
+			err = db.Create(s).Error
+			if err != nil {
+				return err
+			}
 		}
-		res.Fail(c, 4049)
-		return
+		return err
 	}
-	res.DoneData(c, m.toBind())
+	err = db.Model(&Scene{}).Update(s).Error
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 //listStyles 获取地图列表
-func listScene2(c *gin.Context) {
-	res := NewRes()
+func listScenes(c *gin.Context) {
+	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
 		uid = c.GetString(identityKey)
 	}
-	set := userSet.service(uid)
-	if set == nil {
-		log.Warnf("uploadStyle, %s's service not found ^^", uid)
-		res.Fail(c, 4043)
-		return
+	if uid == "" {
+		uid = ATLAS
 	}
-	var styles []Style
+
+	var scenes []Scene
 	tdb := db
 	pub, y := c.GetQuery("public")
 	if y && strings.ToLower(pub) == "true" {
@@ -119,7 +188,7 @@ func listScene2(c *gin.Context) {
 	total := 0
 	err := tdb.Model(&Style{}).Count(&total).Error
 	if err != nil {
-		res.Fail(c, 5001)
+		resp.Fail(c, 5001)
 		return
 	}
 	start := 0
@@ -135,85 +204,48 @@ func listScene2(c *gin.Context) {
 		start, _ = strconv.Atoi(offset)
 		tdb = tdb.Offset(start).Limit(rows)
 	}
-	err = tdb.Find(&styles).Error
+	err = tdb.Find(&scenes).Error
 	if err != nil {
-		res.Fail(c, 5001)
+		resp.Fail(c, 5001)
 		return
 	}
-	res.DoneData(c, gin.H{
+
+	resp.DoneData(c, gin.H{
 		"keyword": kw,
 		"order":   order,
 		"start":   start,
 		"rows":    rows,
 		"total":   total,
-		"list":    styles,
+		"list":    scenes,
 	})
-
-	// var styles []*Style
-	// set.S.Range(func(_, v interface{}) bool {
-	// 	s, ok := v.(*Style)
-	// 	if ok {
-	// 		styles = append(styles, s)
-	// 	}
-	// 	return true
-	// })
-	// if uid != ATLAS && "true" == c.Query("public") {
-	// 	set := userSet.service(ATLAS)
-	// 	if set != nil {
-	// 		set.S.Range(func(_, v interface{}) bool {
-	// 			s, ok := v.(*Style)
-	// 			if ok {
-	// 				if s.Public {
-	// 					styles = append(styles, s)
-	// 				}
-	// 			}
-	// 			return true
-	// 		})
-	// 	}
-	// }
-	// res.DoneData(c, styles)
 }
 
-func listScenes(c *gin.Context) {
-	res := NewRes()
-	id := c.GetString(identityKey)
-	var maps []Map
-	if id == ATLAS {
-		db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Find(&maps)
-		for i := 0; i < len(maps); i++ {
-			maps[i].Action = "EDIT"
+func getScene(c *gin.Context) {
+
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	sid := c.Param("id")
+	scene := &Scene{}
+	if err := db.Where("id = ?", sid).First(&scene).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
 		}
-		res.DoneData(c, maps)
+		resp.Fail(c, 4049)
 		return
 	}
 
-	uperms := casEnf.GetPermissionsForUser(id)
-	roles, _ := casEnf.GetRolesForUser(id)
-	for _, role := range roles {
-		rperms := casEnf.GetPermissionsForUser(role)
-		uperms = append(uperms, rperms...)
-	}
-	mapids := make(map[string]string)
-	for _, p := range uperms {
-		if len(p) == 3 {
-			mapids[p[1]] = p[2]
-		}
-	}
-	var ids []string
-	for k := range mapids {
-		ids = append(ids, k)
-	}
-	db.Select("id,title,summary,user,thumbnail,created_at,updated_at").Where("id in (?)", ids).Find(&maps)
-
-	//添加每个map对应的该用户的权限
-	for i := 0; i < len(maps); i++ {
-		maps[i].Action = mapids[maps[i].ID]
-	}
-
-	res.DoneData(c, maps)
-	return
+	resp.DoneData(c, scene.toBind())
 }
 
+// createScene xxx
 func createScene(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
@@ -229,7 +261,7 @@ func createScene(c *gin.Context) {
 		id, _ = shortid.Generate()
 	}
 
-	body := &MapBind{}
+	body := &SceneBind{}
 	err = c.Bind(&body)
 	if err != nil {
 		log.Error(err)
@@ -238,7 +270,7 @@ func createScene(c *gin.Context) {
 	}
 	scene := body.toScene()
 	scene.ID = id
-	scene.User = uid
+	scene.Owner = uid
 	// insertUser
 	err = db.Create(scene).Error
 	if err != nil {
@@ -251,6 +283,65 @@ func createScene(c *gin.Context) {
 		"id": scene.ID,
 	})
 	return
+}
+
+// updateScene xxx
+func updateScene(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	body := &SceneBind{}
+	err := c.Bind(&body)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	scene := body.toScene()
+	scene.Owner = uid
+	// insertUser
+	err = db.Model(&Scene{}).Update(scene).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": scene.ID,
+	})
+	return
+}
+
+//deleteStyle 删除样式
+func deleteScene(c *gin.Context) {
+
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	for _, sid := range sids {
+		err := db.Where("id = ?", sid).Delete(Scene{}).Error
+		if err != nil {
+			log.Error(err)
+			resp.Fail(c, 5001)
+			return
+		}
+	}
+	resp.Done(c, "")
 }
 
 func baiduRespConvert(body io.Reader) (out RespOut) {

@@ -72,27 +72,6 @@ func (b *MapBind) toMap() *Map {
 	return out
 }
 
-func (b *MapBind) toScene() *Scene {
-	out := &Scene{
-		Map: Map{
-			ID:        b.ID,
-			Title:     b.Title,
-			Summary:   b.Summary,
-			User:      b.User,
-			Action:    b.Action,
-			Thumbnail: b.Thumbnail,
-		},
-	}
-	// thumb := Thumbnail(300, 168, b.Thumbnail)
-	// if thumb == "" {
-	// 	out.Thumbnail = b.Thumbnail
-	// } else {
-	// 	out.Thumbnail = thumb
-	// }
-	out.Config, _ = json.Marshal(b.Config)
-	return out
-}
-
 // Bank 本行机构表
 type Bank struct {
 	ID        uint       `gorm:"primary_key"`

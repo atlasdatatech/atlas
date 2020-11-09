@@ -506,13 +506,15 @@ func setupRouter() *gin.Engine {
 	}
 
 	//scene 场景接口
-	scene := r.Group("/scene")
+	scene := r.Group("/scenes")
 	// studio.Use(AuthMidHandler(authMid))
 	// studio.Use(UserMidHandler())
 	{
 		scene.GET("/", listScenes)
-		scene.GET("/:id/", getScene)
-		scene.POST("/", createScene)
+		scene.POST("/info", createScene)
+		scene.GET("/info/:id/", getScene)
+		scene.POST("/info/:id/", updateScene)
+		scene.POST("/delete/:ids/", deleteScene)
 	}
 
 	//serve3d 其他接口
