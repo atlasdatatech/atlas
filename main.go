@@ -511,7 +511,7 @@ func setupRouter() *gin.Engine {
 	// studio.Use(UserMidHandler())
 	{
 		scene.GET("/", listScenes)
-		scene.POST("/info", createScene)
+		scene.POST("/info/", createScene)
 		scene.GET("/info/:id/", getScene)
 		scene.POST("/info/:id/", updateScene)
 		scene.POST("/delete/:ids/", deleteScene)
