@@ -24,7 +24,7 @@ type RespIn struct {
 
 //RespOut body
 type RespOut struct {
-	Status  string     `json:"status"`
+	Status  int        `json:"status"`
 	Message string     `json:"message"`
 	Results []PlaceOut `json:"results"`
 }
@@ -356,16 +356,12 @@ func baiduRespConvert(body io.Reader) (out RespOut) {
 	jdecoder := json.NewDecoder(body)
 	err := jdecoder.Decode(&resIn)
 	if err != nil {
-		out.Status = "decode error"
+		out.Status = -1
 		out.Message = err.Error()
 		return
 	}
-
-	if resIn.Status == 0 {
-		out.Status = "ok"
-	} else {
-		out.Status = fmt.Sprintf("%d", resIn.Status)
-	}
+	out.Status = resIn.Status
+	out.Message = resIn.Message
 
 	for _, pIn := range resIn.Results {
 		pOut := PlaceOut{}
@@ -380,23 +376,27 @@ func baiduRespConvert(body io.Reader) (out RespOut) {
 }
 
 func geoCoder(c *gin.Context) {
-	res := NewRes()
+	resp := NewResp()
 	key := c.Query("key")
 	url := fmt.Sprintf(`http://api.map.baidu.com/place/v2/search?query=%s&region=全国&output=json&ak=3yZlMT3ioSaTaa0kioxwulQrROoN97RV`,
 		key)
-	resp, err := http.Get(url)
+	res, err := http.Get(url)
 	if err != nil {
 		log.Errorf("geocoder error, details: %s ~", err)
-		res.Fail(c, 4001)
+		resp.Fail(c, 4001)
 		return
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if res.StatusCode != 200 {
 		log.Errorf("geocoder error")
-		res.Fail(c, resp.StatusCode)
+		resp.FailMsg(c, "geocoder error")
 		return
 	}
-
-	c.JSON(http.StatusOK, baiduRespConvert(resp.Body))
+	bd := baiduRespConvert(res.Body)
+	if bd.Status != 0 {
+		resp.FailMsg(c, bd.Message)
+		return
+	}
+	resp.DoneData(c, bd.Results)
 }

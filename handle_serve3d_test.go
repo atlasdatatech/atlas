@@ -29,8 +29,8 @@ func TestBaiduRespConvert(t *testing.T) {
 	}`)
 
 	outstr := `{
-		"status": "ok",
-		"message": "",
+		"status": 0,
+		"message": "ok",
 		"results": [
 			{
 				"name": "方正智谷-北门",
