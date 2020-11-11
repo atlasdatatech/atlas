@@ -59,7 +59,7 @@ var MsgList = map[int]string{
 
 //Resp response schema
 type Resp struct {
-	Status  int         `json:"Status"`
+	Status  int         `json:"status"`
 	Message string      `json:"message"`
 	Results interface{} `json:"results"`
 }
