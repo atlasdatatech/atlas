@@ -56,14 +56,13 @@ type Location struct {
 	Lng float64 `json:"lng"`
 }
 
-//SceneBase 样式库
-type SceneBase struct {
+//Base 样式库
+type Base struct {
 	ID        string    `json:"id" gorm:"primary_key"`
 	Version   string    `json:"version"`
 	Name      string    `json:"name" gorm:"index"`
 	Summary   string    `json:"summary"`
 	Owner     string    `json:"owner" gorm:"index"`
-	Base      string    `json:"base" gorm:"index"`
 	URL       string    `json:"url"`
 	Public    bool      `json:"public"`
 	Status    bool      `json:"status"`
@@ -74,25 +73,24 @@ type SceneBase struct {
 
 //Scene 样式库
 type Scene struct {
-	SceneBase
+	Base
 	Config []byte `json:"config"`
 }
 
 //SceneBind 样式库
 type SceneBind struct {
-	SceneBase
+	Base
 	Config interface{} `json:"config"`
 }
 
 func (b *SceneBind) toScene() *Scene {
 	out := &Scene{
-		SceneBase: SceneBase{
+		Base: Base{
 			ID:        b.ID,
 			Version:   b.Version,
 			Name:      b.Name,
 			Summary:   b.Summary,
 			Owner:     b.Owner,
-			Base:      b.Base,
 			URL:       b.URL,
 			Public:    b.Public,
 			Status:    b.Status,
@@ -111,13 +109,12 @@ func (b *SceneBind) toScene() *Scene {
 
 func (s *Scene) toBind() *SceneBind {
 	out := &SceneBind{
-		SceneBase: SceneBase{
+		Base: Base{
 			ID:        s.ID,
 			Version:   s.Version,
 			Name:      s.Name,
 			Summary:   s.Summary,
 			Owner:     s.Owner,
-			Base:      s.Base,
 			URL:       s.URL,
 			Public:    s.Public,
 			Status:    s.Status,
@@ -153,6 +150,11 @@ func (s *Scene) UpInsert() error {
 		return err
 	}
 	return nil
+}
+
+//Tileset3d 样式库
+type Tileset3d struct {
+	Base
 }
 
 //listStyles 获取地图列表
@@ -256,19 +258,19 @@ func createScene(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
-
 	body := &SceneBind{}
-	err = c.Bind(&body)
+	err := c.Bind(&body)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
 		return
 	}
 	scene := body.toScene()
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
 	scene.ID = id
 	scene.Owner = uid
 	// insertUser
@@ -295,7 +297,7 @@ func updateScene(c *gin.Context) {
 	if uid == "" {
 		uid = ATLAS
 	}
-
+	sid := c.Param("id")
 	body := &SceneBind{}
 	err := c.Bind(&body)
 	if err != nil {
@@ -305,16 +307,21 @@ func updateScene(c *gin.Context) {
 	}
 	scene := body.toScene()
 	scene.Owner = uid
-	// insertUser
-	err = db.Model(&Scene{}).Update(scene).Error
-	if err != nil {
+	// 更新insertUser
+	dbres := db.Model(&Scene{
+		Base: Base{
+			ID: sid,
+		},
+	}).Update(scene)
+
+	if dbres.Error != nil {
 		log.Error(err)
 		resp.Fail(c, 5001)
 		return
 	}
-	//管理员创建地图后自己拥有,root不需要
+
 	resp.DoneData(c, gin.H{
-		"id": scene.ID,
+		"affected": dbres.RowsAffected,
 	})
 	return
 }
