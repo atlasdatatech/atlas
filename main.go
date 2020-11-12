@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -199,7 +200,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	db.AutoMigrate(&Scene{})
+	db.AutoMigrate(&Scene{}, &Online{})
 	return db, nil
 }
 
@@ -517,6 +518,14 @@ func setupRouter() *gin.Engine {
 		scene.POST("/delete/:ids/", deleteScene)
 	}
 
+	//image 场景接口
+	image := r.Group("/onlines")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		image.GET("/", listOnlines)
+	}
+
 	//serve3d 其他接口
 	other := r.Group("/other")
 	// studio.Use(AuthMidHandler(authMid))
@@ -748,6 +757,378 @@ func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
 	//http.Redirect(w, req, "https://" + CONF.ORIGIN + req.RequestURI, http.StatusMovedPermanently)
 }
 
+func initOnlineSources() {
+	srcs := `
+	[
+		{
+		"_id": "5d401d9c7720c908b40066c9",
+		"dataType": "image",
+		"cnname": "tianditu_map",
+		"enname": "tianditu_map",
+		"url": "http://t6.tianditu.com/DataServer?T=vec_w&x={x}&y={y}&l={z}",
+		"coordType": "WGS84",
+		"requireField": "token",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/b2989021-2a82-457d-8703-69c288154cee/2019_07_30_18_38_17.jpg",
+		"date": "2019-07-30 18:38:44"
+		},
+		{
+		"_id": "5d4023c17720c905f4e1f99c",
+		"dataType": "image",
+		"cnname": "tianditu_image",
+		"enname": "tianditu_image",
+		"url": "http://t6.tianditu.com/DataServer?T=img_w&x={x}&y={y}&l={z}",
+		"coordType": "WGS84",
+		"requireField": "token",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/ee3ab9e0-b769-46e4-95e0-91bfe1787792\\2019_07_30_19_32_02.jpg",
+		"date": "2019-07-30 19:32:07"
+		},
+		{
+		"_id": "5d4025e27720c905f4e1f99d",
+		"dataType": "image",
+		"cnname": "google_map",
+		"enname": "google_map",
+		"url": "http://mt1.google.cn/vt?lyrs=m&gl=CN&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/3aed23eb-a2ef-4d49-9893-ec1731c33b4a\\2019_07_30_19_32_22.jpg",
+		"date": "2019-07-30 19:32:24"
+		},
+		{
+		"_id": "5d4025ff7720c905f4e1f99e",
+		"dataType": "image",
+		"cnname": "google_imagewithlabel",
+		"enname": "google_imagewithlabel",
+		"url": "http://mt1.google.cn/vt?lyrs=s,h&gl=CN&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/878564e4-6a86-4752-9d98-68eb6e9bd37e\\2019_07_30_19_32_35.jpg",
+		"date": "2019-07-30 19:32:36"
+		},
+		{
+		"_id": "5d4026237720c905f4e1f99f",
+		"dataType": "image",
+		"cnname": "google_image_label",
+		"enname": "google_image_label",
+		"url": "http://mt1.google.cn/vt?lyrs=h&gl=CN&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/860b5719-701a-4568-8310-59bac025ce29\\2019_07_30_19_32_45.jpg",
+		"date": "2019-07-30 19:32:46"
+		},
+		{
+		"_id": "5d4026417720c905f4e1f9a0",
+		"dataType": "image",
+		"cnname": "google_image",
+		"enname": "google_image",
+		"url": "http://mt1.google.cn/vt?lyrs=s&x={x}&y={y}&z={z}",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/97ce8620-a191-4506-911d-a94f4f9d0385\\2019_07_30_19_32_59.jpg",
+		"date": "2019-07-30 19:33:01"
+		},
+		{
+		"_id": "5d402bf27720c91a3c59419d",
+		"dataType": "image",
+		"cnname": "tianditu_map_label",
+		"enname": "tianditu_map_label",
+		"url": "http://t3.tianditu.com/DataServer?T=cva_w&x={x}&y={y}&l={z}",
+		"coordType": "WGS84",
+		"requireField": "token",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/1b1cfa39-c316-4e01-9ef4-4ba0e9e90b68\\2019_07_30_19_37_21.jpg",
+		"date": "2019-07-30 19:37:22"
+		},
+		{
+		"_id": "5d402c157720c91a3c59419e",
+		"dataType": "image",
+		"cnname": "gaode_map",
+		"enname": "gaode_map",
+		"url": "http://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/54c71b94-892e-42ee-bdd7-858cf5fa2399\\2019_07_30_19_37_56.jpg",
+		"date": "2019-07-30 19:37:57"
+		},
+		{
+		"_id": "5d402c377720c91a3c59419f",
+		"dataType": "image",
+		"cnname": "gaode_image",
+		"enname": "gaode_image",
+		"url": "http://webst02.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/45548a6b-5cad-4f0f-8ca1-3c9372cefd99\\2019_07_30_19_38_30.jpg",
+		"date": "2019-07-30 19:38:31"
+		},
+		{
+		"_id": "5d402c5d7720c91a3c5941a0",
+		"dataType": "image",
+		"cnname": "gaode_image_label",
+		"enname": "gaode_image_label",
+		"url": "http://webst02.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}",
+		"coordType": "GCJ02",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/860ede97-8461-408c-979e-dc4a213849b8\\2019_07_30_19_39_07.jpg",
+		"date": "2019-07-30 19:39:09"
+		},
+		{
+		"_id": "5d402c797720c91a3c5941a1",
+		"dataType": "image",
+		"cnname": "baidu_map",
+		"enname": "baidu_map",
+		"url": "http://online1.map.bdimg.com/onlinelabel/?qt=tile&x={x}&y={y}&z={z}&styles=pl&scaler=1&p=1",
+		"coordType": "BD09",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/e7a26b44-058e-420b-8554-8cf33dc7b7a6\\2019_07_30_19_39_37.jpg",
+		"date": "2019-07-30 19:39:37"
+		},
+		{
+		"_id": "5d402c997720c91a3c5941a2",
+		"dataType": "image",
+		"cnname": "baidu_image",
+		"enname": "baidu_image",
+		"url": "http://shangetu1.map.bdimg.com/it/u=x={x};y={y};z={z};v=009;type=sate&fm=46",
+		"coordType": "BD09",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/764dee7e-4f17-4c93-ab35-54b6c0548054\\2019_07_30_19_40_08.jpg",
+		"date": "2019-07-30 19:40:09"
+		},
+		{
+		"_id": "5d402cdd7720c91a3c5941a3",
+		"dataType": "image",
+		"cnname": "baidu_image_label",
+		"enname": "baidu_image_label",
+		"url": "http://online6.map.bdimg.com/tile/?qt=tile&x={x}&y={y}&z={z}&styles=sl&v=020",
+		"coordType": "BD09",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/dc365474-8f27-48d1-aa5d-95043efb3601\\2019_07_30_19_41_00.jpg",
+		"date": "2019-07-30 19:41:17"
+		},
+		{
+		"_id": "5d402d017720c91a3c5941a4",
+		"dataType": "image",
+		"cnname": "baidu_map_midnight",
+		"enname": "baidu_map_midnight",
+		"url": "http://api0.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=midnight",
+		"coordType": "BD09",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/5ff215b3-2013-4169-a132-e456e65ecfd2\\2019_07_30_19_41_53.jpg",
+		"date": "2019-07-30 19:41:53"
+		},
+		{
+		"_id": "5d402d2f7720c91a3c5941a5",
+		"dataType": "image",
+		"cnname": "baidu_map_dark",
+		"enname": "baidu_map_dark",
+		"url": "http://api2.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=dark",
+		"coordType": "BD09",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/2144191a-8cf0-446c-9c63-b3c4de21d0ba\\2019_07_30_19_42_38.jpg",
+		"date": "2019-07-30 19:42:39"
+		},
+		{
+		"_id": "5d402d4d7720c91a3c5941a6",
+		"dataType": "image",
+		"cnname": "openstreetmap",
+		"enname": "openstreetmap",
+		"url": "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/f236ad7a-bc54-4f93-91ca-3e7f8be7faa6\\2019_07_30_19_43_08.jpg",
+		"date": "2019-07-30 19:43:09"
+		},
+		{
+		"_id": "5d402dba7720c91a3c5941a7",
+		"dataType": "image",
+		"cnname": "mapbox_satellite",
+		"enname": "mapbox_satellite",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/5bce4539-d132-4751-84ff-0ea77b3ca287\\2019_07_30_19_44_57.jpg",
+		"date": "2019-07-30 19:44:58"
+		},
+		{
+		"_id": "5d402de67720c91a3c5941a8",
+		"dataType": "image",
+		"cnname": "mapbox_streets",
+		"enname": "mapbox_streets",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/481dd4cb-69e7-45b4-85e2-ed0f5cd3e521\\2019_07_30_19_45_41.jpg",
+		"date": "2019-07-30 19:45:42"
+		},
+		{
+		"_id": "5d402e087720c91a3c5941a9",
+		"dataType": "image",
+		"cnname": "mapbox_light",
+		"enname": "mapbox_light",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/ce49f35e-da93-42e0-b2a8-b5ad39bfa68c\\2019_07_30_19_45_59.jpg",
+		"date": "2019-07-30 19:46:16"
+		},
+		{
+		"_id": "5d402e277720c91a3c5941aa",
+		"dataType": "image",
+		"cnname": "mapbox_dark",
+		"enname": "mapbox_dark",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.dark/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/862e6c95-07e8-4e42-9427-9472dd4c63df\\2019_07_30_19_46_46.jpg",
+		"date": "2019-07-30 19:46:47"
+		},
+		{
+		"_id": "5d402e4a7720c91a3c5941ab",
+		"dataType": "image",
+		"cnname": "mapbox_streets_satellite",
+		"enname": "mapbox_streets_satellite",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/e2e17da4-ff19-4bf0-9f74-1c4d30790156\\2019_07_30_19_47_21.jpg",
+		"date": "2019-07-30 19:47:22"
+		},
+		{
+		"_id": "5d402e6a7720c91a3c5941ac",
+		"dataType": "image",
+		"cnname": "mapbox_wheatpaste",
+		"enname": "mapbox_wheatpaste",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.wheatpaste/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/40130c8b-ad6d-41c4-8f41-65dc30131a4d\\2019_07_30_19_47_53.jpg",
+		"date": "2019-07-30 19:47:54"
+		},
+		{
+		"_id": "5d402e8f7720c91a3c5941ad",
+		"dataType": "image",
+		"cnname": "mapbox_streets_basic",
+		"enname": "mapbox_streets_basic",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-basic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/1562f19d-15c6-408d-9758-0a3947582ca5\\2019_07_30_19_48_30.jpg",
+		"date": "2019-07-30 19:48:31"
+		},
+		{
+		"_id": "5d402eb57720c91a3c5941ae",
+		"dataType": "image",
+		"cnname": "mapbox_comic",
+		"enname": "mapbox_comic",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.comic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/514dc9dd-021c-4bee-81e3-153c2a6efd8e\\2019_07_30_19_49_08.jpg",
+		"date": "2019-07-30 19:49:09"
+		},
+		{
+		"_id": "5d402ee17720c91a3c5941af",
+		"dataType": "image",
+		"cnname": "mapbox_outdoors",
+		"enname": "mapbox_outdoors",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.outdoors/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/49190b16-45a9-4b40-81ef-69902321e536\\2019_07_30_19_49_49.jpg",
+		"date": "2019-07-30 19:49:53"
+		},
+		{
+		"_id": "5d402efe7720c91a3c5941b0",
+		"dataType": "image",
+		"cnname": "mapbox_run_bike_hike",
+		"enname": "mapbox_run_bike_hike",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.run-bike-hike/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/6bad1ff2-f123-4729-9ec4-b67ceee9470d\\2019_07_30_19_50_21.jpg",
+		"date": "2019-07-30 19:50:22"
+		},
+		{
+		"_id": "5d402f237720c91a3c5941b1",
+		"dataType": "image",
+		"cnname": "mapbox_pencil",
+		"enname": "mapbox_pencil",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.pencil/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/e5452ed5-93ca-45ae-91f0-7fa19c90460d\\2019_07_30_19_50_58.jpg",
+		"date": "2019-07-30 19:50:59"
+		},
+		{
+		"_id": "5d402f447720c91a3c5941b2",
+		"dataType": "image",
+		"cnname": "mapbox_pirates",
+		"enname": "mapbox_pirates",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.pirates/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/b5526e93-d8bf-4d84-8fd9-392d330c9b4f\\2019_07_30_19_51_31.jpg",
+		"date": "2019-07-30 19:51:32"
+		},
+		{
+		"_id": "5d402f6b7720c91a3c5941b3",
+		"dataType": "image",
+		"cnname": "mapbox_emerald",
+		"enname": "mapbox_emerald",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.emerald/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/aa62c222-dce1-4388-8dd9-8e7c58aac484\\2019_07_30_19_52_10.jpg",
+		"date": "2019-07-30 19:52:11"
+		},
+		{
+		"_id": "5d402f8f7720c91a3c5941b4",
+		"dataType": "image",
+		"cnname": "mapbox_high_contrast",
+		"enname": "mapbox_high_contrast",
+		"url": "https://c.tiles.mapbox.com/v4/mapbox.high-contrast/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
+		"coordType": "WGS84",
+		"requireField": " ",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/99e8d345-9cb0-49f0-a7bb-c68ab02495bf\\2019_07_30_19_52_46.jpg",
+		"date": "2019-07-31 11:21:21"
+		},
+		{
+		"_id": "5d40239d7720c905f4e1f99b",
+		"dataType": "image",
+		"cnname": "tianditu_image_label",
+		"enname": "tianditu_image_label",
+		"url": "http://t6.tianditu.com/DataServer?T=cia_w&x={x}&y={y}&l={z}",
+		"coordType": "WGS84",
+		"requireField": "token",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/e43aeb21-63a5-4639-9ea5-c39369c0bba2\\2019_07_30_19_31_09.jpg",
+		"date": "2019-08-20 14:36:44"
+		},
+		{
+		"_id": "5e67150c7720c9077482b6bf",
+		"dataType": "image",
+		"cnname": "arcgis在线影像",
+		"enname": "arcgis_imagery",
+		"url": "http://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+		"coordType": "WGS84",
+		"requireField": "",
+		"thumbnail": "https://lab2.cesiumlab.com/upload/c38aab50-46c5-482d-9038-8d25dfb40dcd\\2020_03_10_12_18_07.jpg",
+		"date": "2020-03-10 12:25:52"
+		}
+	]`
+
+	onlines := []Online{}
+	err := json.Unmarshal([]byte(srcs), &onlines)
+	if err != nil {
+		log.Error(err)
+	}
+	for _, v := range onlines {
+		res := db.Create(v)
+		if res.Error != nil {
+			log.Error(res.Error)
+		}
+	}
+
+	fmt.Printf("insert %d rows\n", len(onlines))
+}
+
 func main() {
 	flag.Parse()
 	if hf {
@@ -764,6 +1145,10 @@ func main() {
 		log.Fatalf("init sysdb error, details: %s", err)
 	}
 	defer db.Close()
+
+	{
+		initOnlineSources()
+	}
 
 	dataDB, err = initDataDb()
 	if err != nil {

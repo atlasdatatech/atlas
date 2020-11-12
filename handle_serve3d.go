@@ -157,6 +157,40 @@ type Tileset3d struct {
 	Base
 }
 
+//Online 样式库
+type Online struct {
+	ID        string    `json:"_id" gorm:"primary_key"`
+	Type      string    `json:"dataType"`
+	Name      string    `json:"cnname"`
+	NameEn    string    `json:"enname"`
+	URL       string    `json:"url"`
+	Coord     string    `json:"coordType"`
+	Require   string    `json:"requireField"`
+	Thumbnail string    `json:"thumbnail"`
+	CreatedAt time.Time `json:"-"`
+}
+
+//listOnlines 获取地图列表
+func listOnlines(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var onlines []Online
+	err := db.Find(&onlines).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, onlines)
+}
+
 //listStyles 获取地图列表
 func listScenes(c *gin.Context) {
 	resp := NewResp()
