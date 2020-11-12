@@ -200,7 +200,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	db.AutoMigrate(&Scene{}, &Online{})
+	db.AutoMigrate(&Scene{}, &OnlineImage{}, &OnlineTileset{}, &OnlineTerrain{}, &OnlineSymbol{})
 	return db, nil
 }
 
@@ -519,11 +519,16 @@ func setupRouter() *gin.Engine {
 	}
 
 	//image 场景接口
-	image := r.Group("/onlines")
+	onlines := r.Group("/online")
 	// studio.Use(AuthMidHandler(authMid))
 	// studio.Use(UserMidHandler())
 	{
-		image.GET("/", listOnlines)
+		onlines.GET("/images/", listOnlineImages)
+		onlines.GET("/tilesets/", listOnlineTiles)
+		onlines.GET("/terrains/", listOnlineTerrains)
+		onlines.GET("/symbols/", listOnlineSymbols)
+		onlines.POST("/symbols/", getOnlineSymbols)
+
 	}
 
 	//serve3d 其他接口
@@ -758,8 +763,8 @@ func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
 }
 
 func initOnlineSources() {
-	srcs := `
-	[
+	{
+		imageSrcs := `[
 		{
 		"_id": "5d401d9c7720c908b40066c9",
 		"dataType": "image",
@@ -767,7 +772,7 @@ func initOnlineSources() {
 		"enname": "tianditu_map",
 		"url": "http://t6.tianditu.com/DataServer?T=vec_w&x={x}&y={y}&l={z}",
 		"coordType": "WGS84",
-		"requireField": "token",
+		"requireField": "tk",
 		"thumbnail": "https://lab2.cesiumlab.com/upload/b2989021-2a82-457d-8703-69c288154cee/2019_07_30_18_38_17.jpg",
 		"date": "2019-07-30 18:38:44"
 		},
@@ -778,7 +783,7 @@ func initOnlineSources() {
 		"enname": "tianditu_image",
 		"url": "http://t6.tianditu.com/DataServer?T=img_w&x={x}&y={y}&l={z}",
 		"coordType": "WGS84",
-		"requireField": "token",
+		"requireField": "tk",
 		"thumbnail": "https://lab2.cesiumlab.com/upload/ee3ab9e0-b769-46e4-95e0-91bfe1787792\\2019_07_30_19_32_02.jpg",
 		"date": "2019-07-30 19:32:07"
 		},
@@ -833,7 +838,7 @@ func initOnlineSources() {
 		"enname": "tianditu_map_label",
 		"url": "http://t3.tianditu.com/DataServer?T=cva_w&x={x}&y={y}&l={z}",
 		"coordType": "WGS84",
-		"requireField": "token",
+		"requireField": "tk",
 		"thumbnail": "https://lab2.cesiumlab.com/upload/1b1cfa39-c316-4e01-9ef4-4ba0e9e90b68\\2019_07_30_19_37_21.jpg",
 		"date": "2019-07-30 19:37:22"
 		},
@@ -1097,7 +1102,7 @@ func initOnlineSources() {
 		"enname": "tianditu_image_label",
 		"url": "http://t6.tianditu.com/DataServer?T=cia_w&x={x}&y={y}&l={z}",
 		"coordType": "WGS84",
-		"requireField": "token",
+		"requireField": "tk",
 		"thumbnail": "https://lab2.cesiumlab.com/upload/e43aeb21-63a5-4639-9ea5-c39369c0bba2\\2019_07_30_19_31_09.jpg",
 		"date": "2019-08-20 14:36:44"
 		},
@@ -1114,19 +1119,207 @@ func initOnlineSources() {
 		}
 	]`
 
-	onlines := []Online{}
-	err := json.Unmarshal([]byte(srcs), &onlines)
-	if err != nil {
-		log.Error(err)
-	}
-	for _, v := range onlines {
-		res := db.Create(v)
-		if res.Error != nil {
-			log.Error(res.Error)
+		images := []OnlineImage{}
+		err := json.Unmarshal([]byte(imageSrcs), &images)
+		if err != nil {
+			log.Error(err)
 		}
+		for _, v := range images {
+			res := db.Create(v)
+			if res.Error != nil {
+				log.Error(res.Error)
+			}
+		}
+
+		fmt.Printf("insert %d rows\n", len(images))
+	}
+	{
+		tileSrcs := `[
+	{
+	"_id": "5d40272c7720c91510fdcda9",
+	"dataType": "model",
+	"cnname": "倾斜单体测试",
+	"enname": "倾斜单体测试",
+	"url": "https://lab.earthsdk.com/model/de2a2300ac2d11e99dbd8fd044883638/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/4c4f564b-2e21-46e8-b529-604f9ee9aa0e\\2019_08_04_20_54_36.jpg",
+	"date": "2019-09-29 10:59:04"
+	},
+	{
+	"_id": "5e60cd447720c90df0e0c80c",
+	"dataType": "model",
+	"cnname": "谷歌地球",
+	"enname": "google earth",
+	"url": "https://lab.earthsdk.com/ge/tileset.json",
+	"thumbnail": "http://lab2.cesiumlab.com//upload/bc245ab9-8d39-4fb6-915c-2fa2e2f864b4\\2020_03_05_17_58_13.jpg",
+	"date": "2020-03-05 17:58:50"
+	},
+	{
+	"_id": "5e9e5b7b7720c91384e85e31",
+	"dataType": "model",
+	"cnname": "美丽乡村",
+	"enname": "Beautiful countryside",
+	"url": "http://lab.earthsdk.com/model/b2039420837611eaae25edb63a66f405/tileset.json",
+	"thumbnail": "https://lab2.cesiumlab.com/upload/95e67715-82e2-489d-a383-d788794fc734\\2020_04_21_10_33_18.jpg",
+	"date": "2020-04-21 10:33:31"
+	},
+	{
+	"_id": "5ee1f33e7720c92388d40bf0",
+	"dataType": "model",
+	"cnname": "OSM建筑",
+	"enname": "OSM buildings",
+	"url": "Ion(96188)",
+	"thumbnail": "https://lab2.cesiumlab.com/upload/df07c0a6-0b01-4213-b664-80d9c437238b\\2020_06_11_16_58_06.jpg",
+	"date": "2020-06-11 17:02:54"
+	},
+	{
+	"_id": "5f1c00cf7720c92388d56fb5",
+	"dataType": "model",
+	"cnname": "BIM测试纯色",
+	"enname": "BIM测试纯色",
+	"url": "https://lab.earthsdk.com/model/707d3120ce5b11eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/6cf6c81d-f19f-48b7-8397-2e07a14d587e\\2020_07_25_17_56_25.jpg",
+	"date": "2020-07-25 17:57:03"
+	},
+	{
+	"_id": "5d4027197720c91510fdcda8",
+	"dataType": "model",
+	"cnname": "BIM测试纹理视图",
+	"enname": "BIM测试纹理视图",
+	"url": "https://lab.earthsdk.com/model/8028ba40ce5b11eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/aebfc8f3-3ac4-4635-993a-bfc1d467dd11\\2020_07_25_17_57_12.jpg",
+	"date": "2020-07-25 17:57:20"
+	},
+	{
+	"_id": "5d40273b7720c91510fdcdaa",
+	"dataType": "model",
+	"cnname": "倾斜测试",
+	"enname": "倾斜测试",
+	"url": "https://lab.earthsdk.com/model/66327820ce5f11eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/7737a111-a831-4448-a052-ea1884285d39\\2019_08_04_20_54_42.jpg",
+	"date": "2020-07-25 18:13:20"
+	},
+	{
+	"_id": "5f1c06197720c92388d56fcc",
+	"dataType": "model",
+	"cnname": "倾斜测试跨平台优化",
+	"enname": "倾斜测试跨平台优化",
+	"url": "https://lab.earthsdk.com/model/8c5299e0ce5f11eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/7737a111-a831-4448-a052-ea1884285d39\\2019_08_04_20_54_42.jpg",
+	"date": "2020-07-25 18:15:16"
+	},
+	{
+	"_id": "5dcc26be7720c91a7cfcc69c",
+	"dataType": "model",
+	"cnname": "小工厂",
+	"enname": "xiaogongchang",
+	"url": "https://lab.earthsdk.com/model/887b3db0cd4f11eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "https://lab2.cesiumlab.com/upload/e6827796-398c-4dbb-99e3-457f4953bdf2\\2019_11_13_23_51_34.png",
+	"date": "2020-07-27 09:13:56"
+	},
+	{
+	"_id": "5d71a78c7720c90c9001d61c",
+	"dataType": "model",
+	"cnname": "白模测试2",
+	"enname": "model test2",
+	"url": "https://lab.earthsdk.com/model/3610c2b0d08411eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/4bb1fd43-9799-4dd0-a4fe-f147345539cf\\2019_09_06_08_25_30.jpg",
+	"date": "2020-07-28 11:42:29"
+	},
+	{
+	"_id": "5d40274c7720c91510fdcdab",
+	"dataType": "model",
+	"cnname": "白模测试",
+	"enname": "白模测试",
+	"url": "https://lab.earthsdk.com/model/17a32610d08411eab7a4adf1d6568ff7/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/326fae07-ecf2-4978-b7ce-77e0f10b6bdf\\2019_08_04_20_54_17.jpg",
+	"date": "2020-07-28 11:42:47"
+	},
+	{
+	"_id": "5de1eb8f7720c90f001bfa8b",
+	"dataType": "model",
+	"cnname": "故宫_跨平台压缩",
+	"enname": "gugong_hailiang",
+	"url": "http://lab.earthsdk.com/model/a8aac960dd1811ea819fcd8348f8961f/tileset.json",
+	"thumbnail": "http://lab2.cesiumlab.com/upload/89467069-da06-49b3-87fd-037e199ee65a/2019_08_17_18_15_42.jpg",
+	"date": "2020-08-13 11:55:39"
+	},
+	{
+	"_id": "5d57d3d17720c9144cb59d96",
+	"dataType": "model",
+	"cnname": "故宫",
+	"enname": "Imperial Palace",
+	"url": "https://lab.earthsdk.com/model/70e1bbd0008e11ebae58995d10455715/tileset.json",
+	"thumbnail": "//lab2.cesiumlab.com/upload/89467069-da06-49b3-87fd-037e199ee65a\\2019_08_17_18_15_42.jpg",
+	"date": "2020-09-27 14:57:26"
+	}
+	]`
+
+		tiles := []OnlineTileset{}
+		err := json.Unmarshal([]byte(tileSrcs), &tiles)
+		if err != nil {
+			log.Error(err)
+		}
+		for _, v := range tiles {
+			res := db.Create(v)
+			if res.Error != nil {
+				log.Error(res.Error)
+			}
+		}
+
+		fmt.Printf("insert %d rows\n", len(tiles))
+	}
+	{
+		terrainSrcs := `[
+	{
+	"_id": "5d4026ea7720c91510fdcda7",
+	"dataType": "terrain",
+	"cnname": " cesium官方",
+	"enname": "cesium官方",
+	"url": "Ion(1)",
+	"notSupportNormal": false,
+	"notSupportWater": false,
+	"thumbnail": "https://lab2.cesiumlab.com/upload/3a6ebc9c-1f15-47a2-ada2-a5cccb018d8c\\2019_08_02_19_46_14.jpg",
+	"date": "2019-08-02 19:46:15"
+	},
+	{
+	"_id": "5d40266e7720c905f4e1f9a1",
+	"dataType": "terrain",
+	"cnname": "世界12级（测试）",
+	"enname": "世界12级（测试）",
+	"url": "https://lab.earthsdk.com/terrain/42752d50ac1f11e99dbd8fd044883638",
+	"notSupportNormal": false,
+	"notSupportWater": false,
+	"thumbnail": "https://lab2.cesiumlab.com/upload/55f2216c-21ef-4382-b157-afa7c32444ae\\2019_08_02_19_45_45.jpg",
+	"date": "2019-08-22 18:35:22"
+	},
+	{
+	"_id": "5d40268e7720c905f4e1f9a2",
+	"dataType": "terrain",
+	"cnname": "中国14级（测试）",
+	"enname": "中国14级（测试）",
+	"url": "https://lab.earthsdk.com/terrain/577fd5b0ac1f11e99dbd8fd044883638",
+	"notSupportNormal": false,
+	"notSupportWater": false,
+	"thumbnail": "https://lab2.cesiumlab.com/upload/3fd1ac60-2683-4ae8-a5da-c0250edc836b\\2019_08_02_19_45_38.jpg",
+	"date": "2019-08-22 18:35:30"
+	}
+	]`
+
+		terrains := []OnlineTerrain{}
+		err := json.Unmarshal([]byte(terrainSrcs), &terrains)
+		if err != nil {
+			log.Error(err)
+		}
+		for _, v := range terrains {
+			res := db.Create(v)
+			if res.Error != nil {
+				log.Error(res.Error)
+			}
+		}
+
+		fmt.Printf("insert %d rows\n", len(terrains))
 	}
 
-	fmt.Printf("insert %d rows\n", len(onlines))
 }
 
 func main() {

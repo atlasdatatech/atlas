@@ -157,8 +157,8 @@ type Tileset3d struct {
 	Base
 }
 
-//Online 样式库
-type Online struct {
+//OnlineImage 样式库
+type OnlineImage struct {
 	ID        string    `json:"_id" gorm:"primary_key"`
 	Type      string    `json:"dataType"`
 	Name      string    `json:"cnname"`
@@ -170,8 +170,42 @@ type Online struct {
 	CreatedAt time.Time `json:"-"`
 }
 
-//listOnlines 获取地图列表
-func listOnlines(c *gin.Context) {
+//OnlineTileset 样式库
+type OnlineTileset struct {
+	ID        string    `json:"_id" gorm:"primary_key"`
+	Type      string    `json:"dataType"`
+	Name      string    `json:"cnname"`
+	NameEn    string    `json:"enname"`
+	URL       string    `json:"url"`
+	Thumbnail string    `json:"thumbnail"`
+	CreatedAt time.Time `json:"-"`
+}
+
+//OnlineTerrain 样式库
+type OnlineTerrain struct {
+	ID        string    `json:"_id" gorm:"primary_key"`
+	Type      string    `json:"dataType"`
+	Name      string    `json:"cnname"`
+	NameEn    string    `json:"enname"`
+	URL       string    `json:"url"`
+	Thumbnail string    `json:"thumbnail"`
+	Normal    bool      `json:"notSupportNormal"`
+	Water     bool      `json:"notSupportWater"`
+	CreatedAt time.Time `json:"-"`
+}
+
+//OnlineSymbol 样式库
+type OnlineSymbol struct {
+	ID        string    `json:"_id" gorm:"primary_key"`
+	Type      string    `json:"type"`
+	Name      string    `json:"name"`
+	Content   string    `json:"content"`
+	Thumbnail string    `json:"thumbnail"`
+	CreatedAt time.Time `json:"-"`
+}
+
+//listOnlineImages 获取地图列表
+func listOnlineImages(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -181,14 +215,107 @@ func listOnlines(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var onlines []Online
-	err := db.Find(&onlines).Error
+	var images []OnlineImage
+	err := db.Find(&images).Error
 	if err != nil {
 		resp.Fail(c, 5001)
 		return
 	}
 
-	resp.DoneData(c, onlines)
+	resp.DoneData(c, images)
+}
+
+//listOnlineTiles 获取地图列表
+func listOnlineTiles(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var tilesets []OnlineTileset
+	err := db.Find(&tilesets).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, tilesets)
+}
+
+//listOnlineTerrains 获取地图列表
+func listOnlineTerrains(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var terrains []OnlineTerrain
+	err := db.Find(&terrains).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, terrains)
+}
+
+//listOnlineSymbols 获取地图列表
+func listOnlineSymbols(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	str := `{"name":"内置标绘","_id":"cesiumlab_symbols","symbols":[],"children":[{"name":"常规","symbols":[],"children":[{"name":"点状","symbols":["2732986035c811ea966d4136f619ed29","2733d0e035c811ea966d4136f619ed29","2735096035c811ea966d4136f619ed29"],"children":[]},{"name":"线状","symbols":["2736900035c811ea966d4136f619ed29","2737a17035c811ea966d4136f619ed29","2739010035c811ea966d4136f619ed29","273a398035c811ea966d4136f619ed29","273b4af035c811ea966d4136f619ed29","273c837035c811ea966d4136f619ed29","273d94e035c811ea966d4136f619ed29","273e7f4035c811ea966d4136f619ed29","273f69a035c811ea966d4136f619ed29","27407b1035c811ea966d4136f619ed29","2741b39035c811ea966d4136f619ed29"],"children":[]},{"name":"面状","symbols":["2742c50035c811ea966d4136f619ed29","2743af6035c811ea966d4136f619ed29","274499c035c811ea966d4136f619ed29","2745842035c811ea966d4136f619ed29","2746bca035c811ea966d4136f619ed29","2747a70035c811ea966d4136f619ed29","2748b87035c811ea966d4136f619ed29","2749c9e035c811ea966d4136f619ed29"],"children":[]}]},{"name":"立体","symbols":[],"children":[{"name":"模型","symbols":["274b026035c811ea966d4136f619ed29","274becc035c811ea966d4136f619ed29","274cd72035c811ea966d4136f619ed29"],"children":[]}]},{"name":"高级","symbols":["274de89035c811ea966d4136f619ed29","275d2ad035c811ea966d4136f619ed29","27642fb035c811ea966d4136f619ed29","62c1e4f0641011eab214bb3d7d537a27","62c28130641011eab214bb3d7d537a27"],"children":[{"name":"图元","symbols":["274f211035c811ea966d4136f619ed29","2750a7b035c811ea966d4136f619ed29","2751e03035c811ea966d4136f619ed29","2752ca9035c811ea966d4136f619ed29","27542a2035c811ea966d4136f619ed29","27553b9035c811ea966d4136f619ed29","2756c23035c811ea966d4136f619ed29","2757fab035c811ea966d4136f619ed29","27595a4035c811ea966d4136f619ed29","275a6bb035c811ea966d4136f619ed29","275ba43035c811ea966d4136f619ed29","275cb5a035c811ea966d4136f619ed29"],"children":[]},{"name":"管道","symbols":["275e3c4035c811ea966d4136f619ed29","275f26a035c811ea966d4136f619ed29","27605f2035c811ea966d4136f619ed29","2761709035c811ea966d4136f619ed29","27625af035c811ea966d4136f619ed29","2763455035c811ea966d4136f619ed29"],"children":[]}]}]}`
+	jstr := make(map[string]interface{})
+	json.Unmarshal([]byte(str), &jstr)
+	xxx := []map[string]interface{}{jstr}
+	resp.DoneData(c, xxx)
+}
+
+//getOnlineSymbols 获取地图列表
+func getOnlineSymbols(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	var body struct {
+		IDs string `form:"ids" json:"ids"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	if body.IDs != "" {
+		ids := strings.Split(body.IDs, ",")
+		symbols := []OnlineSymbol{}
+		res := db.Where("id in (?)", ids).Find(&symbols)
+		if res.Error != nil {
+			log.Error(err)
+			resp.FailMsg(c, err.Error())
+			return
+		}
+		resp.DoneData(c, ids)
+		return
+	}
+	resp.Done(c, "")
 }
 
 //listStyles 获取地图列表
