@@ -349,6 +349,64 @@ func listOnlineStyle3ds(c *gin.Context) {
 	resp.DoneData(c, styles)
 }
 
+//createOnlineStyle3d 获取地图列表
+func createOnlineStyle3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	style := OnlineStyle3d{}
+	err := c.Bind(&style)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
+	style.ID = id
+	// insertUser
+	err = db.Create(style).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": style.ID,
+	})
+	return
+}
+
+//deleteOnlineStyle3d 删除样式
+func deleteOnlineStyle3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	id := c.Param("id")
+	err := db.Where("id = ?", id).Delete(OnlineStyle3d{}).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.Done(c, "")
+}
+
 //listStyles 获取地图列表
 func listScenes(c *gin.Context) {
 	resp := NewResp()

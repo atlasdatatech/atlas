@@ -529,6 +529,8 @@ func setupRouter() *gin.Engine {
 		onlines.GET("/symbols/", listOnlineSymbols)
 		onlines.POST("/symbols/", getOnlineSymbols)
 		onlines.GET("/styles3d/", listOnlineStyle3ds)
+		onlines.POST("/styles3d/", createOnlineStyle3d)
+		onlines.DELETE("/styles3d/:id/", deleteOnlineStyle3d)
 	}
 
 	//serve3d 其他接口
