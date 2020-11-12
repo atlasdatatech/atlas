@@ -306,13 +306,13 @@ func getOnlineSymbols(c *gin.Context) {
 	if body.IDs != "" {
 		ids := strings.Split(body.IDs, ",")
 		symbols := []OnlineSymbol{}
-		res := db.Where("id in (?)", ids).Find(&symbols)
+		res := db.Find(&symbols, ids)
 		if res.Error != nil {
 			log.Error(err)
 			resp.FailMsg(c, err.Error())
 			return
 		}
-		resp.DoneData(c, ids)
+		resp.DoneData(c, symbols)
 		return
 	}
 	resp.Done(c, "")
