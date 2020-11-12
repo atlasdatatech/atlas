@@ -204,6 +204,16 @@ type OnlineSymbol struct {
 	CreatedAt time.Time `json:"-"`
 }
 
+//OnlineStyle3d 样式库
+type OnlineStyle3d struct {
+	ID        string    `json:"_id" gorm:"primary_key"`
+	Type      string    `json:"type"`
+	Name      string    `json:"name"`
+	Code      string    `json:"code"`
+	Thumbnail string    `json:"thumbnail"`
+	CreatedAt time.Time `json:"-"`
+}
+
 //listOnlineImages 获取地图列表
 func listOnlineImages(c *gin.Context) {
 	resp := NewResp()
@@ -316,6 +326,27 @@ func getOnlineSymbols(c *gin.Context) {
 		return
 	}
 	resp.Done(c, "")
+}
+
+//listOnlineStyle3ds 获取地图列表
+func listOnlineStyle3ds(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var styles []OnlineStyle3d
+	err := db.Find(&styles).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, styles)
 }
 
 //listStyles 获取地图列表
