@@ -442,8 +442,8 @@ var onlinetilesets = `[
 		"dataType" : "model",
 		"cnname" : "谷歌地球",
 		"enname" : "google earth",
-		"url" : "https://cim.cityfun.com.cn/rt/earth/tileset.json",
-		"thumbnail" : "http://cim.cityfun.com.cn/thumbnail/bc245ab9-8d39-4fb6-915c-2fa2e2f864b4\\2020_03_05_17_58_13.jpg",
+		"url" : "http://cim.cityfun.com.cn/rt/earth/tileset.json",
+		"thumbnail" : "http://cim.cityfun.com.cn/thumbnail/bc245ab9-8d39-4fb6-915c-2fa2e2f864b4/2020_03_05_17_58_13.jpg",
 		"date" : "2020-03-05 17:58:50"
 	  }
 	]`
@@ -457,7 +457,7 @@ var onlineterrains = `[
 	"url": "Ion(1)",
 	"notSupportNormal": false,
 	"notSupportWater": false,
-	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/3a6ebc9c-1f15-47a2-ada2-a5cccb018d8c\\2019_08_02_19_46_14.jpg",
+	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/3a6ebc9c-1f15-47a2-ada2-a5cccb018d8c/2019_08_02_19_46_14.jpg",
 	"date": "2019-08-02 19:46:15"
 	},
 	{
@@ -468,18 +468,18 @@ var onlineterrains = `[
 	"url": "http://cim.cityfun.com.cn/terrain3d/42752d50ac1f11e99dbd8fd044883638",
 	"notSupportNormal": false,
 	"notSupportWater": false,
-	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/55f2216c-21ef-4382-b157-afa7c32444ae\\2019_08_02_19_45_45.jpg",
+	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/55f2216c-21ef-4382-b157-afa7c32444ae/2019_08_02_19_45_45.jpg",
 	"date": "2019-08-22 18:35:22"
 	},
 	{
-	"_id": "5d40268e7720c905f4e1f9a2,
+	"_id": "5d40268e7720c905f4e1f9a2",
 	"dataType": "terrain",
 	"cnname": "中国14级（测试）",
 	"enname": "中国14级（测试）",
 	"url": "http://cim.cityfun.com.cn/terrain3d/577fd5b0ac1f11e99dbd8fd044883638",
 	"notSupportNormal": false,
 	"notSupportWater": false,
-	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/3fd1ac60-2683-4ae8-a5da-c0250edc836b\\2019_08_02_19_45_38.jpg",
+	"thumbnail": "http://cim.cityfun.com.cn/thumbnail/3fd1ac60-2683-4ae8-a5da-c0250edc836b/2019_08_02_19_45_38.jpg",
 	"date": "2019-08-22 18:35:30"
 	}
 	]`
