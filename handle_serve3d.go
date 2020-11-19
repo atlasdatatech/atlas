@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/teris-io/shortid"
 )
 
@@ -152,70 +156,66 @@ func (s *Scene) UpInsert() error {
 	return nil
 }
 
-//Tileset3d 样式库
+//OnlineMap 在线底图
+type OnlineMap struct {
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"dataType" json:"dataType"`
+	Name      string    `form:"cnname" json:"cnname"`
+	NameEn    string    `form:"enname" json:"enname"`
+	URL       string    `form:"url" json:"url"`
+	Coord     string    `form:"coordType" json:"coordType"`
+	Require   string    `form:"requireField" json:"requireField"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
+	CreatedAt time.Time `form:"-" json:"-"`
+}
+
+//Tileset3d 三维服务
 type Tileset3d struct {
-	Base
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"dataType" json:"dataType"`
+	Name      string    `form:"cnname" json:"cnname"`
+	NameEn    string    `form:"enname" json:"enname"`
+	URL       string    `form:"url" json:"url"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
+	CreatedAt time.Time `form:"-" json:"-"`
 }
 
-//OnlineImage 样式库
-type OnlineImage struct {
-	ID        string    `json:"_id" gorm:"primary_key"`
-	Type      string    `json:"dataType"`
-	Name      string    `json:"cnname"`
-	NameEn    string    `json:"enname"`
-	URL       string    `json:"url"`
-	Coord     string    `json:"coordType"`
-	Require   string    `json:"requireField"`
-	Thumbnail string    `json:"thumbnail"`
+//Terrain3d 地形服务
+type Terrain3d struct {
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"dataType" json:"dataType"`
+	Name      string    `form:"cnname" json:"cnname"`
+	NameEn    string    `form:"enname" json:"enname"`
+	URL       string    `form:"url" json:"url"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
+	Normal    bool      `form:"notSupportNormal" json:"notSupportNormal"`
+	Water     bool      `form:"notSupportWater" json:"notSupportWater"`
 	CreatedAt time.Time `json:"-"`
 }
 
-//OnlineTileset 样式库
-type OnlineTileset struct {
-	ID        string    `json:"_id" gorm:"primary_key"`
-	Type      string    `json:"dataType"`
-	Name      string    `json:"cnname"`
-	NameEn    string    `json:"enname"`
-	URL       string    `json:"url"`
-	Thumbnail string    `json:"thumbnail"`
+//Symbol3d 三维符号
+type Symbol3d struct {
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"type" json:"type"`
+	Name      string    `form:"name" json:"name"`
+	Content   string    `form:"content" json:"content"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
 	CreatedAt time.Time `json:"-"`
 }
 
-//OnlineTerrain 样式库
-type OnlineTerrain struct {
-	ID        string    `json:"_id" gorm:"primary_key"`
-	Type      string    `json:"dataType"`
-	Name      string    `json:"cnname"`
-	NameEn    string    `json:"enname"`
-	URL       string    `json:"url"`
-	Thumbnail string    `json:"thumbnail"`
-	Normal    bool      `json:"notSupportNormal"`
-	Water     bool      `json:"notSupportWater"`
-	CreatedAt time.Time `json:"-"`
+//Style3d 三维样式
+type Style3d struct {
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"type" json:"type"`
+	Name      string    `form:"name" json:"name"`
+	Code      string    `form:"code" json:"code"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
+	CreatedAt time.Time `form:"-" json:"-"`
 }
 
-//OnlineSymbol 样式库
-type OnlineSymbol struct {
-	ID        string    `json:"_id" gorm:"primary_key"`
-	Type      string    `json:"type"`
-	Name      string    `json:"name"`
-	Content   string    `json:"content"`
-	Thumbnail string    `json:"thumbnail"`
-	CreatedAt time.Time `json:"-"`
-}
-
-//OnlineStyle3d 样式库
-type OnlineStyle3d struct {
-	ID        string    `json:"_id" gorm:"primary_key"`
-	Type      string    `json:"type"`
-	Name      string    `json:"name"`
-	Code      string    `json:"code"`
-	Thumbnail string    `json:"thumbnail"`
-	CreatedAt time.Time `json:"-"`
-}
-
-//listOnlineImages 获取地图列表
-func listOnlineImages(c *gin.Context) {
+//**********************************************
+//listOnlineMaps 获取在线底图列表
+func listOnlineMaps(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -225,18 +225,18 @@ func listOnlineImages(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var images []OnlineImage
-	err := db.Find(&images).Error
+	var olmaps []OnlineMap
+	err := db.Find(&olmaps).Error
 	if err != nil {
 		resp.Fail(c, 5001)
 		return
 	}
 
-	resp.DoneData(c, images)
+	resp.DoneData(c, olmaps)
 }
 
-//listOnlineTiles 获取地图列表
-func listOnlineTiles(c *gin.Context) {
+//getOnlineMap 获取在线底图详细信息
+func getOnlineMap(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -246,18 +246,22 @@ func listOnlineTiles(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var tilesets []OnlineTileset
-	err := db.Find(&tilesets).Error
-	if err != nil {
-		resp.Fail(c, 5001)
+	sid := c.Param("id")
+	olmap := &OnlineMap{}
+	if err := db.Where("id = ?", sid).First(&olmap).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
 		return
 	}
 
-	resp.DoneData(c, tilesets)
+	resp.DoneData(c, olmap)
 }
 
-//listOnlineTerrains 获取地图列表
-func listOnlineTerrains(c *gin.Context) {
+//createOnlineMap 创建在线底图
+func createOnlineMap(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -267,18 +271,377 @@ func listOnlineTerrains(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var terrains []OnlineTerrain
-	err := db.Find(&terrains).Error
+	olmap := OnlineMap{}
+	err := c.Bind(&olmap)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
+	olmap.ID = id
+	// insertUser
+	err = db.Create(olmap).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": olmap.ID,
+	})
+	return
+}
+
+//updateOnlineMap 更新在线底图信息
+func updateOnlineMap(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	olmap := OnlineMap{}
+	err := c.Bind(&olmap)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(OnlineMap{}).Where("id = ?", id).Update(olmap)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteOnlineMap 删除在线底图
+func deleteOnlineMap(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(OnlineMap{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+}
+
+//**********************************************
+//listTilesets3d 获取三维服务列表
+func listTilesets3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var tileset3d []Tileset3d
+	err := db.Find(&tileset3d).Error
 	if err != nil {
 		resp.Fail(c, 5001)
 		return
 	}
 
-	resp.DoneData(c, terrains)
+	resp.DoneData(c, tileset3d)
 }
 
+//getOnlineImage 获取三维服务详细信息
+func getTileset3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	sid := c.Param("id")
+	tileset3d := &Tileset3d{}
+	if err := db.Where("id = ?", sid).First(&tileset3d).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+
+	resp.DoneData(c, tileset3d)
+}
+
+//createTileset3d 创建新的三维服务
+func createTileset3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	tileset3d := Tileset3d{}
+	err := c.Bind(&tileset3d)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
+	tileset3d.ID = id
+	// insertUser
+	err = db.Create(tileset3d).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": tileset3d.ID,
+	})
+	return
+}
+
+//updateTileset3d 更新指定三维服务
+func updateTileset3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	tileset3d := Tileset3d{}
+	err := c.Bind(&tileset3d)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Tileset3d{}).Where("id = ?", id).Update(tileset3d)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteTileset3d 删除指定三维服务
+func deleteTileset3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(Tileset3d{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+}
+
+//**********************************************
+//listTerrains3d 获取地形服务列表
+func listTerrains3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var terrain []Terrain3d
+	err := db.Find(&terrain).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, terrain)
+}
+
+//getTerrain3d 获取地形服务详细信息
+func getTerrain3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	sid := c.Param("id")
+	terrain := &Terrain3d{}
+	if err := db.Where("id = ?", sid).First(&terrain).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+
+	resp.DoneData(c, terrain)
+}
+
+//createTerrain3d 创建新的地形服务
+func createTerrain3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	terrain := Terrain3d{}
+	err := c.Bind(&terrain)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
+	terrain.ID = id
+	// insertUser
+	err = db.Create(terrain).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": terrain.ID,
+	})
+	return
+}
+
+//updateTerrain3d 更新指定地形服务
+func updateTerrain3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	terrain := Terrain3d{}
+	err := c.Bind(&terrain)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Terrain3d{}).Where("id = ?", id).Update(terrain)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteTerrain3d 删除指定地形服务
+func deleteTerrain3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(Terrain3d{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+}
+
+//**********************************************
 //listOnlineSymbols 获取地图列表
-func listOnlineSymbols(c *gin.Context) {
+func getSymbols3dList(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -294,8 +657,8 @@ func listOnlineSymbols(c *gin.Context) {
 	resp.DoneData(c, xxx)
 }
 
-//getOnlineSymbols 获取地图列表
-func getOnlineSymbols(c *gin.Context) {
+//listSymbols3d 获取地形服务详细信息
+func listSymbols3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -315,7 +678,7 @@ func getOnlineSymbols(c *gin.Context) {
 	}
 	if body.IDs != "" {
 		ids := strings.Split(body.IDs, ",")
-		symbols := []OnlineSymbol{}
+		symbols := []Symbol3d{}
 		res := db.Find(&symbols, ids)
 		if res.Error != nil {
 			log.Error(err)
@@ -328,8 +691,8 @@ func getOnlineSymbols(c *gin.Context) {
 	resp.Done(c, "")
 }
 
-//listOnlineStyle3ds 获取地图列表
-func listOnlineStyle3ds(c *gin.Context) {
+//getSymbols3d 获取地图列表
+func getSymbols3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -339,7 +702,128 @@ func listOnlineStyle3ds(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var styles []OnlineStyle3d
+	sid := c.Param("id")
+	symbol3d := &Symbol3d{}
+	if err := db.Where("id = ?", sid).First(&symbol3d).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+
+	resp.DoneData(c, symbol3d)
+}
+
+//createTileset3d 创建新的三维服务
+func createSymbol3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	symbol3d := Symbol3d{}
+	err := c.Bind(&symbol3d)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	id, err := shortid.Generate()
+	if err != nil {
+		id, _ = shortid.Generate()
+	}
+	//丢掉原来的id使用新的id
+	symbol3d.ID = id
+	// insertUser
+	err = db.Create(symbol3d).Error
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	//管理员创建地图后自己拥有,root不需要
+	resp.DoneData(c, gin.H{
+		"id": symbol3d.ID,
+	})
+	return
+}
+
+//updateTileset3d 更新指定三维服务
+func updateSymbol3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	symbol3d := Symbol3d{}
+	err := c.Bind(&symbol3d)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Symbol3d{}).Where("id = ?", id).Update(symbol3d)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteTileset3d 删除指定三维服务
+func deleteSymbol3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(Symbol3d{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+}
+
+//**********************************************
+//listStyles3d 获取地图列表
+func listStyles3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	var styles []Style3d
 	err := db.Find(&styles).Error
 	if err != nil {
 		resp.Fail(c, 5001)
@@ -349,8 +833,7 @@ func listOnlineStyle3ds(c *gin.Context) {
 	resp.DoneData(c, styles)
 }
 
-//createOnlineStyle3d 获取地图列表
-func createOnlineStyle3d(c *gin.Context) {
+func getStyle3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -360,7 +843,32 @@ func createOnlineStyle3d(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	style := OnlineStyle3d{}
+	sid := c.Param("id")
+	style3d := &Style3d{}
+	if err := db.Where("id = ?", sid).First(&style3d).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+
+	resp.DoneData(c, style3d)
+}
+
+//createStyle3d 创建新样式
+func createStyle3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	style := Style3d{}
 	err := c.Bind(&style)
 	if err != nil {
 		log.Error(err)
@@ -387,8 +895,8 @@ func createOnlineStyle3d(c *gin.Context) {
 	return
 }
 
-//deleteOnlineStyle3d 删除样式
-func deleteOnlineStyle3d(c *gin.Context) {
+//updateOnlineStyle3d 更新3d样式
+func updateStyle3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -398,15 +906,53 @@ func deleteOnlineStyle3d(c *gin.Context) {
 		uid = ATLAS
 	}
 	id := c.Param("id")
-	err := db.Where("id = ?", id).Delete(OnlineStyle3d{}).Error
+
+	style := Style3d{}
+	err := c.Bind(&style)
 	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Style3d{}).Where("id = ?", id).Update(style)
+
+	if dbres.Error != nil {
 		log.Error(err)
 		resp.Fail(c, 5001)
 		return
 	}
-	resp.Done(c, "")
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
 }
 
+//deleteOnlineStyle3d 删除样式
+func deleteStyle3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(Style3d{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+}
+
+//**********************************************
 //listStyles 获取地图列表
 func listScenes(c *gin.Context) {
 	resp := NewResp()
@@ -547,7 +1093,7 @@ func updateScene(c *gin.Context) {
 	if uid == "" {
 		uid = ATLAS
 	}
-	sid := c.Param("id")
+	id := c.Param("id")
 	body := &SceneBind{}
 	err := c.Bind(&body)
 	if err != nil {
@@ -558,11 +1104,7 @@ func updateScene(c *gin.Context) {
 	scene := body.toScene()
 	scene.Owner = uid
 	// 更新insertUser
-	dbres := db.Model(&Scene{
-		Base: Base{
-			ID: sid,
-		},
-	}).Update(scene)
+	dbres := db.Model(&Scene{}).Where("id = ?", id).Update(scene)
 
 	if dbres.Error != nil {
 		log.Error(err)
@@ -578,7 +1120,6 @@ func updateScene(c *gin.Context) {
 
 //deleteStyle 删除样式
 func deleteScene(c *gin.Context) {
-
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -589,16 +1130,25 @@ func deleteScene(c *gin.Context) {
 	}
 
 	ids := c.Param("ids")
+
 	sids := strings.Split(ids, ",")
-	for _, sid := range sids {
-		err := db.Where("id = ?", sid).Delete(Scene{}).Error
-		if err != nil {
-			log.Error(err)
-			resp.Fail(c, 5001)
-			return
-		}
+	// for _, sid := range sids {
+	// 	err := db.Where("id = ?", sid).Delete(Scene{}).Error
+	// 	if err != nil {
+	// 		log.Error(err)
+	// 		resp.Fail(c, 5001)
+	// 		return
+	// 	}
+	// }
+	dbres := db.Where("id in (?)", sids).Delete(Scene{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
 	}
-	resp.Done(c, "")
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
 }
 
 func baiduRespConvert(body io.Reader) (out RespOut) {
@@ -628,8 +1178,9 @@ func baiduRespConvert(body io.Reader) (out RespOut) {
 func geoCoder(c *gin.Context) {
 	resp := NewResp()
 	key := c.Query("key")
-	url := fmt.Sprintf(`http://api.map.baidu.com/place/v2/search?query=%s&region=全国&output=json&ak=3yZlMT3ioSaTaa0kioxwulQrROoN97RV`,
-		key)
+	api := viper.GetString("geocoder.api")
+	url := fmt.Sprintf(api, key)
+	// url := fmt.Sprintf(`http://api.map.baidu.com/place/v2/search?query=%s&region=全国&output=json&ak=3yZlMT3ioSaTaa0kioxwulQrROoN97RV`,key)
 	res, err := http.Get(url)
 	if err != nil {
 		log.Errorf("geocoder error, details: %s ~", err)
@@ -649,4 +1200,46 @@ func geoCoder(c *gin.Context) {
 		return
 	}
 	resp.DoneData(c, bd.Results)
+}
+
+func tilesProxy(c *gin.Context) {
+	resp := NewResp()
+	uri := c.Param("uri")
+	host := viper.GetString("proxy.host")
+	appid := viper.GetString("proxy.appid")
+	key := viper.GetString("proxy.key")
+	timestamp := "1603949582000" //strconv.FormatInt(time.Now().Unix(), 10)
+	hash := md5.New()
+	hash.Write([]byte(appid + key + uri + timestamp))
+	token := strings.ToUpper(hex.EncodeToString(hash.Sum(nil)))
+	claims := fmt.Sprintf(`{"appId":"%s","ms":%s,"token":"%s"}`, appid, timestamp, token)
+	body := bytes.NewBuffer([]byte(claims))
+	url := host + uri
+	client := &http.Client{}
+	req, err := http.NewRequest("PUT", url, body)
+	if err != nil {
+		resp.FailMsg(c, err.Error())
+		return
+	}
+
+	// req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("Content-Type", "application/json;charset=utf-8")
+	//     return JSON.stringify(claims);
+	res, err := client.Do(req)
+	if err != nil {
+		resp.FailMsg(c, err.Error())
+		return
+	}
+	defer res.Body.Close()
+
+	contentType := res.Header.Get("Content-Type")
+	contentLength := res.ContentLength
+	// c.Header("Content-Type", contentType)
+	// rbody, err := ioutil.ReadAll(res.Body)
+	// if err != nil {
+	// resp.FailMsg(c, err.Error())
+	// return
+	// }
+	// c.Writer.Write(rbody)
+	c.DataFromReader(http.StatusOK, contentLength, contentType, res.Body, map[string]string{})
 }

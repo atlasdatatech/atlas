@@ -200,7 +200,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	db.AutoMigrate(&Scene{}, &OnlineImage{}, &OnlineTileset{}, &OnlineTerrain{}, &OnlineSymbol{}, &OnlineStyle3d{})
+	db.AutoMigrate(&Scene{}, &OnlineMap{}, &Tileset3d{}, &Terrain3d{}, &Symbol3d{}, &Style3d{})
 	return db, nil
 }
 
@@ -512,10 +512,66 @@ func setupRouter() *gin.Engine {
 	// studio.Use(UserMidHandler())
 	{
 		scene.GET("/", listScenes)
-		scene.POST("/info/", createScene)
+		scene.POST("/create/", createScene)
 		scene.GET("/info/:id/", getScene)
 		scene.POST("/info/:id/", updateScene)
-		scene.POST("/delete/:ids/", deleteScene)
+		scene.DELETE("/delete/:ids/", deleteScene)
+	}
+
+	olmaps := r.Group("/olmaps")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		olmaps.GET("/", listOnlineMaps)
+		olmaps.POST("/create/", createOnlineMap)
+		olmaps.GET("/info/:id/", getOnlineMap)
+		olmaps.POST("/info/:id/", updateOnlineMap)
+		olmaps.DELETE("/delete/:ids/", deleteOnlineMap)
+	}
+
+	ts3d := r.Group("/ts3d")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		ts3d.GET("/", listTilesets3d)
+		ts3d.POST("/create/", createTileset3d)
+		ts3d.GET("/info/:id/", getTileset3d)
+		ts3d.POST("/info/:id/", updateTileset3d)
+		ts3d.DELETE("/delete/:ids/", deleteTileset3d)
+	}
+
+	terrain3d := r.Group("/terrains3d")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		terrain3d.GET("/", listTerrains3d)
+		terrain3d.POST("/create/", createTerrain3d)
+		terrain3d.GET("/info/:id/", getTerrain3d)
+		terrain3d.POST("/info/:id/", updateTerrain3d)
+		terrain3d.DELETE("/delete/:ids/", deleteTerrain3d)
+	}
+
+	symbols3d := r.Group("/symbols3d")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		symbols3d.GET("/", getSymbols3dList)
+		symbols3d.POST("/", listSymbols3d)
+		symbols3d.POST("/create/", createSymbol3d)
+		symbols3d.GET("/info/:id/", getSymbols3d)
+		symbols3d.POST("/info/:id/", updateSymbol3d)
+		symbols3d.DELETE("/delete/:ids/", deleteSymbol3d)
+	}
+
+	styles3d := r.Group("/styles3d")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		styles3d.GET("/", listStyles3d)
+		styles3d.POST("/create/", createStyle3d)
+		styles3d.GET("/info/:id/", getStyle3d)
+		styles3d.POST("/info/:id/", updateStyle3d)
+		styles3d.DELETE("/delete/:ids/", deleteStyle3d)
 	}
 
 	//image 场景接口
@@ -523,14 +579,14 @@ func setupRouter() *gin.Engine {
 	// studio.Use(AuthMidHandler(authMid))
 	// studio.Use(UserMidHandler())
 	{
-		onlines.GET("/images/", listOnlineImages)
-		onlines.GET("/tilesets/", listOnlineTiles)
-		onlines.GET("/terrains/", listOnlineTerrains)
-		onlines.GET("/symbols/", listOnlineSymbols)
-		onlines.POST("/symbols/", getOnlineSymbols)
-		onlines.GET("/styles3d/", listOnlineStyle3ds)
-		onlines.POST("/styles3d/", createOnlineStyle3d)
-		onlines.DELETE("/styles3d/:id/", deleteOnlineStyle3d)
+		onlines.GET("/images/", listOnlineMaps)
+		onlines.GET("/tilesets/", listTilesets3d)
+		onlines.GET("/terrains/", listTerrains3d)
+		onlines.GET("/symbols/", getSymbols3dList)
+		onlines.POST("/symbols/", listSymbols3d)
+		onlines.GET("/styles3d/", listStyles3d)
+		onlines.POST("/styles3d/", createStyle3d)
+		onlines.DELETE("/styles3d/:id/", deleteStyle3d)
 	}
 
 	//serve3d 其他接口
@@ -539,6 +595,14 @@ func setupRouter() *gin.Engine {
 	// studio.Use(UserMidHandler())
 	{
 		other.GET("/geocoder", geoCoder)
+	}
+
+	//serve3d 其他接口
+	proxy := r.Group("/dh3dts")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		proxy.GET("/*uri", tilesProxy)
 	}
 
 	//studio
@@ -766,22 +830,22 @@ func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
 
 func initOnlineSources() {
 	{
-		images := []OnlineImage{}
-		err := json.Unmarshal([]byte(onlineimages), &images)
+		olmaps := []OnlineMap{}
+		err := json.Unmarshal([]byte(initialOlMaps), &olmaps)
 		if err != nil {
 			log.Error(err)
 		}
-		for _, v := range images {
+		for _, v := range olmaps {
 			res := db.Create(v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
 		}
-		fmt.Printf("insert %d rows\n", len(images))
+		fmt.Printf("insert %d rows\n", len(olmaps))
 	}
 	{
-		tiles := []OnlineTileset{}
-		err := json.Unmarshal([]byte(onlinetilesets), &tiles)
+		tiles := []Tileset3d{}
+		err := json.Unmarshal([]byte(initialTilesets), &tiles)
 		if err != nil {
 			log.Error(err)
 		}
@@ -794,8 +858,8 @@ func initOnlineSources() {
 		fmt.Printf("insert %d rows\n", len(tiles))
 	}
 	{
-		terrains := []OnlineTerrain{}
-		err := json.Unmarshal([]byte(onlineterrains), &terrains)
+		terrains := []Terrain3d{}
+		err := json.Unmarshal([]byte(initialTerrains), &terrains)
 		if err != nil {
 			log.Error(err)
 		}
@@ -808,8 +872,8 @@ func initOnlineSources() {
 		fmt.Printf("insert %d rows\n", len(terrains))
 	}
 	{
-		symbols := []OnlineSymbol{}
-		err := json.Unmarshal([]byte(onlinesymbols), &symbols)
+		symbols := []Symbol3d{}
+		err := json.Unmarshal([]byte(initialSymbols), &symbols)
 		if err != nil {
 			log.Error(err)
 		}
@@ -822,8 +886,8 @@ func initOnlineSources() {
 		fmt.Printf("insert %d rows\n", len(symbols))
 	}
 	{
-		styles := []OnlineStyle3d{}
-		err := json.Unmarshal([]byte(onlinestyles), &styles)
+		styles := []Style3d{}
+		err := json.Unmarshal([]byte(initialStyles), &styles)
 		if err != nil {
 			log.Error(err)
 		}

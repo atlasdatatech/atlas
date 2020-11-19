@@ -74,20 +74,10 @@
 	[import.task]
 		interval = "1s"
 
-	[tree]
-		tables = ["districts","streets"]
-		tableids = ["9k5vgLHWg","FH8GRYHWg"]
-		level0s = ["市本级","区本级"]
-	[list]
-		tables = ["roads","houses","buildings"]
-		tableids = ["86jAMx7ZR","jwO1GxnZR","GNifGxnZR"]
-		selectfields = ["","",""]
-	[search]
-		tables = ["roads","houses","buildings"]
-		tableids = ["86jAMx7ZR","jwO1GxnZR","GNifGxnZR"]
-		fields = ["name,districts","name,districts","name,districts"]
-		matchfields = ["name","name","name"]
-		selectfields = ["","",""]
-		typenames = ["道路街巷","城镇居民点","建筑物"]
-	[attachment]
-		path = "redfiles"
+	[proxy]
+		appid = "SuZhouChengFang:XT5C0UK4JVFB26KF"
+		key = "W2T6KF9Q7MPO3O3XYIJNV67W0108K07N"
+		host = "http://out.jsdhqy.cn:3005"
+	[geocoder]
+		api = "http://api.map.baidu.com/place/v2/search?query=%s&region=全国&output=json&ak=3yZlMT3ioSaTaa0kioxwulQrROoN97RV"
+	

@@ -1,6 +1,6 @@
 package main
 
-var onlineimages = `[
+var initialOlMaps = `[
 		{
 		"_id": "5d401d9c7720c908b40066c9",
 		"dataType": "image",
@@ -355,7 +355,7 @@ var onlineimages = `[
 		}
 	]`
 
-var onlinetilesets = `[
+var initialTilesets = `[
 	{
 		"_id": "5dcc26be7720c91a7cfcc69b",
 		"dataType": "model",
@@ -448,7 +448,7 @@ var onlinetilesets = `[
 	  }
 	]`
 
-var onlineterrains = `[
+var initialTerrains = `[
 	{
 	"_id": "5d4026ea7720c91510fdcda7",
 	"dataType": "terrain",
@@ -484,7 +484,7 @@ var onlineterrains = `[
 	}
 	]`
 
-var onlinestyles = `[
+var initialStyles = `[
 			{
 				"_id": "001878a0a6a111e99e7bdd6f0ec5ee63",
 				"name": "默认样式",
@@ -543,7 +543,7 @@ var onlinestyles = `[
 			}
 		]`
 
-var onlinesymbols = `[
+var initialSymbols = `[
 			{
 				"_id": "2733d0e035c811ea966d4136f619ed29",
 				"type": "Pin",
