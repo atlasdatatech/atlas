@@ -4,6 +4,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d401d9c7720c908b40066c9",
 		"dataType": "image",
+		"name": "天地图",
 		"cnname": "tianditu_map",
 		"enname": "tianditu_map",
 		"url": "http://t6.tianditu.com/DataServer?T=vec_w&x={x}&y={y}&l={z}",
@@ -15,6 +16,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d4023c17720c905f4e1f99c",
 		"dataType": "image",
+		"name": "天地图影像",
 		"cnname": "tianditu_image",
 		"enname": "tianditu_image",
 		"url": "http://t6.tianditu.com/DataServer?T=img_w&x={x}&y={y}&l={z}",
@@ -26,6 +28,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d4025e27720c905f4e1f99d",
 		"dataType": "image",
+		"name": "谷歌地图",
 		"cnname": "google_map",
 		"enname": "google_map",
 		"url": "http://mt1.google.cn/vt?lyrs=m&gl=CN&x={x}&y={y}&z={z}",
@@ -37,6 +40,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d4025ff7720c905f4e1f99e",
 		"dataType": "image",
+		"name": "谷歌影像带标注",
 		"cnname": "google_imagewithlabel",
 		"enname": "google_imagewithlabel",
 		"url": "http://mt1.google.cn/vt?lyrs=s,h&gl=CN&x={x}&y={y}&z={z}",
@@ -48,6 +52,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d4026237720c905f4e1f99f",
 		"dataType": "image",
+		"name": "谷歌标注",
 		"cnname": "google_image_label",
 		"enname": "google_image_label",
 		"url": "http://mt1.google.cn/vt?lyrs=h&gl=CN&x={x}&y={y}&z={z}",
@@ -59,6 +64,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d4026417720c905f4e1f9a0",
 		"dataType": "image",
+		"name": "谷歌影像",
 		"cnname": "google_image",
 		"enname": "google_image",
 		"url": "http://mt1.google.cn/vt?lyrs=s&x={x}&y={y}&z={z}",
@@ -70,6 +76,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402bf27720c91a3c59419d",
 		"dataType": "image",
+		"name": "天地图标注",
 		"cnname": "tianditu_map_label",
 		"enname": "tianditu_map_label",
 		"url": "http://t3.tianditu.com/DataServer?T=cva_w&x={x}&y={y}&l={z}",
@@ -81,6 +88,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402c157720c91a3c59419e",
 		"dataType": "image",
+		"name": "高德地图",
 		"cnname": "gaode_map",
 		"enname": "gaode_map",
 		"url": "http://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
@@ -92,6 +100,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402c377720c91a3c59419f",
 		"dataType": "image",
+		"name": "高德影像",
 		"cnname": "gaode_image",
 		"enname": "gaode_image",
 		"url": "http://webst02.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
@@ -103,6 +112,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402c5d7720c91a3c5941a0",
 		"dataType": "image",
+		"name": "高德影像标注",
 		"cnname": "gaode_image_label",
 		"enname": "gaode_image_label",
 		"url": "http://webst02.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}",
@@ -114,6 +124,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402c797720c91a3c5941a1",
 		"dataType": "image",
+		"name": "百度地图",
 		"cnname": "baidu_map",
 		"enname": "baidu_map",
 		"url": "http://online1.map.bdimg.com/onlinelabel/?qt=tile&x={x}&y={y}&z={z}&styles=pl&scaler=1&p=1",
@@ -125,6 +136,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402c997720c91a3c5941a2",
 		"dataType": "image",
+		"name": "百度影像",
 		"cnname": "baidu_image",
 		"enname": "baidu_image",
 		"url": "http://shangetu1.map.bdimg.com/it/u=x={x};y={y};z={z};v=009;type=sate&fm=46",
@@ -136,6 +148,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402cdd7720c91a3c5941a3",
 		"dataType": "image",
+		"name": "百度影像标注",
 		"cnname": "baidu_image_label",
 		"enname": "baidu_image_label",
 		"url": "http://online6.map.bdimg.com/tile/?qt=tile&x={x}&y={y}&z={z}&styles=sl&v=020",
@@ -147,6 +160,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402d017720c91a3c5941a4",
 		"dataType": "image",
+		"name": "百度暗色",
 		"cnname": "baidu_map_midnight",
 		"enname": "baidu_map_midnight",
 		"url": "http://api0.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=midnight",
@@ -158,6 +172,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402d2f7720c91a3c5941a5",
 		"dataType": "image",
+		"name": "百度黑色",
 		"cnname": "baidu_map_dark",
 		"enname": "baidu_map_dark",
 		"url": "http://api2.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=dark",
@@ -169,6 +184,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402d4d7720c91a3c5941a6",
 		"dataType": "image",
+		"name": "OpenStreetMap",
 		"cnname": "openstreetmap",
 		"enname": "openstreetmap",
 		"url": "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -180,6 +196,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402dba7720c91a3c5941a7",
 		"dataType": "image",
+		"name": "MapBox影像",
 		"cnname": "mapbox_satellite",
 		"enname": "mapbox_satellite",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -191,6 +208,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402de67720c91a3c5941a8",
 		"dataType": "image",
+		"name": "MapBox地图",
 		"cnname": "mapbox_streets",
 		"enname": "mapbox_streets",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -202,6 +220,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402e087720c91a3c5941a9",
 		"dataType": "image",
+		"name": "MapBox亮色",
 		"cnname": "mapbox_light",
 		"enname": "mapbox_light",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -213,6 +232,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402e277720c91a3c5941aa",
 		"dataType": "image",
+		"name": "MapBox暗色",
 		"cnname": "mapbox_dark",
 		"enname": "mapbox_dark",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.dark/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -224,6 +244,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402e4a7720c91a3c5941ab",
 		"dataType": "image",
+		"name": "MapBox影像2",
 		"cnname": "mapbox_streets_satellite",
 		"enname": "mapbox_streets_satellite",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -235,6 +256,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402e6a7720c91a3c5941ac",
 		"dataType": "image",
+		"name": "MapBox自定义",
 		"cnname": "mapbox_wheatpaste",
 		"enname": "mapbox_wheatpaste",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.wheatpaste/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -246,6 +268,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402e8f7720c91a3c5941ad",
 		"dataType": "image",
+		"name": "MapBox基础",
 		"cnname": "mapbox_streets_basic",
 		"enname": "mapbox_streets_basic",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-basic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -257,6 +280,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402eb57720c91a3c5941ae",
 		"dataType": "image",
+		"name": "MapBox自定义2",
 		"cnname": "mapbox_comic",
 		"enname": "mapbox_comic",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.comic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -268,6 +292,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402ee17720c91a3c5941af",
 		"dataType": "image",
+		"name": "MapBox户外",
 		"cnname": "mapbox_outdoors",
 		"enname": "mapbox_outdoors",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.outdoors/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -279,6 +304,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402efe7720c91a3c5941b0",
 		"dataType": "image",
+		"name": "MapBox骑行",
 		"cnname": "mapbox_run_bike_hike",
 		"enname": "mapbox_run_bike_hike",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.run-bike-hike/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -290,6 +316,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402f237720c91a3c5941b1",
 		"dataType": "image",
+		"name": "MapBox铅笔",
 		"cnname": "mapbox_pencil",
 		"enname": "mapbox_pencil",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.pencil/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -301,6 +328,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402f447720c91a3c5941b2",
 		"dataType": "image",
+		"name": "MapBox翻印",
 		"cnname": "mapbox_pirates",
 		"enname": "mapbox_pirates",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.pirates/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -312,6 +340,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402f6b7720c91a3c5941b3",
 		"dataType": "image",
+		"name": "MapBox翡翠",
 		"cnname": "mapbox_emerald",
 		"enname": "mapbox_emerald",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.emerald/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -323,6 +352,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d402f8f7720c91a3c5941b4",
 		"dataType": "image",
+		"name": "MapBox高对比",
 		"cnname": "mapbox_high_contrast",
 		"enname": "mapbox_high_contrast",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.high-contrast/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
@@ -334,6 +364,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5d40239d7720c905f4e1f99b",
 		"dataType": "image",
+		"name": "天地图影像标注",
 		"cnname": "tianditu_image_label",
 		"enname": "tianditu_image_label",
 		"url": "http://t6.tianditu.com/DataServer?T=cia_w&x={x}&y={y}&l={z}",
@@ -345,6 +376,7 @@ var initialOlMaps = `[
 		{
 		"_id": "5e67150c7720c9077482b6bf",
 		"dataType": "image",
+		"name": "arcgis在线影像",
 		"cnname": "arcgis在线影像",
 		"enname": "arcgis_imagery",
 		"url": "http://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",

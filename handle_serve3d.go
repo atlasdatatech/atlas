@@ -160,7 +160,8 @@ func (s *Scene) UpInsert() error {
 type OnlineMap struct {
 	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
 	Type      string    `form:"dataType" json:"dataType"`
-	Name      string    `form:"cnname" json:"cnname"`
+	Name      string    `form:"name" json:"name"`
+	NameCn    string    `form:"cnname" json:"cnname"`
 	NameEn    string    `form:"enname" json:"enname"`
 	URL       string    `form:"url" json:"url"`
 	Coord     string    `form:"coordType" json:"coordType"`
