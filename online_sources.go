@@ -33,7 +33,7 @@ var initialOlMaps = `[
 		"enname": "google_map",
 		"url": "http://mt1.google.cn/vt?lyrs=m&gl=CN&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/3aed23eb-a2ef-4d49-9893-ec1731c33b4a\\2019_07_30_19_32_22.jpg",
 		"date": "2019-07-30 19:32:24"
 		},
@@ -45,7 +45,7 @@ var initialOlMaps = `[
 		"enname": "google_imagewithlabel",
 		"url": "http://mt1.google.cn/vt?lyrs=s,h&gl=CN&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/878564e4-6a86-4752-9d98-68eb6e9bd37e\\2019_07_30_19_32_35.jpg",
 		"date": "2019-07-30 19:32:36"
 		},
@@ -57,7 +57,7 @@ var initialOlMaps = `[
 		"enname": "google_image_label",
 		"url": "http://mt1.google.cn/vt?lyrs=h&gl=CN&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/860b5719-701a-4568-8310-59bac025ce29\\2019_07_30_19_32_45.jpg",
 		"date": "2019-07-30 19:32:46"
 		},
@@ -69,7 +69,7 @@ var initialOlMaps = `[
 		"enname": "google_image",
 		"url": "http://mt1.google.cn/vt?lyrs=s&x={x}&y={y}&z={z}",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/97ce8620-a191-4506-911d-a94f4f9d0385\\2019_07_30_19_32_59.jpg",
 		"date": "2019-07-30 19:33:01"
 		},
@@ -93,7 +93,7 @@ var initialOlMaps = `[
 		"enname": "gaode_map",
 		"url": "http://webrd04.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/54c71b94-892e-42ee-bdd7-858cf5fa2399\\2019_07_30_19_37_56.jpg",
 		"date": "2019-07-30 19:37:57"
 		},
@@ -105,7 +105,7 @@ var initialOlMaps = `[
 		"enname": "gaode_image",
 		"url": "http://webst02.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/45548a6b-5cad-4f0f-8ca1-3c9372cefd99\\2019_07_30_19_38_30.jpg",
 		"date": "2019-07-30 19:38:31"
 		},
@@ -117,7 +117,7 @@ var initialOlMaps = `[
 		"enname": "gaode_image_label",
 		"url": "http://webst02.is.autonavi.com/appmaptile?style=8&x={x}&y={y}&z={z}",
 		"coordType": "GCJ02",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/860ede97-8461-408c-979e-dc4a213849b8\\2019_07_30_19_39_07.jpg",
 		"date": "2019-07-30 19:39:09"
 		},
@@ -129,7 +129,7 @@ var initialOlMaps = `[
 		"enname": "baidu_map",
 		"url": "http://online1.map.bdimg.com/onlinelabel/?qt=tile&x={x}&y={y}&z={z}&styles=pl&scaler=1&p=1",
 		"coordType": "BD09",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/e7a26b44-058e-420b-8554-8cf33dc7b7a6\\2019_07_30_19_39_37.jpg",
 		"date": "2019-07-30 19:39:37"
 		},
@@ -141,7 +141,7 @@ var initialOlMaps = `[
 		"enname": "baidu_image",
 		"url": "http://shangetu1.map.bdimg.com/it/u=x={x};y={y};z={z};v=009;type=sate&fm=46",
 		"coordType": "BD09",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/764dee7e-4f17-4c93-ab35-54b6c0548054\\2019_07_30_19_40_08.jpg",
 		"date": "2019-07-30 19:40:09"
 		},
@@ -153,7 +153,7 @@ var initialOlMaps = `[
 		"enname": "baidu_image_label",
 		"url": "http://online6.map.bdimg.com/tile/?qt=tile&x={x}&y={y}&z={z}&styles=sl&v=020",
 		"coordType": "BD09",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/dc365474-8f27-48d1-aa5d-95043efb3601\\2019_07_30_19_41_00.jpg",
 		"date": "2019-07-30 19:41:17"
 		},
@@ -165,7 +165,7 @@ var initialOlMaps = `[
 		"enname": "baidu_map_midnight",
 		"url": "http://api0.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=midnight",
 		"coordType": "BD09",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/5ff215b3-2013-4169-a132-e456e65ecfd2\\2019_07_30_19_41_53.jpg",
 		"date": "2019-07-30 19:41:53"
 		},
@@ -177,7 +177,7 @@ var initialOlMaps = `[
 		"enname": "baidu_map_dark",
 		"url": "http://api2.map.bdimg.com/customimage/tile?=&x={x}&y={y}&z={z}&scale=1&customid=dark",
 		"coordType": "BD09",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/2144191a-8cf0-446c-9c63-b3c4de21d0ba\\2019_07_30_19_42_38.jpg",
 		"date": "2019-07-30 19:42:39"
 		},
@@ -189,7 +189,7 @@ var initialOlMaps = `[
 		"enname": "openstreetmap",
 		"url": "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/f236ad7a-bc54-4f93-91ca-3e7f8be7faa6\\2019_07_30_19_43_08.jpg",
 		"date": "2019-07-30 19:43:09"
 		},
@@ -201,7 +201,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_satellite",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/5bce4539-d132-4751-84ff-0ea77b3ca287\\2019_07_30_19_44_57.jpg",
 		"date": "2019-07-30 19:44:58"
 		},
@@ -213,7 +213,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_streets",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/481dd4cb-69e7-45b4-85e2-ed0f5cd3e521\\2019_07_30_19_45_41.jpg",
 		"date": "2019-07-30 19:45:42"
 		},
@@ -225,7 +225,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_light",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.light/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/ce49f35e-da93-42e0-b2a8-b5ad39bfa68c\\2019_07_30_19_45_59.jpg",
 		"date": "2019-07-30 19:46:16"
 		},
@@ -237,7 +237,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_dark",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.dark/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/862e6c95-07e8-4e42-9427-9472dd4c63df\\2019_07_30_19_46_46.jpg",
 		"date": "2019-07-30 19:46:47"
 		},
@@ -249,7 +249,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_streets_satellite",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-satellite/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/e2e17da4-ff19-4bf0-9f74-1c4d30790156\\2019_07_30_19_47_21.jpg",
 		"date": "2019-07-30 19:47:22"
 		},
@@ -261,7 +261,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_wheatpaste",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.wheatpaste/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/40130c8b-ad6d-41c4-8f41-65dc30131a4d\\2019_07_30_19_47_53.jpg",
 		"date": "2019-07-30 19:47:54"
 		},
@@ -273,7 +273,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_streets_basic",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.streets-basic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/1562f19d-15c6-408d-9758-0a3947582ca5\\2019_07_30_19_48_30.jpg",
 		"date": "2019-07-30 19:48:31"
 		},
@@ -285,7 +285,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_comic",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.comic/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/514dc9dd-021c-4bee-81e3-153c2a6efd8e\\2019_07_30_19_49_08.jpg",
 		"date": "2019-07-30 19:49:09"
 		},
@@ -297,7 +297,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_outdoors",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.outdoors/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/49190b16-45a9-4b40-81ef-69902321e536\\2019_07_30_19_49_49.jpg",
 		"date": "2019-07-30 19:49:53"
 		},
@@ -309,7 +309,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_run_bike_hike",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.run-bike-hike/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/6bad1ff2-f123-4729-9ec4-b67ceee9470d\\2019_07_30_19_50_21.jpg",
 		"date": "2019-07-30 19:50:22"
 		},
@@ -321,7 +321,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_pencil",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.pencil/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/e5452ed5-93ca-45ae-91f0-7fa19c90460d\\2019_07_30_19_50_58.jpg",
 		"date": "2019-07-30 19:50:59"
 		},
@@ -333,7 +333,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_pirates",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.pirates/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/b5526e93-d8bf-4d84-8fd9-392d330c9b4f\\2019_07_30_19_51_31.jpg",
 		"date": "2019-07-30 19:51:32"
 		},
@@ -345,7 +345,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_emerald",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.emerald/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/aa62c222-dce1-4388-8dd9-8e7c58aac484\\2019_07_30_19_52_10.jpg",
 		"date": "2019-07-30 19:52:11"
 		},
@@ -357,7 +357,7 @@ var initialOlMaps = `[
 		"enname": "mapbox_high_contrast",
 		"url": "https://c.tiles.mapbox.com/v4/mapbox.high-contrast/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA",
 		"coordType": "WGS84",
-		"requireField": " ",
+		"requireField": "",
 		"thumbnail": "http://cim.cityfun.com.cn/thumbnail/99e8d345-9cb0-49f0-a7bb-c68ab02495bf\\2019_07_30_19_52_46.jpg",
 		"date": "2019-07-31 11:21:21"
 		},
