@@ -156,8 +156,8 @@ func (s *Scene) UpInsert() error {
 	return nil
 }
 
-//OnlineMap 在线底图
-type OnlineMap struct {
+//Olmap OnlineMap在线底图
+type Olmap struct {
 	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
 	Type      string    `form:"dataType" json:"dataType"`
 	Name      string    `form:"name" json:"name"`
@@ -174,7 +174,8 @@ type OnlineMap struct {
 type Tileset3d struct {
 	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
 	Type      string    `form:"dataType" json:"dataType"`
-	Name      string    `form:"cnname" json:"cnname"`
+	Name      string    `form:"name" json:"name"`
+	NameCn    string    `form:"cnname" json:"cnname"`
 	NameEn    string    `form:"enname" json:"enname"`
 	URL       string    `form:"url" json:"url"`
 	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
@@ -185,7 +186,8 @@ type Tileset3d struct {
 type Terrain3d struct {
 	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
 	Type      string    `form:"dataType" json:"dataType"`
-	Name      string    `form:"cnname" json:"cnname"`
+	Name      string    `form:"name" json:"name"`
+	NameCn    string    `form:"cnname" json:"cnname"`
 	NameEn    string    `form:"enname" json:"enname"`
 	URL       string    `form:"url" json:"url"`
 	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
@@ -226,7 +228,7 @@ func listOnlineMaps(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	var olmaps []OnlineMap
+	var olmaps []Olmap
 	err := db.Find(&olmaps).Error
 	if err != nil {
 		resp.Fail(c, 5001)
@@ -248,7 +250,7 @@ func getOnlineMap(c *gin.Context) {
 	}
 
 	sid := c.Param("id")
-	olmap := &OnlineMap{}
+	olmap := &Olmap{}
 	if err := db.Where("id = ?", sid).First(&olmap).Error; err != nil {
 		if !gorm.IsRecordNotFoundError(err) {
 			log.Error(err)
@@ -272,7 +274,7 @@ func createOnlineMap(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	olmap := OnlineMap{}
+	olmap := Olmap{}
 	err := c.Bind(&olmap)
 	if err != nil {
 		log.Error(err)
@@ -311,7 +313,7 @@ func updateOnlineMap(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	olmap := OnlineMap{}
+	olmap := Olmap{}
 	err := c.Bind(&olmap)
 	if err != nil {
 		log.Error(err)
@@ -319,7 +321,7 @@ func updateOnlineMap(c *gin.Context) {
 		return
 	}
 	// 更新insertUser
-	dbres := db.Model(OnlineMap{}).Where("id = ?", id).Update(olmap)
+	dbres := db.Model(Olmap{}).Where("id = ?", id).Update(olmap)
 
 	if dbres.Error != nil {
 		log.Error(err)
@@ -345,7 +347,7 @@ func deleteOnlineMap(c *gin.Context) {
 	}
 	ids := c.Param("ids")
 	sids := strings.Split(ids, ",")
-	dbres := db.Where("id in (?)", sids).Delete(OnlineMap{})
+	dbres := db.Where("id in (?)", sids).Delete(Olmap{})
 	if dbres.Error != nil {
 		log.Error(dbres.Error)
 		resp.Fail(c, 5001)

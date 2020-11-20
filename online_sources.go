@@ -391,6 +391,7 @@ var initialTilesets = `[
 	{
 		"_id": "5dcc26be7720c91a7cfcc69b",
 		"dataType": "model",
+		"name": "点云测试",
 		"cnname": "点云测试",
 		"enname": "点云测试",
 		"url": "http://cim.cityfun.com.cn/3dts/cs/pnts/t2/tileset.json",
@@ -400,6 +401,7 @@ var initialTilesets = `[
 	{
 	"_id": "5dcc26be7720c91a7cfcc69c",
 	"dataType": "model",
+	"name": "建筑物测试",
 	"cnname": "建筑物测试",
 	"enname": "建筑物测试",
 	"url": "http://cim.cityfun.com.cn/3dts/cs/buildings/t1/tileset.json",
@@ -408,7 +410,8 @@ var initialTilesets = `[
 	},
 	{
 	"_id": "5d71a78c7720c90c9001d61c",
-	"dataType": "白模测试1",
+	"dataType": "model",
+	"name": "白模测试1",
 	"cnname": "白模测试1",
 	"enname": "model test2",
 	"url": "http://cim.cityfun.com.cn/3dts/cs/buildings/t2/tileset.json",
@@ -418,6 +421,7 @@ var initialTilesets = `[
 	{
 	"_id": "5d40274c7720c91510fdcdab",
 	"dataType": "model",
+	"name": "白模测试2",
 	"cnname": "白模测试2",
 	"enname": "白模测试2",
 	"url": "http://cim.cityfun.com.cn/3dts/cs/buildings/t3/tileset.json",
@@ -427,6 +431,7 @@ var initialTilesets = `[
 	{
 		"_id": "5ee1f33e7720c92388d40xyz",
 		"dataType": "model",
+		"name": "常熟倾射",
 		"cnname": "常熟倾射",
 		"enname": "常熟倾射",
 		"url": "http://cim.cityfun.com.cn/jsdhqy/CN/JS/SZ/CS/MoCheng/ChangRui/_Inmap/ChangRui202004.3dtiles/tileset.json",
@@ -436,6 +441,7 @@ var initialTilesets = `[
 	{
 	"_id": "5ee1f33e7720c92388d40bf0",
 	"dataType": "model",
+	"name": "高铁新城",
 	"cnname": "高铁新城",
 	"enname": "高铁新城",
 	"url": "http://cim.cityfun.com.cn/3dts/xc/gtxc/t1/tileset.json",
@@ -445,6 +451,7 @@ var initialTilesets = `[
 	{
 	"_id": "5d40272c7720c91510fdcda9",
 	"dataType": "model",
+	"name": "西山飘渺峰",
 	"cnname": "西山飘渺峰",
 	"enname": "西山飘渺峰",
 	"url": "http://cim.cityfun.com.cn/3dts/sz/xishan/piaomiaofeng/t2/tileset.json",
@@ -454,6 +461,7 @@ var initialTilesets = `[
 	{
 	"_id": "5e9e5b7b7720c91384e85e31",
 	"dataType": "model",
+	"name": "堂里古村",
 	"cnname": "堂里古村",
 	"enname": "堂里古村",
 	"url": "http://cim.cityfun.com.cn/3dts/sz/xishan/tangligucun/t2/tileset.json",
@@ -463,6 +471,7 @@ var initialTilesets = `[
 	{
 	"_id": "5d40273b7720c91510fdcdaa",
 	"dataType": "model",
+	"name": "盐城市区",
 	"cnname": "盐城市区",
 	"enname": "盐城市区",
 	"url": "http://cim.cityfun.com.cn/3dts/yc/all30t2/tileset.json",
@@ -472,6 +481,7 @@ var initialTilesets = `[
 	{
 		"_id" : "5e60cd447720c90df0e0c80c",
 		"dataType" : "model",
+		"name" : "谷歌地球",
 		"cnname" : "谷歌地球",
 		"enname" : "google earth",
 		"url" : "http://cim.cityfun.com.cn/rt/earth/tileset.json",
@@ -484,6 +494,7 @@ var initialTerrains = `[
 	{
 	"_id": "5d4026ea7720c91510fdcda7",
 	"dataType": "terrain",
+	"name": " cesium官方",
 	"cnname": " cesium官方",
 	"enname": "cesium官方",
 	"url": "Ion(1)",
@@ -495,6 +506,7 @@ var initialTerrains = `[
 	{
 	"_id": "5d40266e7720c905f4e1f9a1",
 	"dataType": "terrain",
+	"name": "世界12级（测试）",
 	"cnname": "世界12级（测试）",
 	"enname": "世界12级（测试）",
 	"url": "http://cim.cityfun.com.cn/terrain3d/42752d50ac1f11e99dbd8fd044883638",
@@ -506,6 +518,7 @@ var initialTerrains = `[
 	{
 	"_id": "5d40268e7720c905f4e1f9a2",
 	"dataType": "terrain",
+	"name": "中国14级（测试）",
 	"cnname": "中国14级（测试）",
 	"enname": "中国14级（测试）",
 	"url": "http://cim.cityfun.com.cn/terrain3d/577fd5b0ac1f11e99dbd8fd044883638",

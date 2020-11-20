@@ -200,7 +200,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	db.AutoMigrate(&Scene{}, &OnlineMap{}, &Tileset3d{}, &Terrain3d{}, &Symbol3d{}, &Style3d{})
+	db.AutoMigrate(&Scene{}, &Olmap{}, &Tileset3d{}, &Terrain3d{}, &Symbol3d{}, &Style3d{})
 	return db, nil
 }
 
@@ -830,7 +830,7 @@ func redirectToHTTPS(w http.ResponseWriter, req *http.Request) {
 
 func initOnlineSources() {
 	{
-		olmaps := []OnlineMap{}
+		olmaps := []Olmap{}
 		err := json.Unmarshal([]byte(initialOlMaps), &olmaps)
 		if err != nil {
 			log.Error(err)
