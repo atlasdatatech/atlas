@@ -899,7 +899,6 @@ func initOnlineSources() {
 		}
 		fmt.Printf("insert %d rows\n", len(styles))
 	}
-
 }
 
 func main() {
