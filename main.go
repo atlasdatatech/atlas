@@ -200,7 +200,7 @@ func initSysDb() (*gorm.DB, error) {
 	db.AutoMigrate(&User{}, &Role{}, &Attempt{})
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
-	db.AutoMigrate(&Scene{}, &Olmap{}, &Tileset3d{}, &Terrain3d{}, &Symbol3d{}, &Style3d{})
+	db.AutoMigrate(&Scene{}, &Olmap{}, &Tileset3d{}, &Terrain3d{}, &Style3d{}, &Symbol3d{}, &Symbol3dGroup{})
 	return db, nil
 }
 
@@ -555,10 +555,12 @@ func setupRouter() *gin.Engine {
 	// studio.Use(AuthMidHandler(authMid))
 	// studio.Use(UserMidHandler())
 	{
-		symbols3d.GET("/", getSymbols3dList)
+		symbols3d.GET("/", getSymbolGroups3dList)
+		symbols3d.GET("/group/:id/", getSymbolGroup3d)
+		symbols3d.POST("/group/:id/", updateSymbolGroup3d)
 		symbols3d.POST("/", listSymbols3d)
 		symbols3d.POST("/create/", createSymbol3d)
-		symbols3d.GET("/info/:id/", getSymbols3d)
+		symbols3d.GET("/info/:id/", getSymbol3d)
 		symbols3d.POST("/info/:id/", updateSymbol3d)
 		symbols3d.DELETE("/delete/:ids/", deleteSymbol3d)
 	}
@@ -582,7 +584,7 @@ func setupRouter() *gin.Engine {
 		onlines.GET("/images/", listOnlineMaps)
 		onlines.GET("/tilesets/", listTilesets3d)
 		onlines.GET("/terrains/", listTerrains3d)
-		onlines.GET("/symbols/", getSymbols3dList)
+		onlines.GET("/symbols/", getSymbolGroups3dList)
 		onlines.POST("/symbols/", listSymbols3d)
 		onlines.GET("/styles3d/", listStyles3d)
 		onlines.POST("/styles3d/", createStyle3d)
@@ -595,6 +597,7 @@ func setupRouter() *gin.Engine {
 	// studio.Use(UserMidHandler())
 	{
 		other.GET("/geocoder", geoCoder)
+		other.GET("/shortid", getShortID)
 	}
 
 	//serve3d 其他接口
@@ -870,6 +873,20 @@ func initOnlineSources() {
 			}
 		}
 		fmt.Printf("insert %d rows\n", len(terrains))
+	}
+	{
+		groups := []Symbol3dGroup{}
+		err := json.Unmarshal([]byte(initialSybolGroups), &groups)
+		if err != nil {
+			log.Error(err)
+		}
+		for _, v := range groups {
+			res := db.Create(v)
+			if res.Error != nil {
+				log.Error(res.Error)
+			}
+		}
+		fmt.Printf("insert %d rows\n", len(groups))
 	}
 	{
 		symbols := []Symbol3d{}

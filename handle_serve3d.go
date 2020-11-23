@@ -196,9 +196,28 @@ type Terrain3d struct {
 	CreatedAt time.Time `json:"-"`
 }
 
+//GroupNode 符号库节点结构
+type GroupNode struct {
+	ID       string      `form:"_id" json:"_id"`
+	Name     string      `form:"name" json:"name"`
+	Symbols  []string    `form:"symbols" json:"symbols"`
+	Children []GroupNode `form:"children" json:"children"`
+}
+
+//Symbol3dGroup 三维符号
+type Symbol3dGroup struct {
+	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	Type      string    `form:"type" json:"type"`
+	Name      string    `form:"name" json:"name"`
+	Content   string    `form:"content" json:"content"`
+	Thumbnail string    `form:"thumbnail" json:"thumbnail"`
+	CreatedAt time.Time `json:"-"`
+}
+
 //Symbol3d 三维符号
 type Symbol3d struct {
 	ID        string    `form:"_id" json:"_id" gorm:"primary_key"`
+	GroupID   string    `form:"groupId" json:"groupId"`
 	Type      string    `form:"type" json:"type"`
 	Name      string    `form:"name" json:"name"`
 	Content   string    `form:"content" json:"content"`
@@ -644,7 +663,7 @@ func deleteTerrain3d(c *gin.Context) {
 
 //**********************************************
 //listOnlineSymbols 获取地图列表
-func getSymbols3dList(c *gin.Context) {
+func getSymbolGroups3dList(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -653,11 +672,77 @@ func getSymbols3dList(c *gin.Context) {
 	if uid == "" {
 		uid = ATLAS
 	}
-	str := `{"name":"内置标绘","_id":"cesiumlab_symbols","symbols":[],"children":[{"name":"常规","symbols":[],"children":[{"name":"点状","symbols":["2732986035c811ea966d4136f619ed29","2733d0e035c811ea966d4136f619ed29","2735096035c811ea966d4136f619ed29"],"children":[]},{"name":"线状","symbols":["2736900035c811ea966d4136f619ed29","2737a17035c811ea966d4136f619ed29","2739010035c811ea966d4136f619ed29","273a398035c811ea966d4136f619ed29","273b4af035c811ea966d4136f619ed29","273c837035c811ea966d4136f619ed29","273d94e035c811ea966d4136f619ed29","273e7f4035c811ea966d4136f619ed29","273f69a035c811ea966d4136f619ed29","27407b1035c811ea966d4136f619ed29","2741b39035c811ea966d4136f619ed29"],"children":[]},{"name":"面状","symbols":["2742c50035c811ea966d4136f619ed29","2743af6035c811ea966d4136f619ed29","274499c035c811ea966d4136f619ed29","2745842035c811ea966d4136f619ed29","2746bca035c811ea966d4136f619ed29","2747a70035c811ea966d4136f619ed29","2748b87035c811ea966d4136f619ed29","2749c9e035c811ea966d4136f619ed29"],"children":[]}]},{"name":"立体","symbols":[],"children":[{"name":"模型","symbols":["274b026035c811ea966d4136f619ed29","274becc035c811ea966d4136f619ed29","274cd72035c811ea966d4136f619ed29"],"children":[]}]},{"name":"高级","symbols":["274de89035c811ea966d4136f619ed29","275d2ad035c811ea966d4136f619ed29","27642fb035c811ea966d4136f619ed29","62c1e4f0641011eab214bb3d7d537a27","62c28130641011eab214bb3d7d537a27"],"children":[{"name":"图元","symbols":["274f211035c811ea966d4136f619ed29","2750a7b035c811ea966d4136f619ed29","2751e03035c811ea966d4136f619ed29","2752ca9035c811ea966d4136f619ed29","27542a2035c811ea966d4136f619ed29","27553b9035c811ea966d4136f619ed29","2756c23035c811ea966d4136f619ed29","2757fab035c811ea966d4136f619ed29","27595a4035c811ea966d4136f619ed29","275a6bb035c811ea966d4136f619ed29","275ba43035c811ea966d4136f619ed29","275cb5a035c811ea966d4136f619ed29"],"children":[]},{"name":"管道","symbols":["275e3c4035c811ea966d4136f619ed29","275f26a035c811ea966d4136f619ed29","27605f2035c811ea966d4136f619ed29","2761709035c811ea966d4136f619ed29","27625af035c811ea966d4136f619ed29","2763455035c811ea966d4136f619ed29"],"children":[]}]}]}`
-	jstr := make(map[string]interface{})
-	json.Unmarshal([]byte(str), &jstr)
-	xxx := []map[string]interface{}{jstr}
-	resp.DoneData(c, xxx)
+
+	var groups []Symbol3dGroup
+	err := db.Find(&groups).Error
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+	// str := `{"name":"内置标绘","_id":"cesiumlab_symbols","symbols":[],"children":[{"name":"常规","symbols":[],"children":[{"name":"点状","symbols":["2732986035c811ea966d4136f619ed29","2733d0e035c811ea966d4136f619ed29","2735096035c811ea966d4136f619ed29"],"children":[]},{"name":"线状","symbols":["2736900035c811ea966d4136f619ed29","2737a17035c811ea966d4136f619ed29","2739010035c811ea966d4136f619ed29","273a398035c811ea966d4136f619ed29","273b4af035c811ea966d4136f619ed29","273c837035c811ea966d4136f619ed29","273d94e035c811ea966d4136f619ed29","273e7f4035c811ea966d4136f619ed29","273f69a035c811ea966d4136f619ed29","27407b1035c811ea966d4136f619ed29","2741b39035c811ea966d4136f619ed29"],"children":[]},{"name":"面状","symbols":["2742c50035c811ea966d4136f619ed29","2743af6035c811ea966d4136f619ed29","274499c035c811ea966d4136f619ed29","2745842035c811ea966d4136f619ed29","2746bca035c811ea966d4136f619ed29","2747a70035c811ea966d4136f619ed29","2748b87035c811ea966d4136f619ed29","2749c9e035c811ea966d4136f619ed29"],"children":[]}]},{"name":"立体","symbols":[],"children":[{"name":"模型","symbols":["274b026035c811ea966d4136f619ed29","274becc035c811ea966d4136f619ed29","274cd72035c811ea966d4136f619ed29"],"children":[]}]},{"name":"高级","symbols":["274de89035c811ea966d4136f619ed29","275d2ad035c811ea966d4136f619ed29","27642fb035c811ea966d4136f619ed29","62c1e4f0641011eab214bb3d7d537a27","62c28130641011eab214bb3d7d537a27"],"children":[{"name":"图元","symbols":["274f211035c811ea966d4136f619ed29","2750a7b035c811ea966d4136f619ed29","2751e03035c811ea966d4136f619ed29","2752ca9035c811ea966d4136f619ed29","27542a2035c811ea966d4136f619ed29","27553b9035c811ea966d4136f619ed29","2756c23035c811ea966d4136f619ed29","2757fab035c811ea966d4136f619ed29","27595a4035c811ea966d4136f619ed29","275a6bb035c811ea966d4136f619ed29","275ba43035c811ea966d4136f619ed29","275cb5a035c811ea966d4136f619ed29"],"children":[]},{"name":"管道","symbols":["275e3c4035c811ea966d4136f619ed29","275f26a035c811ea966d4136f619ed29","27605f2035c811ea966d4136f619ed29","2761709035c811ea966d4136f619ed29","27625af035c811ea966d4136f619ed29","2763455035c811ea966d4136f619ed29"],"children":[]}]}]}`
+	// jstr := make(map[string]interface{})
+	// json.Unmarshal([]byte(str), &jstr)
+	// xxx := []map[string]interface{}{jstr}
+	resp.DoneData(c, groups)
+}
+
+//getSymbolGroup3d 获取地图列表
+func getSymbolGroup3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	sid := c.Param("id")
+	group3d := &Symbol3dGroup{}
+	if err := db.Where("id = ?", sid).First(&group3d).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+
+	resp.DoneData(c, group3d)
+}
+
+//updateTileset3d 更新指定三维符号库
+func updateSymbolGroup3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	group3d := Symbol3dGroup{}
+	err := c.Bind(&group3d)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Symbol3dGroup{}).Where("id = ?", id).Update(group3d)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
 }
 
 //listSymbols3d 获取地形服务详细信息
@@ -695,7 +780,7 @@ func listSymbols3d(c *gin.Context) {
 }
 
 //getSymbols3d 获取地图列表
-func getSymbols3d(c *gin.Context) {
+func getSymbol3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -750,7 +835,37 @@ func createSymbol3d(c *gin.Context) {
 		resp.Fail(c, 5001)
 		return
 	}
-	//管理员创建地图后自己拥有,root不需要
+	//更新symbolgroup
+	if symbol3d.GroupID != "" {
+		group := Symbol3dGroup{
+			ID: symbol3d.GroupID,
+		}
+		dbres := db.Find(&group)
+		if dbres.RowsAffected != 1 {
+			log.Error(dbres.Error.Error())
+			goto r
+		}
+		data := group.Content
+		content := GroupNode{}
+		err := json.Unmarshal([]byte(data), &content)
+		if err != nil {
+			log.Error("unmarsh content error")
+			goto r
+		}
+		content.Symbols = append(content.Symbols, symbol3d.ID)
+		contentData, err := json.Marshal(content)
+		if err != nil {
+			log.Error("Marshal content error")
+			goto r
+		}
+		group.Content = string(contentData)
+		dbres = db.Model(&Symbol3dGroup{}).Update(&group)
+		if dbres.RowsAffected != 1 {
+			log.Error(dbres.Error.Error())
+		}
+	}
+
+r:
 	resp.DoneData(c, gin.H{
 		"id": symbol3d.ID,
 	})
@@ -791,7 +906,7 @@ func updateSymbol3d(c *gin.Context) {
 	return
 }
 
-//deleteTileset3d 删除指定三维服务
+//deleteTileset3d 删除指定三维符号
 func deleteSymbol3d(c *gin.Context) {
 	resp := NewResp()
 	uid := c.GetString(userKey)
@@ -1203,6 +1318,24 @@ func geoCoder(c *gin.Context) {
 		return
 	}
 	resp.DoneData(c, bd.Results)
+}
+
+func getShortID(c *gin.Context) {
+	resp := NewResp()
+	id, err := shortid.Generate()
+	if err != nil {
+		id, err = shortid.Generate()
+		if err != nil {
+			id, err = shortid.Generate()
+			if err != nil {
+				resp.FailMsg(c, "shortid generate error")
+				return
+			}
+		}
+	}
+	resp.DoneData(c, gin.H{
+		"id": id,
+	})
 }
 
 func tilesProxy(c *gin.Context) {
