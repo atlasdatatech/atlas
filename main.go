@@ -19,7 +19,7 @@ import (
 	"github.com/go-spatial/tegola/cache"
 	"github.com/go-spatial/tegola/config"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
+	aprd "github.com/go-spatial/tegola/provider"
 	_ "github.com/go-spatial/tegola/provider/debug"
 	_ "github.com/go-spatial/tegola/provider/gpkg"
 	_ "github.com/go-spatial/tegola/provider/postgis"
@@ -58,16 +58,17 @@ const (
 )
 
 var (
-	conf      config.Config
-	db        *gorm.DB
-	dbType    = Sqlite3
-	dataDB    *gorm.DB
-	providers = make(map[string]provider.TilerUnion)
-	casEnf    *casbin.Enforcer
-	authMid   *JWTMiddleware
-	taskQueue = make(chan *Task, 16)
-	userSet   UserSet
-	taskSet   sync.Map
+	conf           config.Config
+	db             *gorm.DB
+	dbType         = Sqlite3
+	dataDB         *gorm.DB
+	providers      = make(map[string]aprd.TilerUnion)
+	providerLayers = make(map[string]aprd.Layer)
+	casEnf         *casbin.Enforcer
+	authMid        *JWTMiddleware
+	taskQueue      = make(chan *Task, 16)
+	userSet        UserSet
+	taskSet        sync.Map
 )
 
 //flag
@@ -201,6 +202,7 @@ func initSysDb() (*gorm.DB, error) {
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
 	db.AutoMigrate(&Scene{}, &Olmap{}, &Tileset3d{}, &Terrain3d{}, &Style3d{}, &Symbol3d{}, &Symbol3dGroup{})
+	db.AutoMigrate(&Provider{}, &ProviderLayer{})
 	return db, nil
 }
 
@@ -251,12 +253,11 @@ func initDataDb() (*gorm.DB, error) {
 	default:
 		return nil, fmt.Errorf("unkown database driver")
 	}
-
 }
 
 //initProvider 初始化数据库驱动
-func initProviders(provArr []dict.Dicter) (map[string]provider.TilerUnion, error) {
-	providers := map[string]provider.TilerUnion{}
+func initProviders(provArr []dict.Dicter) (map[string]aprd.TilerUnion, error) {
+	providers := map[string]aprd.TilerUnion{}
 	// init our providers
 	// but first convert []env.Map -> []dict.Dicter
 	for _, p := range provArr {
@@ -281,7 +282,7 @@ func initProviders(provArr []dict.Dicter) (map[string]provider.TilerUnion, error
 		}
 
 		// register the provider
-		prov, err := provider.For(ptype, p)
+		prov, err := aprd.For(ptype, p)
 		if err != nil {
 			return providers, err
 		}
@@ -608,6 +609,34 @@ func setupRouter() *gin.Engine {
 		proxy.GET("/*uri", tilesProxy)
 	}
 
+	//drivers 数据库驱动
+	r.GET("/drivers", drivers)
+	drivers := r.Group("/providers")
+	// drivers.Use(AuthMidHandler(authMid))
+	// drivers.Use(UserMidHandler())
+	{
+		drivers.GET("/", listProviders)
+		drivers.POST("/register/", registerProvider)
+		// drivers.GET("/info/:id/", getDriver)
+		// drivers.POST("/info/:id/", updateDriver)
+		// drivers.DELETE("/delete/:ids/", deleteDrivers)
+	}
+
+	//vtlayers 注册图层列表
+	vtlayers := r.Group("/vtlayers")
+	// vtlayers.Use(AuthMidHandler(authMid))
+	// vtlayers.Use(UserMidHandler())
+	{
+		vtlayers.GET("/", listProviderLayers)
+		vtlayers.POST("/create/", createProviderLayer)
+		// vtlayers.GET("/info/:id/", getProviderLayer)
+		// vtlayers.POST("/info/:id/", updateDriver)
+		// vtlayers.DELETE("/delete/:ids/", deleteDrivers)
+		vtlayers.GET("/x/:id/", getPrdLayerTileJSON)
+		vtlayers.GET("/x/:id/:z/:x/:y", getPrdLayerTiles)
+		vtlayers.GET("/view/:id/", prdLayerViewer)
+	}
+
 	//studio
 	studio := r.Group("/studio")
 	studio.Use(AuthMidHandler(authMid))
@@ -786,7 +815,7 @@ func setupRouter() *gin.Engine {
 		datasets.GET("/buffer/:id/", getBuffers)
 
 		datasets.GET("/x/:id/", getTileLayerJSON)
-		datasets.GET("/x/:id/:z/:x/:y", getTileLayer)
+		datasets.GET("/x/:id/:z/:x/:y", getLayerTiles)
 		datasets.POST("/x/:id/", createTileLayer)
 
 		datasets.GET("/publish/:id/:min/:max/", publishToMBTiles)

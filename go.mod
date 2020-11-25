@@ -3,8 +3,8 @@ module atlas
 go 1.15
 
 require (
+	github.com/BurntSushi/toml v0.3.1
 	github.com/antonfisher/nested-logrus-formatter v1.3.0
-	github.com/arolek/p v0.0.0-20191103215535-df3c295ed582 // indirect
 	github.com/atlasdatatech/go-gpkg v0.0.0-20200624104138-252bcd3cfe22
 	github.com/axgle/mahonia v0.0.0-20180208002826-3358181d7394
 	github.com/casbin/casbin v1.9.1
@@ -44,4 +44,5 @@ require (
 )
 
 replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola v0.13.0
+
 replace github.com/paulmach/orb v0.1.6 => github.com/atlasdatatech/orb v0.2.2

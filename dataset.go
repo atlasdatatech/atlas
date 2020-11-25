@@ -14,7 +14,7 @@ import (
 	"github.com/go-spatial/geom/encoding/mvt"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola/dict"
-	"github.com/go-spatial/tegola/provider"
+	aprd "github.com/go-spatial/tegola/provider"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jinzhu/gorm"
 	_ "github.com/mattn/go-sqlite3" // import sqlite3 driver
@@ -278,19 +278,19 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 		Name:    dt.ID,
 		MinZoom: 0,
 		MaxZoom: 19,
-		srid:    3857, //注意tilelayer的目标srid
+		SRID:    3857, //注意tilelayer的目标srid
 	}
 	prd, ok := providers["atlas"]
 	if !ok {
 		return nil, fmt.Errorf("provider not found")
 	}
 	tlayer.Provider = prd
-	tlayer.ProviderLayerName = dt.ID
+	tlayer.ProviderLayerID = dt.ID
 	dt.tlayer = tlayer
 	cfg := dict.Dict{}
 	cfg["name"] = dt.ID
 	cfg["tablename"] = strings.ToLower(dt.ID)
-	err := prd.Mvt.AddLayer(cfg)
+	err := prd.Std.AddLayer(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -310,11 +310,11 @@ func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error
 		return nil, fmt.Errorf("provider not found")
 	}
 
-	ptile := provider.NewTile(tile.Z, tile.X, tile.Y,
-		uint(TileBuffer), uint(dt.tlayer.srid))
+	ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
+		uint(TileBuffer), uint(dt.tlayer.SRID))
 
 	// fetch layer from data provider
-	err := prd.Std.TileFeatures(ctx, dt.ID, ptile, func(f *provider.Feature) error {
+	err := prd.Std.TileFeatures(ctx, dt.ID, ptile, func(f *aprd.Feature) error {
 		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
 		geo, err := ToTegola(f.Geometry)
 		if err != nil {

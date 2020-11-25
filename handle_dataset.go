@@ -1227,7 +1227,7 @@ func createTileLayer(c *gin.Context) {
 	return
 }
 
-func getTileLayer(c *gin.Context) {
+func getLayerTiles(c *gin.Context) {
 	res := NewRes()
 	uid := c.GetString(userKey)
 	if uid == "" {
@@ -1277,7 +1277,7 @@ func getTileLayer(c *gin.Context) {
 			// TODO: add debug logs
 			return
 		default:
-			errMsg := fmt.Sprintf("error marshalling tile: %v", err)
+			errMsg := fmt.Sprintf("marshalling tile: %v", err)
 			log.Error(errMsg)
 			http.Error(c.Writer, errMsg, http.StatusInternalServerError)
 			return
@@ -1398,7 +1398,6 @@ func getTileLayerJSON(c *gin.Context) {
 	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
 		log.Printf("error encoding tileJSON for layer (%v)", did)
 	}
-
 }
 
 func createTileMap(c *gin.Context) {

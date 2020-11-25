@@ -15,7 +15,8 @@ import (
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
-	"github.com/go-spatial/tegola/provider"
+	"github.com/go-spatial/tegola/basic"
+	aprd "github.com/go-spatial/tegola/provider"
 	"github.com/go-spatial/tegola/provider/debug"
 
 	"github.com/jinzhu/gorm"
@@ -69,22 +70,18 @@ type TileMap struct {
 
 //TileLayer tile layer
 type TileLayer struct {
-	ID                string                 `json:"id"`
-	Name              string                 `json:"name"`
-	ProviderLayerName string                 `json:"provider_layer"`
-	MinZoom           uint                   `json:"min_zoom"`
-	MaxZoom           uint                   `json:"max_zoom"`
-	Bounds            *geom.Extent           `gorm:"-"`
-	Provider          provider.TilerUnion    `gorm:"-"`
-	DefaultTags       map[string]interface{} `json:"default_tags" gorm:"-"`
-	GeomType          geom.Geometry          `gorm:"-"`
-	DontSimplify      bool                   `json:"dont_simplify"`
-	DontClip          bool
-	Fields            string
-	idFied            string
-	geomFied          string
-	sql               string
-	srid              uint64
+	ID              string                 `json:"id" toml:"name"`
+	Name            string                 `json:"name" toml:"name" binding:"required"`
+	MinZoom         uint                   `json:"min_zoom"`
+	MaxZoom         uint                   `json:"max_zoom"`
+	Bounds          *geom.Extent           `gorm:"-"`
+	Provider        aprd.TilerUnion        `gorm:"-"`
+	ProviderLayerID string                 `json:"provider_layer" toml:"provider_layer" binding:"required"`
+	GeomType        geom.Geometry          `gorm:"-"`
+	DefaultTags     map[string]interface{} `json:"default_tags" gorm:"-"`
+	DontSimplify    bool                   `json:"dont_simplify" toml:"dont_simplify" `
+	DontClip        bool                   `json:"dont_clip" toml:"dont_clip" `
+	SRID            uint64
 }
 
 //UpInsert 创建更新瓦片集服务
@@ -117,7 +114,7 @@ func (tl *TileLayer) MVTName() string {
 		return tl.Name
 	}
 
-	return tl.ProviderLayerName
+	return tl.ProviderLayerID
 }
 
 // FilterByZoom 过滤
@@ -137,24 +134,25 @@ func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, err
 		Name: tl.MVTName(),
 	}
 
-	ptile := provider.NewTile(tile.Z, tile.X, tile.Y,
-		uint(TileBuffer), uint(tl.srid))
+	ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
+		uint(TileBuffer), uint(tl.SRID))
 	// fetch layer from data provider
-	err := tl.Provider.Std.TileFeatures(ctx, tl.ProviderLayerName, ptile, func(f *provider.Feature) error {
-		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
-		geo, err := ToTegola(f.Geometry)
-		if err != nil {
-			return err
+	err := tl.Provider.Std.TileFeatures(ctx, tl.ProviderLayerID, ptile, func(f *aprd.Feature) error {
+		// skip row if geometry collection empty.
+		g, ok := f.Geometry.(geom.Collection)
+		if ok && len(g.Geometries()) == 0 {
+			return nil
 		}
 
-		// check if the feature SRID and map SRID are different. If they are then reporject
-
-		// add default tags, but don't overwrite a tag that already exists
-		for k, v := range tl.DefaultTags {
-			if _, ok := f.Tags[k]; !ok {
-				f.Tags[k] = v
+		geo := f.Geometry
+		if f.SRID != tl.SRID {
+			g, err := basic.ToWebMercator(f.SRID, geo)
+			if err != nil {
+				return fmt.Errorf("unable to transform geometry to webmercator from SRID (%v) for feature %v due to error: %w", f.SRID, f.ID, err)
 			}
+			geo = g
 		}
+		geo = mvt.PrepareGeo(geo, tile.Extent3857(), float64(mvt.DefaultExtent))
 
 		mvtLayer.AddFeatures(mvt.Feature{
 			ID:       &f.ID,
@@ -260,16 +258,16 @@ func (tm TileMap) AddDebugLayers() TileMap {
 
 	tm.Layers = append(layers, []TileLayer{
 		{
-			Name:              debug.LayerDebugTileOutline,
-			ProviderLayerName: debug.LayerDebugTileOutline,
+			Name:            debug.LayerDebugTileOutline,
+			ProviderLayerID: debug.LayerDebugTileOutline,
 			// Provider:          debugProvider,
 			GeomType: geom.LineString{},
 			MinZoom:  0,
 			MaxZoom:  22,
 		},
 		{
-			Name:              debug.LayerDebugTileCenter,
-			ProviderLayerName: debug.LayerDebugTileCenter,
+			Name:            debug.LayerDebugTileCenter,
+			ProviderLayerID: debug.LayerDebugTileCenter,
 			// Provider:          debugProvider,
 			GeomType: geom.Point{},
 			MinZoom:  0,
@@ -307,7 +305,7 @@ func (tm TileMap) FilterLayersByName(names ...string) TileMap {
 		if tm.Layers[i].Name != "" && strings.Contains(nameStr, tm.Layers[i].Name) {
 			layers = append(layers, tm.Layers[i])
 			continue
-		} else if tm.Layers[i].ProviderLayerName != "" && strings.Contains(nameStr, tm.Layers[i].ProviderLayerName) { // default to using the ProviderLayerName for the lookup
+		} else if tm.Layers[i].ProviderLayerID != "" && strings.Contains(nameStr, tm.Layers[i].ProviderLayerID) { // default to using the ProviderLayerName for the lookup
 			layers = append(layers, tm.Layers[i])
 			continue
 		}
@@ -344,10 +342,10 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 			// on completion let the wait group know
 			defer wg.Done()
 
-			ptile := provider.NewTile(tile.Z, tile.X, tile.Y,
+			ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
 				uint(TileBuffer), uint(tm.SRID))
 			// fetch layer from data provider
-			err := l.Provider.Std.TileFeatures(ctx, l.ProviderLayerName, ptile, func(f *provider.Feature) error {
+			err := l.Provider.Std.TileFeatures(ctx, l.ProviderLayerID, ptile, func(f *aprd.Feature) error {
 				// TODO: remove this geom conversion step once the mvt package has adopted the new geom package
 				geo, err := ToTegola(f.Geometry)
 				if err != nil {
@@ -467,10 +465,10 @@ func LoadTileMap(pathfile string) (*TileMap, error) {
 func SaveTileMap(pathfile string) error {
 	var layers []TileLayer
 	layer := TileLayer{
-		Name:              "places_a",
-		ProviderLayerName: "osm_places_a",
-		MinZoom:           5,
-		MaxZoom:           20,
+		Name:            "places_a",
+		ProviderLayerID: "osm_places_a",
+		MinZoom:         5,
+		MaxZoom:         20,
 	}
 	layers = append(layers, layer)
 	out := &TileMap{
