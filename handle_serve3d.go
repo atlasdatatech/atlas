@@ -293,8 +293,8 @@ func createOnlineMap(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	olmap := Olmap{}
-	err := c.Bind(&olmap)
+	olmap := &Olmap{}
+	err := c.Bind(olmap)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -332,8 +332,8 @@ func updateOnlineMap(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	olmap := Olmap{}
-	err := c.Bind(&olmap)
+	olmap := &Olmap{}
+	err := c.Bind(olmap)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -435,8 +435,8 @@ func createTileset3d(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	tileset3d := Tileset3d{}
-	err := c.Bind(&tileset3d)
+	tileset3d := &Tileset3d{}
+	err := c.Bind(tileset3d)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -474,8 +474,8 @@ func updateTileset3d(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	tileset3d := Tileset3d{}
-	err := c.Bind(&tileset3d)
+	tileset3d := &Tileset3d{}
+	err := c.Bind(tileset3d)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -577,8 +577,8 @@ func createTerrain3d(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	terrain := Terrain3d{}
-	err := c.Bind(&terrain)
+	terrain := &Terrain3d{}
+	err := c.Bind(terrain)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -616,8 +616,8 @@ func updateTerrain3d(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	terrain := Terrain3d{}
-	err := c.Bind(&terrain)
+	terrain := &Terrain3d{}
+	err := c.Bind(terrain)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -723,8 +723,8 @@ func updateSymbolGroup3d(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	group3d := Symbol3dGroup{}
-	err := c.Bind(&group3d)
+	group3d := &Symbol3dGroup{}
+	err := c.Bind(group3d)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -815,8 +815,8 @@ func createSymbol3d(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	symbol3d := Symbol3d{}
-	err := c.Bind(&symbol3d)
+	symbol3d := &Symbol3d{}
+	err := c.Bind(symbol3d)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -884,8 +884,8 @@ func updateSymbol3d(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	symbol3d := Symbol3d{}
-	err := c.Bind(&symbol3d)
+	symbol3d := &Symbol3d{}
+	err := c.Bind(symbol3d)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -986,8 +986,8 @@ func createStyle3d(c *gin.Context) {
 		uid = ATLAS
 	}
 
-	style := Style3d{}
-	err := c.Bind(&style)
+	style := &Style3d{}
+	err := c.Bind(style)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -1025,8 +1025,8 @@ func updateStyle3d(c *gin.Context) {
 	}
 	id := c.Param("id")
 
-	style := Style3d{}
-	err := c.Bind(&style)
+	style := &Style3d{}
+	err := c.Bind(style)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -1173,7 +1173,7 @@ func createScene(c *gin.Context) {
 	}
 
 	body := &SceneBind{}
-	err := c.Bind(&body)
+	err := c.Bind(body)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
@@ -1213,7 +1213,7 @@ func updateScene(c *gin.Context) {
 	}
 	id := c.Param("id")
 	body := &SceneBind{}
-	err := c.Bind(&body)
+	err := c.Bind(body)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
