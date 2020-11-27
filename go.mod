@@ -5,6 +5,9 @@ go 1.15
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/antonfisher/nested-logrus-formatter v1.3.0
+	github.com/asticode/go-astichartjs v0.1.0
+	github.com/asticode/go-astilectron v0.19.0
+	github.com/asticode/go-astilectron-bootstrap v0.4.3
 	github.com/atlasdatatech/go-gpkg v0.0.0-20200624104138-252bcd3cfe22
 	github.com/axgle/mahonia v0.0.0-20180208002826-3358181d7394
 	github.com/casbin/casbin v1.9.1
@@ -43,6 +46,6 @@ require (
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 
-replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola v0.13.0
+replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola v0.13.1
 
 replace github.com/paulmach/orb v0.1.6 => github.com/atlasdatatech/orb v0.2.2
