@@ -868,7 +868,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range olmaps {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
@@ -882,7 +882,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range tiles {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
@@ -896,7 +896,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range terrains {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
@@ -910,7 +910,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range groups {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
@@ -924,7 +924,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range symbols {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
@@ -938,7 +938,7 @@ func initOnlineSources() {
 			log.Error(err)
 		}
 		for _, v := range styles {
-			res := db.Create(v)
+			res := db.Create(&v)
 			if res.Error != nil {
 				log.Error(res.Error)
 			}
