@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/gin-gonic/gin"
 	"github.com/go-spatial/geom"
-	"github.com/go-spatial/geom/encoding/mvt"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola/atlas"
 	"github.com/go-spatial/tegola/config"
@@ -362,7 +360,7 @@ func getPrdLayerTileJSON(c *gin.Context) {
 	tileurl := fmt.Sprintf("atlasdata://vtlayers/x/%s/{z}/{x}/{y}.pbf", prdlayer.ID)
 	fixurl := c.Query("fixurl")
 	if fixurl == "yes" {
-		tileurl = fmt.Sprintf(`%s/ts/x/%s/{z}/{x}/{y}`, rootURL(c.Request), prdlayer.ID)
+		tileurl = fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}`, rootURL(c.Request), prdlayer.ID)
 	}
 
 	tileJSON.MinZoom = 0
@@ -477,8 +475,8 @@ func getPrdLayerTiles(c *gin.Context) {
 	yext := c.Param("y")
 	ys := strings.Split(yext, ".")
 	if len(ys) != 2 {
-		resp.Fail(c, 404)
-		return
+		// resp.Fail(c, 404)
+		// return
 	}
 	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
 	y := uint(placeholder)
@@ -499,36 +497,15 @@ func getPrdLayerTiles(c *gin.Context) {
 			return
 		}
 	}
-
-	// buffer to store our compressed bytes
-	var gzipBuf bytes.Buffer
-
-	// compress the encoded bytes
-	w := gzip.NewWriter(&gzipBuf)
-	_, err = w.Write(pbyte)
-	if err != nil {
-		http.Error(c.Writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// flush and close the writer
-	if err = w.Close(); err != nil {
-		http.Error(c.Writer, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// return encoded, gzipped tile
-	// mimetype for mapbox vector tiles
-	// https://www.iana.org/assignments/media-types/application/vnd.mapbox-vector-tile
-	c.Header("Content-Type", mvt.MimeType)
+	// c.Header("Content-Type", mvt.MimeType)
 	c.Header("Content-Encoding", "gzip")
-	// c.Header("Content-Type", "application/x-protobuf")
-	c.Header("Content-Length", fmt.Sprintf("%d", len(gzipBuf.Bytes())))
+	c.Header("Content-Type", "application/x-protobuf")
+	c.Header("Content-Length", fmt.Sprintf("%d", len(pbyte)))
 	c.Writer.WriteHeader(http.StatusOK)
-	c.Writer.Write(gzipBuf.Bytes())
+	c.Writer.Write(pbyte)
 	// check for tile size warnings
-	if len(gzipBuf.Bytes()) > server.MaxTileSize {
-		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(gzipBuf.Bytes())/1024)
+	if len(pbyte) > server.MaxTileSize {
+		log.Infof("tile z:%v, x:%v, y:%v is rather large - %vKb", z, x, y, len(pbyte)/1024)
 	}
 }
 

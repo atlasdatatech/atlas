@@ -26,8 +26,8 @@
 		type = "sqlite3"        # sqlite3,postgres
 		host     = "127.0.0.1"
 		port     = 5432
-		user     = "postgres"
-		password = "cityfun"
+		user     = "docker"
+		password = "docker"
 		sysdb = "atlas"
 		datadb = "atlasdata"
 	# data providers
@@ -37,8 +37,8 @@
 		filepath = "atlasdata"
 		host = "127.0.0.1"      # postgis database host
 		port = 5432             # postgis database port
-		user = "postgres"         # postgis database user
-		password = "cityfun"           # postgis database password atlas/cityfun
+		user = "docker"         # postgis database user
+		password = "docker"           # postgis database password atlas/cityfun
 		database = "atlasdata"       # postgis database name
 		srid = 4326 #默认目标是3857，原始数据层可以是3857但通常是4326   
 
