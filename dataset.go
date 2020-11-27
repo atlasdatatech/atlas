@@ -284,7 +284,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	if !ok {
 		return nil, fmt.Errorf("provider not found")
 	}
-	tlayer.Provider = prd
+	tlayer.Provider = prd //layer持有了provider
 	tlayer.ProviderLayerID = dt.ID
 	dt.tlayer = tlayer
 	cfg := dict.Dict{}

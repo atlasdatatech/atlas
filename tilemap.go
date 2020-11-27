@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -15,7 +16,9 @@ import (
 	"github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/slippy"
 	"github.com/go-spatial/tegola"
+	"github.com/go-spatial/tegola/atlas"
 	"github.com/go-spatial/tegola/basic"
+	"github.com/go-spatial/tegola/config"
 	aprd "github.com/go-spatial/tegola/provider"
 	"github.com/go-spatial/tegola/provider/debug"
 
@@ -481,4 +484,166 @@ func SaveTileMap(pathfile string) error {
 		return err
 	}
 	return nil
+}
+
+// TileFormat returns the TileFormat of the DB.
+func (tm TileMap) toAtlasMap() atlas.Map {
+	newMap := atlas.NewWebMercatorMap(string(tm.Name))
+	newMap.Attribution = html.EscapeString(string(tm.Attribution))
+
+	// convert from env package
+	for i, v := range tm.Center {
+		newMap.Center[i] = float64(v)
+	}
+
+	if len(tm.Bounds) == 4 {
+		newMap.Bounds = geom.NewExtent(
+			[2]float64{float64(tm.Bounds[0]), float64(tm.Bounds[1])},
+			[2]float64{float64(tm.Bounds[2]), float64(tm.Bounds[3])},
+		)
+	}
+
+	if tm.TileBuffer != 0 {
+		newMap.TileBuffer = uint64(tm.TileBuffer)
+	}
+	return newMap
+}
+
+//*******************************************************************
+// registerMaps registers maps with with atlas
+func registerMaps(a *atlas.Atlas, maps []config.Map, providers map[string]aprd.TilerUnion) error {
+	var (
+		layerer aprd.Layerer
+	)
+
+	// iterate our maps
+	for _, m := range maps {
+		newMap := webMercatorMapFromConfigMap(m)
+
+		// iterate our layers
+		for _, l := range m.Layers {
+			providerName, lyrName, err := l.ProviderLayerName()
+			if err != nil {
+				return fmt.Errorf("ErrProviderLayerInvalid,ProviderLayer:%s,Map:%s", string(l.ProviderLayer), string(m.Name))
+			}
+
+			// find our layer provider
+			layerer, err = selectProvider(providerName, string(m.Name), &newMap, providers)
+			if err != nil {
+				return err
+			}
+
+			layer, err := atlasLayerFromConfigLayer(&l, lyrName, layerer)
+			if err != nil {
+				return err
+			}
+			newMap.Layers = append(newMap.Layers, layer)
+		}
+		a.AddMap(newMap)
+	}
+	return nil
+}
+
+func webMercatorMapFromConfigMap(cfg config.Map) (newMap atlas.Map) {
+	newMap = atlas.NewWebMercatorMap(string(cfg.Name))
+	newMap.Attribution = html.EscapeString(string(cfg.Attribution))
+
+	// convert from env package
+	for i, v := range cfg.Center {
+		newMap.Center[i] = float64(v)
+	}
+
+	if len(cfg.Bounds) == 4 {
+		newMap.Bounds = geom.NewExtent(
+			[2]float64{float64(cfg.Bounds[0]), float64(cfg.Bounds[1])},
+			[2]float64{float64(cfg.Bounds[2]), float64(cfg.Bounds[3])},
+		)
+	}
+
+	if cfg.TileBuffer != nil {
+		newMap.TileBuffer = uint64(*cfg.TileBuffer)
+	}
+	return newMap
+}
+
+func layerInfosFindByName(infos []aprd.LayerInfo, name string) aprd.LayerInfo {
+	if len(infos) == 0 {
+		return nil
+	}
+	for i := range infos {
+		if infos[i].Name() == name {
+			return infos[i]
+		}
+	}
+	return nil
+}
+
+func atlasLayerFromConfigLayer(cfg *config.MapLayer, mapName string, layerProvider aprd.Layerer) (layer atlas.Layer, err error) {
+	var (
+		// providerLayer is primary used for error reporting.
+		providerLayer = string(cfg.ProviderLayer)
+		ok            bool
+	)
+	// read the provider's layer names
+	// don't care about the error.
+	providerName, layerName, _ := cfg.ProviderLayerName()
+	layerInfos, err := layerProvider.Layers()
+	if err != nil {
+		return layer, fmt.Errorf("ErrFetchingLayerInfo,Provider:%s,error:%s",
+			string(providerName), err.Error())
+	}
+	layerInfo := layerInfosFindByName(layerInfos, layerName)
+	if layerInfo == nil {
+		return layer, fmt.Errorf("ErrProviderLayerNotRegistered,Map:%s,Provider:%s,ProviderLayer:%s",
+			mapName, providerName, providerLayer)
+	}
+	layer.GeomType = layerInfo.GeomType()
+
+	if cfg.DefaultTags != nil {
+		if layer.DefaultTags, ok = cfg.DefaultTags.(map[string]interface{}); !ok {
+			return layer, fmt.Errorf("ErrDefaultTagsInvalid,ProviderLayer:%s",
+				providerLayer)
+		}
+	}
+
+	// if layerProvider is not a provider.Tiler this will return nil, so
+	// no need to check ok, as nil is what we want here.
+	layer.Provider, _ = layerProvider.(aprd.Tiler)
+
+	layer.Name = string(cfg.Name)
+	layer.ProviderLayerName = layerName
+	layer.DontSimplify = bool(cfg.DontSimplify)
+	layer.DontClip = bool(cfg.DontClip)
+
+	if cfg.MinZoom != nil {
+		layer.MinZoom = uint(*cfg.MinZoom)
+	}
+	if cfg.MaxZoom != nil {
+		layer.MaxZoom = uint(*cfg.MaxZoom)
+	}
+	return layer, nil
+}
+
+func selectProvider(name string, mapName string, newMap *atlas.Map, providers map[string]aprd.TilerUnion) (aprd.Layerer, error) {
+	if newMap.HasMVTProvider() {
+		if newMap.MVTProviderName() != name {
+			return nil, fmt.Errorf("ErrMVTDifferentProviders,Original:%s,Current:%s",
+				newMap.MVTProviderName(), name)
+		}
+		return newMap.MVTProvider(), nil
+	}
+	if prvd, ok := providers[name]; ok {
+		// Need to see what type of provider we got.
+		if prvd.Std != nil {
+			return prvd.Std, nil
+		}
+		if prvd.Mvt == nil {
+			return nil, fmt.Errorf("ErrProviderNotFound, %s", name)
+		}
+		if len(newMap.Layers) != 0 {
+			return nil, fmt.Errorf("ErrMixedProviders, Map:%s", string(mapName))
+		}
+		return newMap.SetMVTProvider(name, prvd.Mvt), nil
+	}
+	return nil, fmt.Errorf("ErrProviderNotFound, %s", name)
 }
