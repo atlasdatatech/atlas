@@ -46,6 +46,6 @@ require (
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 
-replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola@v0.13.x
+replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola v0.13.1
 
 replace github.com/paulmach/orb v0.1.6 => github.com/atlasdatatech/orb v0.2.2
