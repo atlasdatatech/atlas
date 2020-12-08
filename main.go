@@ -617,9 +617,7 @@ func setupRouter() *gin.Engine {
 	{
 		drivers.GET("/", listProviders)
 		drivers.POST("/register/", registerProvider)
-		// drivers.GET("/info/:id/", getDriver)
-		// drivers.POST("/info/:id/", updateDriver)
-		// drivers.DELETE("/delete/:ids/", deleteDrivers)
+		drivers.GET("/info/:id/", getProviderInfo)
 	}
 
 	//vtlayers 注册图层列表
@@ -629,7 +627,7 @@ func setupRouter() *gin.Engine {
 	{
 		vtlayers.GET("/", listProviderLayers)
 		vtlayers.POST("/create/", createProviderLayer)
-		// vtlayers.GET("/info/:id/", getProviderLayer)
+		vtlayers.GET("/info/:id/", getProviderLayerInfo)
 		// vtlayers.POST("/info/:id/", updateDriver)
 		// vtlayers.DELETE("/delete/:ids/", deleteDrivers)
 		vtlayers.GET("/x/:id/", getPrdLayerTileJSON)

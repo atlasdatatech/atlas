@@ -28,7 +28,7 @@
 		port     = 5432
 		user     = "docker"
 		password = "docker"
-		sysdb = "atlas"
+		sysdb = "atlasdb"
 		datadb = "atlasdata"
 	# data providers
 	[[providers]]

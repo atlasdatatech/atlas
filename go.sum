@@ -64,6 +64,8 @@ github.com/atlasdatatech/tegola v0.13.0 h1:smoIqVYJgZZjhueGWuIdE50zxDBDXmWx7Ho5u
 github.com/atlasdatatech/tegola v0.13.0/go.mod h1:RBGam6BQGemqbgKD/GxNHEJtuiUa3Pe2ZZEh8GKbvJ4=
 github.com/atlasdatatech/tegola v0.13.1 h1:MNF3EW0x6iF7xN7DH9JWscDsdcQnBMMphB0Dr+ToWms=
 github.com/atlasdatatech/tegola v0.13.1/go.mod h1:RBGam6BQGemqbgKD/GxNHEJtuiUa3Pe2ZZEh8GKbvJ4=
+github.com/atlasdatatech/tegola v0.13.2 h1:6A/VtBUwTEnIM8E30XSrMmYSU2oh1GnwPpt8sEu7YUA=
+github.com/atlasdatatech/tegola v0.13.2/go.mod h1:RBGam6BQGemqbgKD/GxNHEJtuiUa3Pe2ZZEh8GKbvJ4=
 github.com/aws/aws-lambda-go v1.9.0/go.mod h1:zUsUQhAUjYzR8AuduJPCfhBuKWUaDbQiPOG+ouzmE1A=
 github.com/aws/aws-lambda-go v1.13.1/go.mod h1:z4ywteZ5WwbIEzG0tXizIAUlUwkTNNknX4upd5Z5XJM=
 github.com/aws/aws-sdk-go v1.12.44-0.20171207221737-00379a7e831f h1:EcOFCUOuwDmfZuvBlMl0fA3nn+gmg+SBuk2Z5ilq9Ms=
