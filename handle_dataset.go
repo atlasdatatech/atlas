@@ -18,8 +18,6 @@ import (
 
 	"github.com/paulmach/orb"
 
-	"github.com/teris-io/shortid"
-
 	geom "github.com/go-spatial/geom"
 	"github.com/go-spatial/geom/encoding/mvt"
 	slippy "github.com/go-spatial/geom/slippy"
@@ -192,7 +190,7 @@ func oneClickImport(c *gin.Context) {
 				log.Error(err)
 			}
 		}()
-		id, _ := shortid.Generate()
+		id := ShortID()
 		task := &Task{
 			ID:    id,
 			Base:  ds.ID,
@@ -343,7 +341,7 @@ func importFile(c *gin.Context) {
 	if c.Param("id") != ds.ID {
 		log.Warnf("id not eq")
 	}
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:    id,
 		Base:  ds.ID,
@@ -1447,11 +1445,11 @@ func getTileMap(c *gin.Context) {
 		log.Errorf("map (%v) has no layers, at zoom %v", did, z)
 		return
 	}
-	layers := c.Query("layers")
-	if layers != "" {
-		m = m.FilterLayersByName(layers)
+	ids := c.Query("layers")
+	if ids != "" {
+		m = m.FilterLayersByID(ids)
 		if len(m.Layers) == 0 {
-			log.Errorf("map (%v) has no layers, for LayerName %v at zoom %v", did, layers, z)
+			log.Errorf("map (%v) has no layers, for LayerName %v at zoom %v", did, ids, z)
 			return
 		}
 	}
@@ -1629,7 +1627,6 @@ func publishToMBTiles(c *gin.Context) {
 func dts2tsLite(task *Task, dts *Dataset) (*Tileset, error) {
 	s := time.Now()
 	task.Progress = 20
-	// id, _ := shortid.Generate()
 	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, dts.ID+MBTILESEXT)
 	err := dts.GeoJSON2MBTiles(outfile, dts.Name, true)
 	if err != nil {

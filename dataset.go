@@ -290,7 +290,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 	cfg := dict.Dict{}
 	cfg["name"] = dt.ID
 	cfg["tablename"] = strings.ToLower(dt.ID)
-	err := prd.Std.AddLayer(cfg)
+	err := prd.AddLayer(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +299,7 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 
 //Encode TODO (arolek): support for max zoom
 func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error) {
+
 	// tile container
 	var mvtTile mvt.Tile
 	// wait group for concurrent layer fetching
@@ -310,9 +311,11 @@ func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error
 		return nil, fmt.Errorf("provider not found")
 	}
 
+	if prd.Std == nil {
+		return nil, fmt.Errorf(".Std is null")
+	}
 	ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
 		uint(TileBuffer), uint(dt.tlayer.SRID))
-
 	// fetch layer from data provider
 	err := prd.Std.TileFeatures(ctx, dt.ID, ptile, func(f *aprd.Feature) error {
 		// TODO: remove this geom conversion step once the mvt package has adopted the new geom package

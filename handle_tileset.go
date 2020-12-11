@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/teris-io/shortid"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
@@ -190,7 +188,7 @@ func uploadTileset(c *gin.Context) {
 	set.T.Store(ts.ID, ts)
 	casEnf.AddPolicy(USER, ts.ID, "GET")
 
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:       id,
 		Base:     ds.ID,
@@ -251,7 +249,7 @@ func replaceTileset(c *gin.Context) {
 		log.Errorf(`replaceTileset, upinsert tileser %s error, details: %s`, tileset.ID, err)
 	}
 
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:       id,
 		Base:     ds.ID,
@@ -289,7 +287,7 @@ func publishTileset(c *gin.Context) {
 	if tid := c.Param("id"); tid != "" {
 		baseid = tid
 	}
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:    id,
 		Base:  baseid,
@@ -398,7 +396,7 @@ func createTileset(c *gin.Context) {
 		res.Fail(c, 5001)
 		return
 	}
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:    id,
 		Base:  ds.ID,
@@ -481,7 +479,7 @@ func createTilesetLite(c *gin.Context) {
 		return
 	}
 
-	id, _ := shortid.Generate()
+	id := ShortID()
 	task := &Task{
 		ID:    id,
 		Base:  dts.ID,

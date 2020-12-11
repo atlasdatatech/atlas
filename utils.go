@@ -28,6 +28,7 @@ import (
 	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/teris-io/shortid"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	gomail "gopkg.in/gomail.v2"
 )
@@ -520,4 +521,13 @@ func detectUTF8(s string) (valid, require bool) {
 		}
 	}
 	return true, require
+}
+
+//ShortID 生成shortid 不含中划线
+func ShortID() string {
+	id, err := shortid.Generate()
+	for strings.Contains(id, "-") || err != nil {
+		id, err = shortid.Generate()
+	}
+	return id
 }

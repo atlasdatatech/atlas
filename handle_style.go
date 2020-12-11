@@ -22,7 +22,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
-	"github.com/teris-io/shortid"
 )
 
 //REGEN 反向生成符号
@@ -231,7 +230,7 @@ func createStyle(c *gin.Context) {
 		res.Fail(c, 4043)
 		return
 	}
-	id, _ := shortid.Generate()
+	id := ShortID()
 	path := filepath.Join(viper.GetString("paths.styles"), uid, id)
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {

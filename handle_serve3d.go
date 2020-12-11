@@ -16,7 +16,6 @@ import (
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/teris-io/shortid"
 )
 
 //RespIn body
@@ -300,10 +299,7 @@ func createOnlineMap(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	olmap.ID = id
 	// insertUser
@@ -442,10 +438,7 @@ func createTileset3d(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	tileset3d.ID = id
 	// insertUser
@@ -584,10 +577,7 @@ func createTerrain3d(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	terrain.ID = id
 	// insertUser
@@ -822,10 +812,7 @@ func createSymbol3d(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	symbol3d.ID = id
 	// insertUser
@@ -993,10 +980,8 @@ func createStyle3d(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	style.ID = id
 	// insertUser
@@ -1180,10 +1165,8 @@ func createScene(c *gin.Context) {
 		return
 	}
 	scene := body.toScene()
-	id, err := shortid.Generate()
-	if err != nil {
-		id, _ = shortid.Generate()
-	}
+
+	id := ShortID()
 	//丢掉原来的id使用新的id
 	scene.ID = id
 	scene.Owner = uid
@@ -1322,17 +1305,7 @@ func geoCoder(c *gin.Context) {
 
 func getShortID(c *gin.Context) {
 	resp := NewResp()
-	id, err := shortid.Generate()
-	if err != nil {
-		id, err = shortid.Generate()
-		if err != nil {
-			id, err = shortid.Generate()
-			if err != nil {
-				resp.FailMsg(c, "shortid generate error")
-				return
-			}
-		}
-	}
+	id := ShortID()
 	resp.DoneData(c, gin.H{
 		"id": id,
 	})

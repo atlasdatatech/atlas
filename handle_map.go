@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	"github.com/teris-io/shortid"
 )
 
 func getMapPerms(c *gin.Context) {
@@ -116,7 +115,7 @@ func createMap(c *gin.Context) {
 			return
 		}
 		mm := body.toMap()
-		mm.ID, _ = shortid.Generate()
+		mm.ID = ShortID()
 		mm.User = id
 		if mm.Action == "" {
 			mm.Action = "(READ)|(EDIT)"

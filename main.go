@@ -28,7 +28,6 @@ import (
 
 	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
-	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
@@ -399,7 +398,7 @@ func initSystemUser() {
 		return
 	}
 	// createUser
-	user.ID, _ = shortid.Generate()
+	user.ID = ShortID()
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
@@ -618,6 +617,8 @@ func setupRouter() *gin.Engine {
 		drivers.GET("/", listProviders)
 		drivers.POST("/register/", registerProvider)
 		drivers.GET("/info/:id/", getProviderInfo)
+		drivers.POST("/info/:id/", updateProviderInfo)
+		drivers.DELETE("/delete/:ids/", deleteProvider)
 	}
 
 	//vtlayers 注册图层列表
@@ -628,8 +629,8 @@ func setupRouter() *gin.Engine {
 		vtlayers.GET("/", listProviderLayers)
 		vtlayers.POST("/create/", createProviderLayer)
 		vtlayers.GET("/info/:id/", getProviderLayerInfo)
-		// vtlayers.POST("/info/:id/", updateDriver)
-		// vtlayers.DELETE("/delete/:ids/", deleteDrivers)
+		vtlayers.POST("/info/:id/", updateProviderLayerInfo)
+		vtlayers.DELETE("/delete/:ids/", deleteProviderLayer)
 		vtlayers.GET("/x/:id/", getPrdLayerTileJSON)
 		vtlayers.GET("/x/:id/:z/:x/:y", getPrdLayerTiles)
 		vtlayers.GET("/view/:id/", prdLayerViewer)

@@ -53,7 +53,6 @@ func LoadTileset(ds *DataSource) (*Tileset, error) {
 		log.Errorf(`LoadTileset, read style file info error, details: %s`, err)
 		return nil, err
 	}
-	// id, _ := shortid.Generate()
 	out := &Tileset{
 		ID:        ds.ID,
 		Base:      ds.ID,

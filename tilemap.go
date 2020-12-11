@@ -130,6 +130,9 @@ func (tl *TileLayer) FilterByZoom(zoom uint) bool {
 
 //Encode TODO (arolek): support for max zoom
 func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error) {
+	if tl.Provider.Std == nil {
+		return nil, fmt.Errorf(".Std is null")
+	}
 	// tile container
 	var mvtTile mvt.Tile
 	// wait group for concurrent layer fetching
@@ -341,10 +344,12 @@ func (tm TileMap) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error)
 			mvtLayer := mvt.Layer{
 				Name: l.MVTName(),
 			}
-
 			// on completion let the wait group know
 			defer wg.Done()
 
+			if l.Provider.Std == nil {
+				return
+			}
 			ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
 				uint(TileBuffer), uint(tm.SRID))
 			// fetch layer from data provider
@@ -522,18 +527,18 @@ func registerMaps(a *atlas.Atlas, maps []config.Map, providers map[string]aprd.T
 
 		// iterate our layers
 		for _, l := range m.Layers {
-			providerName, lyrName, err := l.ProviderLayerName()
+			prdID, plyrID, err := l.ProviderLayerID()
 			if err != nil {
 				return fmt.Errorf("ErrProviderLayerInvalid,ProviderLayer:%s,Map:%s", string(l.ProviderLayer), string(m.Name))
 			}
 
 			// find our layer provider
-			layerer, err = selectProvider(providerName, string(m.Name), &newMap, providers)
+			layerer, err = selectProvider(prdID, string(m.Name), &newMap, providers)
 			if err != nil {
 				return err
 			}
 
-			layer, err := atlasLayerFromConfigLayer(&l, lyrName, layerer)
+			layer, err := atlasLayerFromConfigLayer(&l, plyrID, layerer)
 			if err != nil {
 				return err
 			}
@@ -566,12 +571,12 @@ func webMercatorMapFromConfigMap(cfg config.Map) (newMap atlas.Map) {
 	return newMap
 }
 
-func layerInfosFindByName(infos []aprd.LayerInfo, name string) aprd.LayerInfo {
+func layerInfosFindByID(infos []aprd.LayerInfo, lyrID string) aprd.LayerInfo {
 	if len(infos) == 0 {
 		return nil
 	}
 	for i := range infos {
-		if infos[i].Name() == name {
+		if infos[i].ID() == lyrID {
 			return infos[i]
 		}
 	}
@@ -586,16 +591,16 @@ func atlasLayerFromConfigLayer(cfg *config.MapLayer, mapName string, layerProvid
 	)
 	// read the provider's layer names
 	// don't care about the error.
-	providerName, layerName, _ := cfg.ProviderLayerName()
+	prdID, plyrID, _ := cfg.ProviderLayerID()
 	layerInfos, err := layerProvider.Layers()
 	if err != nil {
 		return layer, fmt.Errorf("ErrFetchingLayerInfo,Provider:%s,error:%s",
-			string(providerName), err.Error())
+			string(prdID), err.Error())
 	}
-	layerInfo := layerInfosFindByName(layerInfos, layerName)
+	layerInfo := layerInfosFindByID(layerInfos, plyrID)
 	if layerInfo == nil {
 		return layer, fmt.Errorf("ErrProviderLayerNotRegistered,Map:%s,Provider:%s,ProviderLayer:%s",
-			mapName, providerName, providerLayer)
+			mapName, prdID, providerLayer)
 	}
 	layer.GeomType = layerInfo.GeomType()
 
@@ -610,8 +615,9 @@ func atlasLayerFromConfigLayer(cfg *config.MapLayer, mapName string, layerProvid
 	// no need to check ok, as nil is what we want here.
 	layer.Provider, _ = layerProvider.(aprd.Tiler)
 
+	layer.ID = string(cfg.ID)
 	layer.Name = string(cfg.Name)
-	layer.ProviderLayerName = layerName
+	layer.ProviderLayerID = plyrID
 	layer.DontSimplify = bool(cfg.DontSimplify)
 	layer.DontClip = bool(cfg.DontClip)
 
@@ -624,26 +630,26 @@ func atlasLayerFromConfigLayer(cfg *config.MapLayer, mapName string, layerProvid
 	return layer, nil
 }
 
-func selectProvider(name string, mapName string, newMap *atlas.Map, providers map[string]aprd.TilerUnion) (aprd.Layerer, error) {
+func selectProvider(prdID string, mapName string, newMap *atlas.Map, providers map[string]aprd.TilerUnion) (aprd.Layerer, error) {
 	if newMap.HasMVTProvider() {
-		if newMap.MVTProviderName() != name {
+		if newMap.MVTProviderID() != prdID {
 			return nil, fmt.Errorf("ErrMVTDifferentProviders,Original:%s,Current:%s",
-				newMap.MVTProviderName(), name)
+				newMap.MVTProviderID(), prdID)
 		}
 		return newMap.MVTProvider(), nil
 	}
-	if prvd, ok := providers[name]; ok {
+	if prvd, ok := providers[prdID]; ok {
 		// Need to see what type of provider we got.
 		if prvd.Std != nil {
 			return prvd.Std, nil
 		}
 		if prvd.Mvt == nil {
-			return nil, fmt.Errorf("ErrProviderNotFound, %s", name)
+			return nil, fmt.Errorf("ErrProviderNotFound, %s", prdID)
 		}
 		if len(newMap.Layers) != 0 {
 			return nil, fmt.Errorf("ErrMixedProviders, Map:%s", string(mapName))
 		}
-		return newMap.SetMVTProvider(name, prvd.Mvt), nil
+		return newMap.SetMVTProvider(prdID, prvd.Mvt), nil
 	}
-	return nil, fmt.Errorf("ErrProviderNotFound, %s", name)
+	return nil, fmt.Errorf("ErrProviderNotFound, %s", prdID)
 }

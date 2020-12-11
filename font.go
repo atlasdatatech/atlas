@@ -55,7 +55,6 @@ func LoadFont(path string) (*Font, error) {
 	ext = filepath.Ext(path)
 	base := filepath.Base(path)
 	name := strings.TrimSuffix(base, ext)
-	// id, _ := shortid.Generate()
 	out := &Font{
 		ID:          name,
 		Name:        name,

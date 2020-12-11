@@ -9,7 +9,6 @@ import (
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/teris-io/shortid"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -45,7 +44,7 @@ func signup(c *gin.Context) {
 	}
 	// createUser
 	user := User{}
-	user.ID, _ = shortid.Generate()
+	user.ID = ShortID()
 	user.Name = name
 	user.Email = email
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
@@ -139,7 +138,7 @@ func addUser(c *gin.Context) {
 	}
 	// createUser
 	user := User{}
-	user.ID, _ = shortid.Generate()
+	user.ID = ShortID()
 	user.Name = name
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)

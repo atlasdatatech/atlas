@@ -21,12 +21,11 @@ import (
 	"github.com/go-spatial/tegola/server"
 	"github.com/jinzhu/gorm"
 	log "github.com/sirupsen/logrus"
-	"github.com/teris-io/shortid"
 )
 
 //Provider 数据库驱动
 type Provider struct {
-	ID             string `json:"id" toml:"id" binding:"required" gorm:"primaryKey"`
+	ID             string `json:"id" toml:"id" gorm:"primaryKey"`
 	Name           string `json:"name" toml:"name" binding:"required"`
 	Type           string `json:"type" toml:"type"`
 	Owner          string `json:"owner" toml:"owner,omitempty" gorm:"index"`
@@ -36,7 +35,7 @@ type Provider struct {
 	Password       string `json:"password" toml:"password" binding:"required"`
 	Database       string `json:"database" toml:"database" binding:"required"`
 	SRID           int    `json:"srid" toml:"srid" binding:"required"  gorm:"column:srid"`
-	MaxConnections string `json:"maxConnections" toml:"max_connections,omitempty"`
+	MaxConnections int    `json:"maxConnections" toml:"max_connections,omitempty"`
 }
 
 func toDicter(v interface{}) (dict.Dicter, error) {
@@ -72,6 +71,7 @@ func RegisterProvider(prd *Provider) (aprd.TilerUnion, error) {
 	if err != nil {
 		return p, fmt.Errorf("参数有误")
 	}
+
 	// register the provider
 	prov, err := aprd.For(prd.Type, cfg)
 	if err != nil {
@@ -112,15 +112,15 @@ type ProviderLayer struct {
 	ID         string          `json:"id" toml:"id" gorm:"primaryKey"`
 	ProviderID string          `json:"providerId" toml:"providerId" binding:"required"`
 	Name       string          `json:"name" toml:"name" binding:"required"`
-	TabLeName  string          `json:"tablename" toml:"tablename" binding:"required"`
+	TabLeName  string          `json:"tablename" toml:"tablename"`
 	SQL        string          `json:"sql" toml:"sql,omitempty"`
 	SRID       int             `json:"srid" toml:"srid,omitempty" gorm:"column:srid"`
 	GeomField  string          `json:"geomField" toml:"geometry_fieldname,omitempty"`
 	IDField    string          `json:"idField" toml:"id_fieldname,omitempty"`
 	Fields     string          `json:"fields" toml:"fields,omitempty"`
 	GeomType   string          `json:"geomType" toml:"geometry_type,omitempty"`
-	Bounds     *geom.Extent    `gorm:"-"`
-	Provider   aprd.TilerUnion `gorm:"-"`
+	Type       string          `json:"-" toml:"type,omitempty" gorm:"-"`
+	Provider   aprd.TilerUnion `json:"-" toml:"-" gorm:"-"`
 }
 
 //UpInsert 创建更新vtlayer
@@ -153,6 +153,7 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 			if !gorm.IsRecordNotFoundError(err) {
 				return err
 			}
+			return fmt.Errorf("%s", MsgList[40410])
 		}
 		var err error
 		prd, err = RegisterProvider(newPrd)
@@ -160,15 +161,16 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 			return err
 		}
 	}
-
+	if prd.Std != nil {
+		player.Type = "postgis"
+	} else if prd.Mvt != nil {
+		player.Type = "mvt_postgis"
+	}
 	//provider内部使用name作为id
-	name := player.Name
-	player.Name = player.ID
 	cfg, err := toDicter(player)
 	if err != nil {
 		return err
 	}
-	player.Name = name //恢复name
 	err = prd.AddLayer(cfg)
 	if err != nil {
 		return err
@@ -181,11 +183,12 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 }
 
 //AutoMap4ProviderLayer 为ProviderLayer自动创建atlasmap
-func AutoMap4ProviderLayer(plryid string) error {
-	player := &ProviderLayer{ID: plryid}
+func AutoMap4ProviderLayer(plyrID string) error {
+
+	player := &ProviderLayer{ID: plyrID}
 	dbres := db.Find(player)
 	if dbres.Error != nil {
-		log.Warnf(`get prdLayer error, prdlayer(%s) not found ^^`, plryid)
+		log.Warnf(`get prdLayer error, prdlayer(%s) not found ^^`, plyrID)
 		return dbres.Error
 	}
 
@@ -196,7 +199,7 @@ func AutoMap4ProviderLayer(plryid string) error {
 			if !gorm.IsRecordNotFoundError(err) {
 				return err
 			}
-			//else is not found error, continue
+			return fmt.Errorf("%s", MsgList[40410])
 		}
 		var err error
 		prd, err = RegisterProvider(newPrd)
@@ -206,11 +209,11 @@ func AutoMap4ProviderLayer(plryid string) error {
 	}
 
 	//map name 就是mapid
-	bbox, _ := prd.Std.LayerExtent(plryid)
-	// minzoom := prd.Std.LayerMinZoom(plryid)
+	bbox, _ := prd.LayerExtent(plyrID)
 	minzoom := 0
-	// maxzoom := prd.Std.LayerMaxZoom(plryid)
 	maxzoom := 15
+	// minzoom := prd.LayerMinZoom(plryid)
+	// maxzoom := prd.LayerMaxZoom(plryid)
 	bounds := fmt.Sprintf("[%f,%f,%f,%f]", bbox.MinX(), bbox.MinY(), bbox.MaxX(), bbox.MaxY())
 	min := bbox.Min()
 	max := bbox.Max()
@@ -224,10 +227,12 @@ func AutoMap4ProviderLayer(plryid string) error {
 	center = %s
 	attribution = "auto generate from provider layer"
 		[[maps.layers]]
+		id = "%s"
+		name = "%s"
 		provider_layer = "%s.%s"
 		min_zoom = %d
 		max_zoom = %d`,
-		plryid, bounds, center, player.ProviderID, player.ID, minzoom, maxzoom)
+		plyrID, bounds, center, player.ID, player.Name, player.ProviderID, player.ID, minzoom, maxzoom)
 
 	autocfg, err := config.Parse(strings.NewReader(mapconf), "")
 	if err != nil {
@@ -237,7 +242,7 @@ func AutoMap4ProviderLayer(plryid string) error {
 	if err != nil {
 		return err
 	}
-	log.Info(` auto register map(%s) of vtlyr(%s) ^^`, plryid, player.ID)
+	log.Info(` auto register map(%s) of vtlyr(%s) ^^`, plyrID, player.ID)
 	return nil
 }
 
@@ -254,8 +259,12 @@ func drivers(c *gin.Context) {
 	}
 	var drivers = []Driver{
 		{
+			"mvt_postgis",
+			"v2.4+",
+		},
+		{
 			"postgis",
-			"db",
+			"< v2.4",
 		}}
 	resp.DoneData(c, drivers)
 }
@@ -301,11 +310,15 @@ func registerProvider(c *gin.Context) {
 	}
 
 	if provider.ID == "" {
-		provider.ID, _ = shortid.Generate()
+		provider.ID = ShortID()
 	}
 
 	if provider.Type == "" {
-		provider.Type = "postgis"
+		provider.Type = "mvt_postgis"
+	}
+
+	if provider.MaxConnections == 0 {
+		provider.MaxConnections = 100
 	}
 
 	_, err = RegisterProvider(provider)
@@ -338,10 +351,73 @@ func getProviderInfo(c *gin.Context) {
 			log.Error(err)
 			resp.Fail(c, 5001)
 		}
-		resp.Fail(c, 4049)
+		resp.Fail(c, 40410)
 		return
 	}
 	resp.DoneData(c, prov)
+}
+
+//updateProviderInfo 更新指定数据库驱动
+func updateProviderInfo(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	type prdbind struct {
+		Name           string `json:"name"`
+		User           string `json:"user"`
+		Password       string `json:"password"`
+		MaxConnections int    `json:"maxConnections"`
+	}
+	prd := &prdbind{}
+	err := c.Bind(prd)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(Provider{}).Where("id = ?", id).Update(prd)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteProvider 删除指定数据库
+func deleteProvider(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(Provider{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
 }
 
 //listProviderLayers 获取图层列表
@@ -383,7 +459,7 @@ func createProviderLayer(c *gin.Context) {
 		resp.Fail(c, 4001)
 		return
 	}
-	player.ID, _ = shortid.Generate()
+	player.ID = ShortID()
 	err = RegisterProviderLayer(&player)
 	if err != nil {
 		log.Error(err)
@@ -414,10 +490,71 @@ func getProviderLayerInfo(c *gin.Context) {
 			log.Error(err)
 			resp.Fail(c, 5001)
 		}
-		resp.Fail(c, 4049)
+		resp.Fail(c, 40411)
 		return
 	}
 	resp.DoneData(c, plry)
+}
+
+//updateProviderLayerInfo 更新指定数据库驱动层
+func updateProviderLayerInfo(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	id := c.Param("id")
+	plyr := &struct {
+		Name   string `json:"name" `
+		SQL    string `json:"sql"`
+		Fields string `json:"fields"`
+	}{}
+	err := c.Bind(plyr)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 4001)
+		return
+	}
+	// 更新insertUser
+	dbres := db.Model(ProviderLayer{}).Where("id = ?", id).Update(plyr)
+
+	if dbres.Error != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
+	return
+}
+
+//deleteProvider 删除指定数据库驱动层
+func deleteProviderLayer(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	ids := c.Param("ids")
+	sids := strings.Split(ids, ",")
+	dbres := db.Where("id in (?)", sids).Delete(ProviderLayer{})
+	if dbres.Error != nil {
+		log.Error(dbres.Error)
+		resp.Fail(c, 5001)
+		return
+	}
+	resp.DoneData(c, gin.H{
+		"affected": dbres.RowsAffected,
+	})
 }
 
 func getPrdLayerTileJSON(c *gin.Context) {
@@ -426,20 +563,20 @@ func getPrdLayerTileJSON(c *gin.Context) {
 	if uid == "" {
 		uid = c.GetString(identityKey)
 	}
-	plryid := c.Param("id")
-	if plryid == "" {
+	plyrid := c.Param("id")
+	if plyrid == "" {
 		resp.Fail(c, 4001)
 		return
 	}
 
-	amap, err := atlas.GetMap(plryid)
+	amap, err := atlas.GetMap(plyrid)
 	if err != nil {
-		err = AutoMap4ProviderLayer(plryid)
+		err = AutoMap4ProviderLayer(plyrid)
 		if err != nil {
 			resp.Fail(c, 4049)
 			return
 		}
-		amap, _ = atlas.GetMap(plryid)
+		amap, _ = atlas.GetMap(plyrid)
 	}
 	//get atlas map if not exist then create
 	//get atlas map tilejson
@@ -463,23 +600,22 @@ func getPrdLayerTileJSON(c *gin.Context) {
 		q = "?debug=true"
 	}
 
-	tileurl := fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}%s`, rootURL(c.Request), plryid, q)
+	tileurl := fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}%s`, rootURL(c.Request), plyrid, q)
 	//	build our vector layer details
 	layer := tilejson.VectorLayer{
 		Version: 2,
 		Extent:  4096,
-		ID:      amap.Layers[0].MVTName(),
+		ID:      amap.Layers[0].ID,
 		Name:    amap.Layers[0].MVTName(),
-		// MinZoom: amap.Layers[0].MinZoom,
-		MinZoom: 0,
-		MaxZoom: 15,
+		MinZoom: amap.Layers[0].MinZoom,
+		MaxZoom: amap.Layers[0].MaxZoom,
 		Tiles: []string{
 			tileurl,
 		},
 	}
 
-	tileJSON.MinZoom = 0
-	tileJSON.MaxZoom = 15
+	tileJSON.MinZoom = amap.Layers[0].MinZoom
+	tileJSON.MaxZoom = amap.Layers[0].MaxZoom
 
 	switch amap.Layers[0].GeomType.(type) {
 	case geom.Point, geom.MultiPoint:
@@ -508,7 +644,7 @@ func getPrdLayerTileJSON(c *gin.Context) {
 	c.Header("Expires", "0")
 
 	if err := json.NewEncoder(c.Writer).Encode(tileJSON); err != nil {
-		log.Printf("error encoding tileJSON for layer (%v)", plryid)
+		log.Printf("error encoding tileJSON for layer (%v)", plyrid)
 	}
 }
 
@@ -547,7 +683,7 @@ func getPrdLayerTiles(c *gin.Context) {
 	placeholder, _ = strconv.ParseUint(ys[0], 10, 32)
 	y := uint(placeholder)
 	//拷贝过滤新图层
-	amap = amap.FilterLayersByZoom(z)
+	// amap = amap.FilterLayersByZoom(z)
 
 	tile := slippy.NewTile(z, x, y)
 	pbyte, err := amap.Encode(c.Request.Context(), tile)
@@ -582,27 +718,27 @@ func prdLayerViewer(c *gin.Context) {
 	if uid == "" {
 		uid = c.GetString(identityKey)
 	}
-	plryid := c.Param("id")
+	plyrID := c.Param("id")
 
-	amap, err := atlas.GetMap(plryid)
+	amap, err := atlas.GetMap(plyrID)
 	if err != nil {
-		err = AutoMap4ProviderLayer(plryid)
+		err = AutoMap4ProviderLayer(plyrID)
 		if err != nil {
 			resp.Fail(c, 4049)
 			return
 		}
-		amap, _ = atlas.GetMap(plryid)
+		amap, _ = atlas.GetMap(plyrID)
 	}
 
-	prdlayer := &ProviderLayer{ID: plryid}
+	prdlayer := &ProviderLayer{ID: plyrID}
 	dbres := db.Find(prdlayer)
 	if dbres.Error != nil {
-		log.Warnf(`get prdLayer error, prdlayer(%s) not found ^^`, plryid)
+		log.Warnf(`get prdLayer error, prdlayer(%s) not found ^^`, plyrID)
 		resp.Fail(c, 4046)
 		return
 	}
 
-	url := fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), plryid) //need use user own service set//
+	url := fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), plyrID) //need use user own service set//
 
 	layerType := "circle"
 	switch amap.Layers[0].GeomType.(type) {
@@ -618,8 +754,8 @@ func prdLayerViewer(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "dataset.html", gin.H{
 		"Title":     "服务集预览(T)",
-		"Name":      prdlayer.Name + "@" + plryid,
-		"LayerName": prdlayer.ID,
+		"Name":      prdlayer.Name + "@" + plyrID,
+		"LayerName": prdlayer.Name,
 		"LayerType": layerType,
 		"Format":    PBF,
 		"URL":       url,

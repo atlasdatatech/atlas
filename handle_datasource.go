@@ -18,7 +18,6 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/gin-gonic/gin"
-	"github.com/teris-io/shortid"
 )
 
 func saveSource(c *gin.Context) (*DataSource, error) {
@@ -44,7 +43,7 @@ func saveSource(c *gin.Context) (*DataSource, error) {
 	default:
 		return nil, fmt.Errorf("unsupport format")
 	}
-	id, _ := shortid.Generate()
+	id := ShortID()
 	name := strings.TrimSuffix(file.Filename, ext)
 	dst := filepath.Join(dir, uid, id+"."+name+lext)
 	os.MkdirAll(filepath.Dir(dst), os.ModePerm)
@@ -85,7 +84,7 @@ func loadZipSources(ds *DataSource) ([]*DataSource, error) {
 			subname := filepath.ToSlash(subase)
 			subname = strings.Replace(subname, "/", "_", -1)
 			subname = strings.TrimSuffix(subname, ext)
-			subid, _ := shortid.Generate()
+			subid := ShortID()
 			subds := &DataSource{
 				ID:     subid,
 				Name:   subname,
@@ -214,7 +213,7 @@ func sources2ts(task *Task, dss []*DataSource) (*Tileset, error) {
 	task.Progress = 20
 	log.Infof("convert %d sources to geojson, takes: %v", len(dss), time.Since(s))
 	s = time.Now()
-	id, _ := shortid.Generate()
+	id := ShortID()
 	outfile := filepath.Join(viper.GetString("paths.tilesets"), task.Owner, id+MBTILESEXT)
 	var params []string
 	//显示进度,读取outbuffer缓冲区
