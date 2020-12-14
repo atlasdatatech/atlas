@@ -175,16 +175,11 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 	if err != nil {
 		return err
 	}
-	err = player.UpInsert()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
 //AutoMap4ProviderLayer 为ProviderLayer自动创建atlasmap
 func AutoMap4ProviderLayer(plyrID string) error {
-
 	player := &ProviderLayer{ID: plyrID}
 	dbres := db.Find(player)
 	if dbres.Error != nil {
@@ -207,11 +202,20 @@ func AutoMap4ProviderLayer(plyrID string) error {
 			return err
 		}
 	}
+	//若内部图层不存在，则需注册图层
+	plyr, ok := prd.Layer(plyrID)
+	if !ok {
+		err := RegisterProviderLayer(player)
+		if err != nil {
+			return err
+		}
+		log.Infof("重新注册内部驱动图层%s", plyr.ID())
+	}
 
 	//map name 就是mapid
 	bbox, _ := prd.LayerExtent(plyrID)
 	minzoom := 0
-	maxzoom := 15
+	maxzoom := 14
 	// minzoom := prd.LayerMinZoom(plryid)
 	// maxzoom := prd.LayerMaxZoom(plryid)
 	bounds := fmt.Sprintf("[%f,%f,%f,%f]", bbox.MinX(), bbox.MinY(), bbox.MaxX(), bbox.MaxY())
@@ -461,6 +465,12 @@ func createProviderLayer(c *gin.Context) {
 	}
 	player.ID = ShortID()
 	err = RegisterProviderLayer(&player)
+	if err != nil {
+		log.Error(err)
+		resp.FailMsg(c, err.Error())
+		return
+	}
+	err = player.UpInsert()
 	if err != nil {
 		log.Error(err)
 		resp.FailMsg(c, err.Error())
