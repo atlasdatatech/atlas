@@ -84,23 +84,12 @@
             style: {
                 version: 8,
                 sources: {
-                    "vtiles": {
+                    "vlayers": {
                         type: 'vector',
-                        tiles: ['{{.URL}}']
+                        url: '{{.URL}}'
                     }
                 },
-                layers: [{
-                    "id": "default",
-                    "source": "vtiles",
-                    "source-layer": '{{.LayerName}}',
-                    "type": '{{.LayerType}}',
-                    "layout": {
-                        "visibility": "visible"
-                    },
-                    paint:{
-                        "{{.LayerType}}-color":"red"
-                    }
-                }]
+                layers: []
             },
             center: {{.Center}},
             zoom: {{.Zoom}}

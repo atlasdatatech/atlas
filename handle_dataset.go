@@ -1341,7 +1341,7 @@ func getTileLayerJSON(c *gin.Context) {
 		Name:     &dts.Name,
 		Scheme:   tilejson.SchemeXYZ,
 		TileJSON: tilejson.Version,
-		Version:  "1.0.0",
+		Version:  "2",
 		Grids:    make([]string, 0),
 		Data:     make([]string, 0),
 	}
@@ -1561,7 +1561,7 @@ func getLayerMBTiles(c *gin.Context) {
 		Name:     &dts.Name,
 		Scheme:   tilejson.SchemeXYZ,
 		TileJSON: tilejson.Version,
-		Version:  "1.0.0",
+		Version:  "2",
 		Grids:    make([]string, 0),
 		Data:     make([]string, 0),
 	}

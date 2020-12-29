@@ -464,11 +464,20 @@ func setupRouter() *gin.Engine {
 	//gzip
 	// r.Use(gzip.Gzip(gzip.DefaultCompression))
 	//cors
+	// allowAllOrigins = false
+	// allowOrigins = ["*"]##若allowAllOrigins = false, 此选项会失效
+	// allowOriginFunc = "func(origin string) bool {return true}"
+	// allowCredentials = true
+	// allowHeaders = ["Authorization"]
+
 	config := cors.DefaultConfig()
 	// config.AllowAllOrigins = true
-	config.AllowOrigins = []string{"*"}
-	config.AllowWildcard = true
+	// config.AllowOrigins = []string{"*"}//设置*时会自动开启AllowAllOrigins=true
 	config.AllowCredentials = true
+	//func实际上设置了AllowAllOrigins=flase，然后通过函数放行所有，即AllowOrigins= []string{origin}
+	config.AllowOriginFunc = func(origin string) bool {
+		return true
+	}
 	config.AddAllowHeaders("Authorization")
 	r.Use(cors.New(config))
 	//public root
@@ -607,12 +616,9 @@ func setupRouter() *gin.Engine {
 	{
 		proxy.GET("/*uri", tilesProxy)
 	}
-
 	//drivers 数据库驱动
 	r.GET("/drivers", drivers)
 	drivers := r.Group("/providers")
-	// drivers.Use(AuthMidHandler(authMid))
-	// drivers.Use(UserMidHandler())
 	{
 		drivers.GET("/", listProviders)
 		drivers.POST("/register/", registerProvider)
@@ -623,8 +629,6 @@ func setupRouter() *gin.Engine {
 
 	//vtlayers 注册图层列表
 	vtlayers := r.Group("/vtlayers")
-	// vtlayers.Use(AuthMidHandler(authMid))
-	// vtlayers.Use(UserMidHandler())
 	{
 		vtlayers.GET("/", listProviderLayers)
 		vtlayers.POST("/create/", createProviderLayer)

@@ -214,10 +214,10 @@ func AutoMap4ProviderLayer(plyrID string) error {
 
 	//map name 就是mapid
 	bbox, _ := prd.LayerExtent(plyrID)
-	minzoom := 0
-	maxzoom := 14
-	// minzoom := prd.LayerMinZoom(plryid)
-	// maxzoom := prd.LayerMaxZoom(plryid)
+	// minzoom := 0
+	// maxzoom := 14
+	minzoom := prd.LayerMinZoom(plyrID)
+	maxzoom := prd.LayerMaxZoom(plyrID)
 	bounds := fmt.Sprintf("[%f,%f,%f,%f]", bbox.MinX(), bbox.MinY(), bbox.MaxX(), bbox.MaxY())
 	min := bbox.Min()
 	max := bbox.Max()
@@ -258,17 +258,20 @@ func drivers(c *gin.Context) {
 		return
 	}
 	type Driver struct {
-		Name string
-		Type string
+		Name    string
+		Type    string
+		Version string
 	}
 	var drivers = []Driver{
 		{
+			"mvt_postgis",
 			"mvt_postgis",
 			"v2.4+",
 		},
 		{
 			"postgis",
-			"< v2.4",
+			"postgis",
+			"^v2.4",
 		}}
 	resp.DoneData(c, drivers)
 }
@@ -313,7 +316,21 @@ func registerProvider(c *gin.Context) {
 		return
 	}
 
-	if provider.ID == "" {
+	if "" != provider.ID {
+		if err := db.Where("id = ?", provider.ID).First(&Provider{}).Error; err != nil {
+			if !gorm.IsRecordNotFoundError(err) {
+				log.Error(err)
+				resp.Fail(c, 5001)
+				return //数据库错误
+			}
+			//没找到,继续正常逻辑
+		} else {
+			//找到了，id重复，则直接返回id重复
+			resp.FailMsg(c, "驱动id重复，请使用更新接口更新驱动信息，不传id后台会自动生成驱动id并返回")
+			return
+		}
+	} else {
+		//id为空，注册新的驱动并返回id
 		provider.ID = ShortID()
 	}
 
@@ -434,14 +451,21 @@ func listProviderLayers(c *gin.Context) {
 	if uid == "" {
 		uid = ATLAS
 	}
-
+	pid := c.Query("pid")
 	var players []ProviderLayer
-	err := db.Find(&players).Error
-	if err != nil {
-		resp.Fail(c, 5001)
-		return
+	if pid != "" {
+		err := db.Where("provider_id = ?", pid).Find(&players).Error
+		if err != nil {
+			resp.Fail(c, 5001)
+			return
+		}
+	} else {
+		err := db.Find(&players).Error
+		if err != nil {
+			resp.Fail(c, 5001)
+			return
+		}
 	}
-
 	resp.DoneData(c, players)
 }
 
@@ -598,7 +622,7 @@ func getPrdLayerTileJSON(c *gin.Context) {
 		Name:        &amap.Name,
 		Scheme:      tilejson.SchemeXYZ,
 		TileJSON:    tilejson.Version,
-		Version:     "1.0.0",
+		Version:     "2",
 		Grids:       make([]string, 0),
 		Data:        make([]string, 0),
 	}
@@ -615,7 +639,7 @@ func getPrdLayerTileJSON(c *gin.Context) {
 	layer := tilejson.VectorLayer{
 		Version: 2,
 		Extent:  4096,
-		ID:      amap.Layers[0].ID,
+		ID:      amap.Layers[0].MVTName(),
 		Name:    amap.Layers[0].MVTName(),
 		MinZoom: amap.Layers[0].MinZoom,
 		MaxZoom: amap.Layers[0].MaxZoom,
@@ -729,7 +753,6 @@ func prdLayerViewer(c *gin.Context) {
 		uid = c.GetString(identityKey)
 	}
 	plyrID := c.Param("id")
-
 	amap, err := atlas.GetMap(plyrID)
 	if err != nil {
 		err = AutoMap4ProviderLayer(plyrID)
@@ -739,7 +762,6 @@ func prdLayerViewer(c *gin.Context) {
 		}
 		amap, _ = atlas.GetMap(plyrID)
 	}
-
 	prdlayer := &ProviderLayer{ID: plyrID}
 	dbres := db.Find(prdlayer)
 	if dbres.Error != nil {
@@ -747,31 +769,14 @@ func prdLayerViewer(c *gin.Context) {
 		resp.Fail(c, 4046)
 		return
 	}
-
-	url := fmt.Sprintf(`%s/vtlayers/x/%s/{z}/{x}/{y}.pbf`, rootURL(c.Request), plyrID) //need use user own service set//
-
-	layerType := "circle"
-	switch amap.Layers[0].GeomType.(type) {
-	case geom.Point, geom.MultiPoint:
-		layerType = "circle"
-	case geom.Line, geom.LineString, geom.MultiLineString:
-		layerType = "line"
-	case geom.Polygon, geom.MultiPolygon:
-		layerType = "fill"
-	default:
-		// TODO: debug log
-	}
-
+	tilejson := fmt.Sprintf(`%s/vtlayers/x/%s/`, rootURL(c.Request), plyrID) //need use user own service set//
 	c.HTML(http.StatusOK, "dataset.html", gin.H{
-		"Title":     "服务集预览(T)",
-		"Name":      prdlayer.Name + "@" + plyrID,
-		"LayerName": prdlayer.Name,
-		"LayerType": layerType,
-		"Format":    PBF,
-		"URL":       url,
-		"Zoom":      amap.Layers[0].MaxZoom,
-		"Center":    amap.Center,
-		"Color":     fmt.Sprintf(`{"%s-color":"#00ffff"}`, layerType),
+		"Title":  "服务集预览(T)",
+		"Name":   prdlayer.Name + "@" + plyrID,
+		"Format": PBF,
+		"URL":    tilejson,
+		"Zoom":   amap.Layers[0].MaxZoom,
+		"Center": amap.Center,
 	})
 	return
 }
