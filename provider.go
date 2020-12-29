@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -166,6 +167,10 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 	} else if prd.Mvt != nil {
 		player.Type = "mvt_postgis"
 	}
+	err := validPLConsqlfig(player)
+	if err != nil {
+		return err
+	}
 	//provider内部使用name作为id
 	cfg, err := toDicter(player)
 	if err != nil {
@@ -174,6 +179,19 @@ func RegisterProviderLayer(player *ProviderLayer) error {
 	err = prd.AddLayer(cfg)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func validPLConsqlfig(player *ProviderLayer) error {
+	if player == nil {
+		return fmt.Errorf("player is nil")
+	}
+	if player.SQL != "" {
+		rgx := regexp.MustCompile(`(?i)ST_AsMVTGeom`)
+		if rgx.MatchString(player.SQL) && player.Type != "mvt_postgis" {
+			return fmt.Errorf(`检测到指定了mvtsql语句,但layer的类型不是'mvt_postgis'`)
+		}
 	}
 	return nil
 }
@@ -390,17 +408,21 @@ func updateProviderInfo(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	type prdbind struct {
+	type bind struct {
 		Name           string `json:"name"`
 		User           string `json:"user"`
 		Password       string `json:"password"`
 		MaxConnections int    `json:"maxConnections"`
 	}
-	prd := &prdbind{}
+	prd := &bind{}
 	err := c.Bind(prd)
 	if err != nil {
 		log.Error(err)
 		resp.Fail(c, 4001)
+		return
+	}
+	if prd.MaxConnections < 0 || prd.MaxConnections > 1024 {
+		resp.FailMsg(c, "最大连接数可以按照实际情况设置为(0,1024]之间的任意整数")
 		return
 	}
 	// 更新insertUser
