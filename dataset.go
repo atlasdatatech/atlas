@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-spatial/geom/encoding/mvt"
 	"github.com/go-spatial/geom/slippy"
-	"github.com/go-spatial/tegola/dict"
 	aprd "github.com/go-spatial/tegola/provider"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/jinzhu/gorm"
@@ -273,6 +272,30 @@ func (dt *Dataset) Tags() []string {
 
 // NewTileLayer 新建服务层
 func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
+
+	prd, ok := providers[PROVIDERID]
+	if !ok {
+		return nil, fmt.Errorf("provider not found")
+	}
+
+	//组织参数，创建providelayer
+	player := &ProviderLayer{
+		ProviderID: PROVIDERID,
+		ID:         dt.ID,
+		Name:       dt.ID,
+		TabLeName:  strings.ToLower(dt.ID),
+		Type:       "mvt_postgis",
+		SRID:       4326,
+	}
+	//provider内部使用name作为id
+	cfg, err := toDicter(player)
+	if err != nil {
+		return nil, err
+	}
+	err = prd.AddLayer(cfg)
+	if err != nil {
+		return nil, err
+	}
 	tlayer := &TileLayer{
 		ID:      dt.ID,
 		Name:    dt.ID,
@@ -280,20 +303,9 @@ func (dt *Dataset) NewTileLayer() (*TileLayer, error) {
 		MaxZoom: 19,
 		SRID:    3857, //注意tilelayer的目标srid
 	}
-	prd, ok := providers["atlas"]
-	if !ok {
-		return nil, fmt.Errorf("provider not found")
-	}
 	tlayer.Provider = prd //layer持有了provider
 	tlayer.ProviderLayerID = dt.ID
 	dt.tlayer = tlayer
-	cfg := dict.Dict{}
-	cfg["name"] = dt.ID
-	cfg["tablename"] = strings.ToLower(dt.ID)
-	err := prd.AddLayer(cfg)
-	if err != nil {
-		return nil, err
-	}
 	return tlayer, nil
 }
 
@@ -306,7 +318,7 @@ func (dt *Dataset) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error
 	mvtLayer := mvt.Layer{
 		Name: dt.Name,
 	}
-	prd, ok := providers["atlas"]
+	prd, ok := providers[PROVIDERID]
 	if !ok {
 		return nil, fmt.Errorf("provider not found")
 	}

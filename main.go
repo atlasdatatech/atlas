@@ -54,6 +54,8 @@ const (
 	userKey     = "id"
 	//DISABLEACCESSTOKEN 不使用accesstoken
 	DISABLEACCESSTOKEN = true
+	//PROVIDERID 默认数据驱动ID
+	PROVIDERID = "atlas"
 )
 
 var (

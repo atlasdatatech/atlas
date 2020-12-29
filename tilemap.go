@@ -128,6 +128,62 @@ func (tl *TileLayer) FilterByZoom(zoom uint) bool {
 	return true
 }
 
+//MVTEncode encode for mvt_postgis
+func (tl *TileLayer) MVTEncode(ctx context.Context, tile *slippy.Tile) ([]byte, error) {
+	if tl.Provider.Mvt == nil {
+		return nil, fmt.Errorf(".Mvt is null")
+	}
+
+	ptile := aprd.NewTile(tile.Z, tile.X, tile.Y,
+		uint(TileBuffer), uint(tl.SRID))
+
+	lry := aprd.Layer{
+		ID:      tl.ID,
+		MVTName: tl.MVTName(),
+	}
+	layers := []aprd.Layer{lry}
+	data, err := tl.Provider.Mvt.MVTForLayers(ctx, ptile, layers)
+	if err != nil {
+		switch err {
+		case context.Canceled:
+			return nil, err
+			// TODO (arolek): add debug logs
+		default:
+			z, x, y := tile.ZXY()
+			// TODO (arolek): should we return an error to the response or just log the error?
+			// we can't just write to the response as the waitgroup is going to write to the response as well
+			log.Printf("err fetching tile (z: %v, x: %v, y: %v) features: %v", z, x, y, err)
+			if err.Error() != "too much features" {
+				return nil, err
+			}
+		}
+	}
+	// stop processing if the context has an error. this check is necessary
+	// otherwise the server continues processing even if the request was canceled
+	// as the waitgroup was not notified of the cancel
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	// buffer to store our compressed bytes
+	var gzipBuf bytes.Buffer
+
+	// compress the encoded bytes
+	w := gzip.NewWriter(&gzipBuf)
+	_, err = w.Write(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// flush and close the writer
+	if err = w.Close(); err != nil {
+		return nil, err
+	}
+
+	// return encoded, gzipped tile
+	return gzipBuf.Bytes(), nil
+}
+
 //Encode TODO (arolek): support for max zoom
 func (tl *TileLayer) Encode(ctx context.Context, tile *slippy.Tile) ([]byte, error) {
 	if tl.Provider.Std == nil {

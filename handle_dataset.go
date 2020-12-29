@@ -1267,8 +1267,14 @@ func getLayerTiles(c *gin.Context) {
 	}
 
 	tile := slippy.NewTile(z, x, y)
+	var pbyte []byte
+	var err error
+	if dts.tlayer.Provider.Std != nil {
+		pbyte, err = dts.tlayer.Encode(c.Request.Context(), tile)
+	} else {
+		pbyte, err = dts.tlayer.MVTEncode(c.Request.Context(), tile)
+	}
 
-	pbyte, err := dts.tlayer.Encode(c.Request.Context(), tile)
 	if err != nil {
 		switch err {
 		case context.Canceled:
