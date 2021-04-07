@@ -203,6 +203,7 @@ func initSysDb() (*gorm.DB, error) {
 	//gorm自动构建管理
 	db.AutoMigrate(&Map{}, &Style{}, &Font{}, &Tileset{}, &Dataset{}, &DataSource{}, &Task{})
 	db.AutoMigrate(&Scene{}, &Olmap{}, &Tileset3d{}, &Terrain3d{}, &Style3d{}, &Symbol3d{}, &Symbol3dGroup{})
+	db.AutoMigrate(&Geoserver{})
 	db.AutoMigrate(&Provider{}, &ProviderLayer{})
 	return db, nil
 }
@@ -587,19 +588,29 @@ func setupRouter() *gin.Engine {
 		styles3d.DELETE("/delete/:ids/", deleteStyle3d)
 	}
 
-	//image 场景接口
-	onlines := r.Group("/online")
+	analysis3d := r.Group("/analysis3d")
 	// studio.Use(AuthMidHandler(authMid))
 	// studio.Use(UserMidHandler())
 	{
-		onlines.GET("/images/", listOnlineMaps)
-		onlines.GET("/tilesets/", listTilesets3d)
-		onlines.GET("/terrains/", listTerrains3d)
-		onlines.GET("/symbols/", getSymbolGroups3dList)
-		onlines.POST("/symbols/", listSymbols3d)
-		onlines.GET("/styles3d/", listStyles3d)
-		onlines.POST("/styles3d/", createStyle3d)
-		onlines.DELETE("/styles3d/:id/", deleteStyle3d)
+		analysis3d.POST("/query/:id/", geoQuery3d)
+		// analysis3d.GET("/", listStyles3d)
+		// analysis3d.POST("/create/", createStyle3d)
+		// analysis3d.GET("/info/:id/", getStyle3d)
+		// analysis3d.POST("/info/:id/", updateStyle3d)
+		// analysis3d.DELETE("/delete/:ids/", deleteStyle3d)
+	}
+
+	//image 场景接口
+	gs := r.Group("/gs")
+	// studio.Use(AuthMidHandler(authMid))
+	// studio.Use(UserMidHandler())
+	{
+		gs.GET("/", listGeoserverServices)
+		gs.POST("/register/", createGeoserverService)
+		gs.GET("/info/:id/", getGeoserverService)
+		gs.POST("/info/:id/", updateGeoserverService)
+		gs.DELETE("/delete/:ids/", deleteGeoserverService)
+		gs.GET("/layers/:id/", getGeoserverLayers)
 	}
 
 	//serve3d 其他接口
@@ -1032,16 +1043,4 @@ func main() {
 
 	// log.Infof("Listening and serving HTTP on %s\n", viper.GetString("app.port"))
 	r.Run(":" + viper.GetString("app.port"))
-	// https
-	// put path to cert instead of CONF.TLS.CERT
-	// put path to key instead of CONF.TLS.KEY
-	/*
-		go func() {
-				http.ListenAndServe(":80", http.HandlerFunc(redirectToHTTPS))
-			}()
-			errorHTTPS := router.RunTLS(":443", CONF.TLS.CERT, CONF.TLS.KEY)
-			if errorHTTPS != nil {
-				log.Fatal("HTTPS doesn't work:", errorHTTPS.Error())
-			}
-	*/
 }

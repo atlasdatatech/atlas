@@ -21,6 +21,7 @@ require (
 	github.com/gofrs/uuid v3.3.0+incompatible // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/golang/protobuf v1.4.2
+	github.com/hishamkaram/geoserver v0.0.0-20210210173821-0ae77533e371
 	github.com/jackc/fake v0.0.0-20150926172116-812a484cc733 // indirect
 	github.com/jinzhu/gorm v1.9.16
 	github.com/jonas-p/go-shp v0.1.1
@@ -46,3 +47,5 @@ require (
 replace github.com/go-spatial/tegola v0.12.1 => github.com/atlasdatatech/tegola v0.13.4
 
 replace github.com/paulmach/orb v0.1.6 => github.com/atlasdatatech/orb v0.2.2
+
+replace github.com/hishamkaram/geoserver v0.0.0-20210210173821-0ae77533e371 => github.com/atlasdatatech/geoserver v0.0.0-20210210173821-0ae77533e371

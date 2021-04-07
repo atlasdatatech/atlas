@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	"github.com/paulmach/orb/geojson"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -1351,4 +1353,118 @@ func tilesProxy(c *gin.Context) {
 	// }
 	// c.Writer.Write(rbody)
 	c.DataFromReader(http.StatusOK, contentLength, contentType, res.Body, map[string]string{})
+}
+
+//geoQuery3d 三维查询接口
+func geoQuery3d(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+	tbName := c.Param("id")
+
+	var body struct {
+		Geom   string `form:"geom" json:"geom"`
+		Fields string `form:"fields" json:"fields"`
+		Filter string `form:"filter" json:"filter"`
+	}
+	err := c.Bind(&body)
+	if err != nil {
+		resp.Fail(c, 4001)
+		return
+	}
+
+	selStr := "st_asgeojson(geom) as geom "
+	if "" != body.Fields {
+		selStr = selStr + "," + body.Fields
+	}
+	var whrStr string
+	if body.Geom != "" {
+		whrStr = fmt.Sprintf(` WHERE geom && st_geomfromgeojson('%s')`, body.Geom)
+		if "" != body.Filter {
+			whrStr = whrStr + " AND " + body.Filter
+		}
+	} else {
+		if "" != body.Filter {
+			whrStr = " WHERE " + body.Filter
+		}
+	}
+
+	s := fmt.Sprintf(`SELECT %s FROM "%s" %s;`, selStr, strings.ToLower(tbName), whrStr)
+	rows, err := dataDB.Raw(s).Rows() // (*sql.Rows, error)
+	if err != nil {
+		log.Error(err)
+		resp.Fail(c, 5001)
+		return
+	}
+	defer rows.Close()
+	cols, err := rows.ColumnTypes()
+	if err != nil {
+		resp.Fail(c, 5001)
+		return
+	}
+	fc := geojson.NewFeatureCollection()
+	for rows.Next() {
+		// Scan needs an array of pointers to the values it is setting
+		// This creates the object and sets the values correctly
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		err = rows.Scan(vals...)
+		if err != nil {
+			log.Error(err)
+		}
+
+		f := geojson.NewFeature(nil)
+
+		for i, t := range cols {
+			// skip nil values.
+			if vals[i] == nil {
+				continue
+			}
+			rb, ok := vals[i].(*sql.RawBytes)
+			if !ok {
+				log.Errorf("Cannot convert index %d column %s to type *sql.RawBytes", i, t.Name())
+				continue
+			}
+
+			switch t.Name() {
+			case "geom":
+				geom, err := geojson.UnmarshalGeometry([]byte(*rb))
+				if err != nil {
+					log.Errorf("UnmarshalGeometry from geojson result error, index %d column %s", i, t.Name())
+					continue
+				}
+				f.Geometry = geom.Geometry()
+			default:
+				v := string(*rb)
+				switch cols[i].DatabaseTypeName() {
+				case "INT", "INT4":
+					f.Properties[t.Name()], _ = strconv.Atoi(v)
+				case "NUMERIC", "DECIMAL": //number
+					f.Properties[t.Name()], _ = strconv.ParseFloat(v, 64)
+				// case "BOOL":
+				// case "TIMESTAMPTZ":
+				// case "_VARCHAR":
+				// case "TEXT", "VARCHAR", "BIGINT":
+				default:
+					f.Properties[t.Name()] = v
+				}
+			}
+
+		}
+		fc.Append(f)
+	}
+	gj, err := fc.MarshalJSON()
+	if err != nil {
+		log.Errorf("unable to MarshalJSON of featureclection.")
+		resp.FailMsg(c, "unable to MarshalJSON of featureclection.")
+		return
+	}
+	resp.DoneData(c, json.RawMessage(gj))
 }
