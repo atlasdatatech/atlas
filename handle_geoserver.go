@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	gs "github.com/hishamkaram/geoserver"
 	"github.com/jinzhu/gorm"
+	"github.com/paulmach/orb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,6 +21,51 @@ type Geoserver struct {
 	Password   string    `form:"password" json:"password" binding:"required"`
 	Thumbnail  string    `form:"thumbnail" json:"thumbnail"`
 	CreatedAt  time.Time `form:"-" json:"-"`
+}
+
+// NodeType 节点类型
+type NodeType string
+
+// Supported db drivers
+const (
+	GROUP NodeType = "group"
+	LAYER          = "layer"
+)
+
+type LayerNode struct {
+	ID       string       `json:"id,omitempty"`
+	Name     string       `json:"name,omitempty"`
+	Type     NodeType     `json:"type,omitempty"`
+	Geom     GeoType      `json:"geom,omitempty"`
+	BBox     orb.Bound    `json:"bbox,omitempty"`
+	URI      string       `json:"uri,omitempty"`
+	Children []*LayerNode `json:"children,omitempty"`
+}
+
+type Bound struct {
+	Minx float64 `json:"minx,omitempty"`
+	Maxx float64 `json:"maxx,omitempty"`
+	Miny float64 `json:"miny,omitempty"`
+	Maxy float64 `json:"maxy,omitempty"`
+	CRS  string  `json:"crs,omitempty"`
+}
+
+type SrcLayer struct {
+	Class string `json:"@class,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Href  string `json:"href,omitempty"`
+}
+
+type PubLayer struct {
+	Type string `json:"@type,omitempty"`
+	Name string `json:"name,omitempty"`
+	Href string `json:"href,omitempty"`
+}
+
+type GsAttribute struct {
+	Name    string `json:"name,omitempty"`
+	Type    string `json:"type,omitempty"`
+	Binding string `json:"binding,omitempty"`
 }
 
 //**********************************************
@@ -212,12 +259,216 @@ func getGWCLayers(c *gin.Context) {
 		resp.Fail(c, 4049)
 		return
 	}
-
 	gsCatalog := gs.GetCatalog(geoserver.ServiceURL, geoserver.UserName, geoserver.Password)
-	ls, err := gsCatalog.GetLayers("")
+	layers, err := GetLayers(gsCatalog)
 	if err != nil {
 		resp.Fail(c, 4049)
 		return
 	}
-	resp.DoneData(c, ls)
+	resp.DoneData(c, layers)
+}
+
+//getGWCLayers 获取Geoserver实例信息
+func getGWCLayer(c *gin.Context) {
+	resp := NewResp()
+	uid := c.GetString(userKey)
+	if uid == "" {
+		uid = c.GetString(identityKey)
+	}
+	if uid == "" {
+		uid = ATLAS
+	}
+
+	sid := c.Param("id")
+	geoserver := &Geoserver{}
+	if err := db.Where("id = ?", sid).First(&geoserver).Error; err != nil {
+		if !gorm.IsRecordNotFoundError(err) {
+			log.Error(err)
+			resp.Fail(c, 5001)
+		}
+		resp.Fail(c, 4049)
+		return
+	}
+	layerName := c.Param("name")
+
+	gsCatalog := gs.GetCatalog(geoserver.ServiceURL, geoserver.UserName, geoserver.Password)
+	layer, err := GetTileLayer(gsCatalog, layerName)
+	// ls, err := gsCatalog.GetLayers("")
+	if err != nil {
+		resp.Fail(c, 4049)
+		return
+	}
+	resp.DoneData(c, layer)
+}
+
+func GetLayers(g *gs.GeoServer) (layers []*LayerNode, err error) {
+	targetURL := g.ParseURL("gwc", "rest", "layers")
+	httpRequest := gs.HTTPRequest{
+		Method: "GET",
+		Accept: "application/json",
+		URL:    targetURL,
+		Query:  nil,
+	}
+	response, responseCode := g.DoRequest(httpRequest)
+	if responseCode != 200 {
+		log.Error(string(response))
+		err = g.GetError(responseCode, response)
+		return
+	}
+	layerNames := []string{}
+	g.DeSerializeJSON(response, &layerNames)
+	for _, lyr := range layerNames {
+		tileLayer, err := GetTileLayer(g, lyr)
+		if err != nil {
+			continue
+		}
+		layers = append(layers, tileLayer)
+	}
+	return
+}
+
+func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err error) {
+	targetURL := g.ParseURL("rest", "layergroups", layerName+".json")
+	httpRequest := gs.HTTPRequest{
+		Method: "GET",
+		Accept: "application/json",
+		URL:    targetURL,
+		Query:  nil,
+	}
+	response, responseCode := g.DoRequest(httpRequest)
+	if responseCode != 200 {
+		//非200，未找到，则推测为layer，直接按featureTpye矢量类型进行详细信息获取
+		layer, err := GetGsSourceLayerInfo(g, layerName)
+		if err != nil {
+			return nil, err
+		}
+		return layer, nil
+	}
+	var layerResponse struct {
+		LayerGroup struct {
+			Publishables struct {
+				// Published []*PubLayer `json:"published,omitempty"`
+				Published interface{}
+			} `json:"publishables,omitempty"`
+			Bounds Bound `json:"bounds,omitempty"`
+		} `json:"layerGroup,omitempty"`
+	}
+	g.DeSerializeJSON(response, &layerResponse)
+
+	lyrNode := LayerNode{
+		ID:   layerName,
+		Name: layerName,
+		Type: GROUP,
+	}
+	bbox := layerResponse.LayerGroup.Bounds
+	lyrNode.BBox = orb.Bound{
+		Min: orb.Point{bbox.Minx, bbox.Miny},
+		Max: orb.Point{bbox.Maxx, bbox.Maxy},
+	}
+
+	if true {
+		layers, err := GetGroupLayers(g, layerResponse.LayerGroup.Publishables.Published)
+		if err != nil {
+			return nil, err
+		}
+		lyrNode.Children = layers
+	}
+
+	tileLayer = &lyrNode
+	return
+}
+
+func GetGroupLayers(g *gs.GeoServer, published interface{}) (layers []*LayerNode, err error) {
+	// 判断Published是对象还是数组
+	pubLyrs := []*PubLayer{}
+	_, ok := published.([]interface{})
+	if ok {
+		b, _ := json.Marshal(published)
+		err = json.Unmarshal(b, &pubLyrs)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+	} else {
+		b, _ := json.Marshal(published)
+		pl := &PubLayer{}
+		err = json.Unmarshal(b, pl)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		pubLyrs = append(pubLyrs, pl)
+	}
+
+	for _, lyr := range pubLyrs {
+		switch lyr.Type {
+		case "layer":
+			layer, err := GetGsSourceLayerInfo(g, lyr.Name)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			layers = append(layers, layer)
+		case "layerGroup":
+			layer, err := GetTileLayer(g, lyr.Name)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			layers = append(layers, layer)
+		}
+	}
+
+	return
+}
+
+func GetGsSourceLayerInfo(g *gs.GeoServer, layerName string) (layer *LayerNode, err error) {
+	wslyr := strings.Split(layerName, ":")
+	wsName := ""
+	lyrName := layerName
+	if len(wslyr) == 2 {
+		wsName = wslyr[0]
+		lyrName = wslyr[1]
+	}
+	targetURL := g.ParseURL("rest", "workspaces", wsName, "featuretypes", lyrName)
+	httpRequest := gs.HTTPRequest{
+		Method: "GET",
+		Accept: "application/json",
+		URL:    targetURL,
+		Query:  nil,
+	}
+	response, responseCode := g.DoRequest(httpRequest)
+	if responseCode != 200 {
+		log.Error(string(response))
+		err = g.GetError(responseCode, response)
+		return
+	}
+
+	var layerResponse struct {
+		FeatureType struct {
+			LatLonBoundingBox Bound `json:"latLonBoundingBox,omitempty"`
+			Attributes        struct {
+				Attribute []*GsAttribute `json:"attribute,omitempty"`
+			} `json:"attributes,omitempty"`
+		} `json:"featureType,omitempty"`
+	}
+	g.DeSerializeJSON(response, &layerResponse)
+	lyrNode := LayerNode{
+		ID:   layerName,
+		Name: layerName,
+		Type: LAYER,
+	}
+	bbox := layerResponse.FeatureType.LatLonBoundingBox
+	lyrNode.BBox = orb.Bound{
+		Min: orb.Point{bbox.Minx, bbox.Miny},
+		Max: orb.Point{bbox.Maxx, bbox.Maxy},
+	}
+	for _, attr := range layerResponse.FeatureType.Attributes.Attribute {
+		if strings.ToLower(attr.Name) == "geom" {
+			lyrNode.Geom = GeoType(attr.Binding[strings.LastIndex(attr.Binding, ".")+1:])
+			break
+		}
+		// layerResponse.FeatureType.Attributes.Attribute[i].Type = attr.Binding[strings.LastIndex(attr.Binding, "."):]
+	}
+	return &lyrNode, nil
 }

@@ -611,6 +611,8 @@ func setupRouter() *gin.Engine {
 		gs.POST("/info/:id/", updateGeoserverService)
 		gs.DELETE("/delete/:ids/", deleteGeoserverService)
 		gs.GET("/layers/:id/", getGeoserverLayers)
+		gs.GET("/gwc/layers/:id/", getGWCLayers)
+		gs.GET("/gwc/layers/:id/:name/", getGWCLayer)
 	}
 
 	//serve3d 其他接口
