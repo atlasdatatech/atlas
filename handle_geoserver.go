@@ -305,18 +305,66 @@ func getGWCLayer(c *gin.Context) {
 		return
 	}
 	layerName := c.Param("name")
-
 	gsCatalog := gs.GetCatalog(geoserver.ServiceURL, geoserver.UserName, geoserver.Password)
-	layer, err := GetTileLayer(gsCatalog, layerName)
-	// ls, err := gsCatalog.GetLayers("")
-	if err != nil {
-		resp.Fail(c, 4049)
+	targetURL := gsCatalog.ParseURL("rest", "layergroups", layerName+".json")
+	httpRequest := gs.HTTPRequest{
+		Method: "GET",
+		Accept: "application/json",
+		URL:    targetURL,
+		Query:  nil,
+	}
+	respBody, respCode := gsCatalog.DoRequest(httpRequest)
+	//非200,当作layer处理,直接按featureTpye矢量类型进行详细信息获取
+	if respCode != 200 {
+		layer, err := GetGsSourceLayerInfo(gsCatalog, layerName)
+		if err != nil {
+			log.Error(err)
+			resp.FailMsg(c, err.Error())
+			return
+		}
+		turl := gsCatalog.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
+		layer.Tiles = []string{turl}
+		resp.DoneData(c, layer)
 		return
 	}
-	resp.DoneData(c, layer)
+	//定义group返回结构
+	var groupResp struct {
+		LayerGroup struct {
+			Publishables struct {
+				Published interface{}
+				// Published []*PubLayer `json:"published,omitempty"`
+			} `json:"publishables,omitempty"`
+			Bounds Bound `json:"bounds,omitempty"`
+		} `json:"layerGroup,omitempty"`
+	}
+	err := gsCatalog.DeSerializeJSON(respBody, &groupResp)
+	if err != nil {
+		log.Error(err)
+		resp.FailMsg(c, err.Error())
+		return
+	}
+
+	lyrNode := LayerNode{
+		ID:   layerName,
+		Name: layerName,
+		Type: GROUP,
+	}
+	lyrNode.BBox = groupResp.LayerGroup.Bounds
+	turl := gsCatalog.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
+	lyrNode.Tiles = []string{turl}
+
+	layers, err := GetGroupLayers(gsCatalog, groupResp.LayerGroup.Publishables.Published)
+	if err != nil {
+		log.Error(err)
+		resp.FailMsg(c, err.Error())
+		return
+	}
+	lyrNode.Children = layers
+	resp.DoneData(c, lyrNode)
+	return
 }
 
-func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err error) {
+func GetGroupLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err error) {
 	targetURL := g.ParseURL("rest", "layergroups", layerName+".json")
 	httpRequest := gs.HTTPRequest{
 		Method: "GET",
@@ -324,18 +372,12 @@ func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err 
 		URL:    targetURL,
 		Query:  nil,
 	}
-	response, responseCode := g.DoRequest(httpRequest)
-	if responseCode != 200 {
-		//非200，未找到，则推测为layer，直接按featureTpye矢量类型进行详细信息获取
-		layer, err := GetGsSourceLayerInfo(g, layerName)
-		if err != nil {
-			return nil, err
-		}
-		turl := g.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
-		layer.Tiles = []string{turl}
-		return layer, nil
+	respBody, respCode := g.DoRequest(httpRequest)
+	if respCode != 200 {
+		log.Error(err)
+		return nil, err
 	}
-	var layerResponse struct {
+	var groupResp struct {
 		LayerGroup struct {
 			Publishables struct {
 				// Published []*PubLayer `json:"published,omitempty"`
@@ -344,26 +386,26 @@ func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err 
 			Bounds Bound `json:"bounds,omitempty"`
 		} `json:"layerGroup,omitempty"`
 	}
-	g.DeSerializeJSON(response, &layerResponse)
-
+	err = g.DeSerializeJSON(respBody, &groupResp)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
 	lyrNode := LayerNode{
 		ID:   layerName,
 		Name: layerName,
 		Type: GROUP,
 	}
-	lyrNode.BBox = layerResponse.LayerGroup.Bounds
-	turl := g.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
-	lyrNode.Tiles = []string{turl}
-	if true {
-		layers, err := GetGroupLayers(g, layerResponse.LayerGroup.Publishables.Published)
-		if err != nil {
-			return nil, err
-		}
+	lyrNode.BBox = groupResp.LayerGroup.Bounds
+
+	layers, err := GetGroupLayers(g, groupResp.LayerGroup.Publishables.Published)
+	if err != nil {
+		log.Error(err)
+	} else {
 		lyrNode.Children = layers
 	}
 
-	tileLayer = &lyrNode
-	return
+	return &lyrNode, nil
 }
 
 func GetGroupLayers(g *gs.GeoServer, published interface{}) (layers []*LayerNode, err error) {
@@ -398,7 +440,7 @@ func GetGroupLayers(g *gs.GeoServer, published interface{}) (layers []*LayerNode
 			}
 			layers = append(layers, layer)
 		case "layerGroup":
-			layer, err := GetTileLayer(g, lyr.Name)
+			layer, err := GetGroupLayer(g, lyr.Name)
 			if err != nil {
 				log.Error(err)
 				continue
