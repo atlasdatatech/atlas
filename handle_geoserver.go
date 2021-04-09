@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	gs "github.com/hishamkaram/geoserver"
 	"github.com/jinzhu/gorm"
-	"github.com/paulmach/orb"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -32,22 +31,24 @@ const (
 	LAYER          = "layer"
 )
 
-type LayerNode struct {
-	ID       string       `json:"id,omitempty"`
-	Name     string       `json:"name,omitempty"`
-	Type     NodeType     `json:"type,omitempty"`
-	Geom     GeoType      `json:"geom,omitempty"`
-	BBox     orb.Bound    `json:"bbox,omitempty"`
-	URI      string       `json:"uri,omitempty"`
-	Children []*LayerNode `json:"children,omitempty"`
-}
-
+//Bound BBox
 type Bound struct {
 	Minx float64 `json:"minx,omitempty"`
 	Maxx float64 `json:"maxx,omitempty"`
 	Miny float64 `json:"miny,omitempty"`
 	Maxy float64 `json:"maxy,omitempty"`
 	CRS  string  `json:"crs,omitempty"`
+}
+
+//LayerNode
+type LayerNode struct {
+	ID       string       `json:"id,omitempty"`
+	Name     string       `json:"name,omitempty"`
+	Type     NodeType     `json:"type,omitempty"`
+	Geom     GeoType      `json:"geom,omitempty"`
+	BBox     Bound        `json:"bbox,omitempty"`
+	Tiles    []string     `json:"tiles,omitempty"`
+	Children []*LayerNode `json:"children,omitempty"`
 }
 
 type SrcLayer struct {
@@ -260,12 +261,26 @@ func getGWCLayers(c *gin.Context) {
 		return
 	}
 	gsCatalog := gs.GetCatalog(geoserver.ServiceURL, geoserver.UserName, geoserver.Password)
-	layers, err := GetLayers(gsCatalog)
-	if err != nil {
-		resp.Fail(c, 4049)
+	targetURL := gsCatalog.ParseURL("gwc", "rest", "layers")
+	httpRequest := gs.HTTPRequest{
+		Method: "GET",
+		Accept: "application/json",
+		URL:    targetURL,
+		Query:  nil,
+	}
+	response, responseCode := gsCatalog.DoRequest(httpRequest)
+	if responseCode != 200 {
+		log.Error(string(response))
+		resp.Fail(c, responseCode)
 		return
 	}
-	resp.DoneData(c, layers)
+	layerNames := []string{}
+	err := gsCatalog.DeSerializeJSON(response, &layerNames)
+	if err != nil {
+		resp.FailMsg(c, err.Error())
+		return
+	}
+	resp.DoneData(c, layerNames)
 }
 
 //getGWCLayers 获取Geoserver实例信息
@@ -301,32 +316,6 @@ func getGWCLayer(c *gin.Context) {
 	resp.DoneData(c, layer)
 }
 
-func GetLayers(g *gs.GeoServer) (layers []*LayerNode, err error) {
-	targetURL := g.ParseURL("gwc", "rest", "layers")
-	httpRequest := gs.HTTPRequest{
-		Method: "GET",
-		Accept: "application/json",
-		URL:    targetURL,
-		Query:  nil,
-	}
-	response, responseCode := g.DoRequest(httpRequest)
-	if responseCode != 200 {
-		log.Error(string(response))
-		err = g.GetError(responseCode, response)
-		return
-	}
-	layerNames := []string{}
-	g.DeSerializeJSON(response, &layerNames)
-	for _, lyr := range layerNames {
-		tileLayer, err := GetTileLayer(g, lyr)
-		if err != nil {
-			continue
-		}
-		layers = append(layers, tileLayer)
-	}
-	return
-}
-
 func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err error) {
 	targetURL := g.ParseURL("rest", "layergroups", layerName+".json")
 	httpRequest := gs.HTTPRequest{
@@ -342,6 +331,8 @@ func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err 
 		if err != nil {
 			return nil, err
 		}
+		turl := g.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
+		layer.Tiles = []string{turl}
 		return layer, nil
 	}
 	var layerResponse struct {
@@ -360,12 +351,9 @@ func GetTileLayer(g *gs.GeoServer, layerName string) (tileLayer *LayerNode, err 
 		Name: layerName,
 		Type: GROUP,
 	}
-	bbox := layerResponse.LayerGroup.Bounds
-	lyrNode.BBox = orb.Bound{
-		Min: orb.Point{bbox.Minx, bbox.Miny},
-		Max: orb.Point{bbox.Maxx, bbox.Maxy},
-	}
-
+	lyrNode.BBox = layerResponse.LayerGroup.Bounds
+	turl := g.ParseURL("gwc/servicer/tms/1.0.0/", layerName, "@EPSG:900913@pbf/{z}/{x}/{y}.pbf")
+	lyrNode.Tiles = []string{turl}
 	if true {
 		layers, err := GetGroupLayers(g, layerResponse.LayerGroup.Publishables.Published)
 		if err != nil {
@@ -455,14 +443,10 @@ func GetGsSourceLayerInfo(g *gs.GeoServer, layerName string) (layer *LayerNode, 
 	g.DeSerializeJSON(response, &layerResponse)
 	lyrNode := LayerNode{
 		ID:   layerName,
-		Name: layerName,
+		Name: lyrName,
 		Type: LAYER,
 	}
-	bbox := layerResponse.FeatureType.LatLonBoundingBox
-	lyrNode.BBox = orb.Bound{
-		Min: orb.Point{bbox.Minx, bbox.Miny},
-		Max: orb.Point{bbox.Maxx, bbox.Maxy},
-	}
+	lyrNode.BBox = layerResponse.FeatureType.LatLonBoundingBox
 	for _, attr := range layerResponse.FeatureType.Attributes.Attribute {
 		if strings.ToLower(attr.Name) == "geom" {
 			lyrNode.Geom = GeoType(attr.Binding[strings.LastIndex(attr.Binding, ".")+1:])
