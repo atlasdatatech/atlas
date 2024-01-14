@@ -1,0 +1,84 @@
+	[app]
+		port="1226"
+		ips = 127
+		ipExpiration = "-1m"
+
+	[user]
+		resetExpiration = "48h"
+		attempts = 7
+		attemptExpiration = "-5m"
+		verification = true
+		
+	[paths]
+		styles = "styles"
+		fonts = "fonts"
+		tilesets = "tilesets"
+		datasets = "datasets"
+		ts3d = "ts3d"
+		uploads = "tmp"
+
+	[statics]
+		home = "statics/"
+		templates = "statics/templates/*"
+
+	[db]
+		name = "atlas"           
+		type = "postgres"        # sqlite3,postgres
+		host     = "atlasdata.cn"
+		port     = 5432
+		user     = "postgres"
+		password = "onemap"
+		sysdb = "atlas"
+		datadb = "atlas"
+	# data providers
+	[[providers]]
+		name = "atlas"           # provider name is referenced from map layers
+		type = "postgis"        # postgis,gpkg 
+		filepath = "atlasdata"
+		host = "atlasdata.cn"      # postgis database host
+		port = 5432             # postgis database port
+		user = "postgres"         # postgis database user
+		password = "onemap"           # postgis database password atlas/cityfun
+		database = "atlas"       # postgis database name
+		srid = 4326 #默认目标是3857，原始数据层可以是3857但通常是4326   
+
+	[jwt]
+	[jwt.auth]
+		realm="atlascloud-auth"
+		key="salta-atad-6221"
+		timeOut="24h"
+		timeMax="72h"
+		lookup="header:Authorization, cookie:token"
+		headName = "Bearer"
+
+	[jwt.access]
+		realm="atlascloud-access"
+		key="salta-atad-1226"
+		timeOut="65535h"
+		timeMax="655350h"
+		lookup="query:access_token"
+		headName = "Bearer"
+		
+	[smtp]
+		[smtp.from]
+			name = "atlascloud"
+			address = "cloud@atlasdata.cn"
+
+		[smtp.credentials]
+			user = "cloud@atlasdata.cn"
+			password = "Atlas1226"
+			host = "smtp.exmail.qq.com"
+			port = 465
+			ssl = true
+
+	[import]
+	[import.task]
+		interval = "1s"
+
+	[proxy]
+		appid = "SuZhouChengFang:XT5C0UK4JVFB26KF"
+		key = "W2T6KF9Q7MPO3O3XYIJNV67W0108K07N"
+		host = "http://out.jsdhqy.cn:3005"
+	[geocoder]
+		api = "http://api.map.baidu.com/place/v2/search?query=%s&region=全国&output=json&ak=3yZlMT3ioSaTaa0kioxwulQrROoN97RV"
+	
